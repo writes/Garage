@@ -1,0 +1,58 @@
+disabled_rules:
+  - trailing_whitespace
+  - todo
+
+opt_in_rules:
+  - closure_end_indentation
+  - closure_spacing
+  - collection_alignment
+  - contains_over_filter_count
+  - empty_count
+  - empty_string
+  - fatal_error_message
+  - first_where
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+  - last_where
+  - modifier_order
+  - overridden_super_call
+  - prefer_zero_over_explicit_init
+  - private_action
+  - private_outlet
+  - redundant_nil_coalescing
+  - sorted_first_last
+  - toggle_bool
+
+force_unwrapping:
+  severity: error
+
+identifier_name:
+  excluded:
+    - db
+    - id
+    - xs
+    - sm
+    - md
+    - lg
+    - xl
+
+file_length:
+  warning: 250
+  error: 300
+
+type_body_length:
+  warning: 200
+  error: 300
+
+function_body_length:
+  warning: 40
+  error: 60
+
+line_length:
+  warning: 120
+  error: 150
+  ignores_comments: true
+
+excluded:
+  - CloudFunctions
+  - .build

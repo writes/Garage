@@ -1,0 +1,17 @@
+*.xcuserdata
+*.xcworkspace
+xcuserdata/
+DerivedData/
+.deriveddata-localrun/
+build/
+.build/
+Packages/
+.tools/
+.DS_Store
+Package.resolved
+GoogleService-Info.plist
+Garage/Resources/GoogleService-Info.plist
+Secrets.swift
+Configuration/Secrets.swift
+CloudFunctions/node_modules/
+CloudFunctions/lib/

@@ -1,0 +1,69 @@
+import SwiftUI
+
+struct LogView: View {
+    @Environment(AppState.self) private var appState
+    @State private var viewModel = LogViewModel()
+    @State private var selectedEntry: FirestoreEntry?
+    @State private var isShowingFilters = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: Theme.Spacing.md) {
+                SearchBar(text: $viewModel.searchText, placeholder: "Search notes, types, and details")
+
+                if viewModel.isLoading {
+                    LoadingOverlay()
+                } else if let error = viewModel.error {
+                    ErrorBanner(error: error, retry: { Task { await reload() } })
+                } else if viewModel.entries.isEmpty {
+                    EmptyStateView(
+                        title: "No log entries yet",
+                        message: "Tap the add button to start your vehicle history.",
+                        systemImage: "list.bullet.clipboard"
+                    )
+                } else {
+                    ScrollView {
+                        VStack(spacing: Theme.Spacing.md) {
+                            ForEach(viewModel.entries) { entry in
+                                Button {
+                                    selectedEntry = entry
+                                } label: {
+                                    EntryRowView(entry: entry)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.bottom, Theme.Spacing.xxl)
+                    }
+                }
+            }
+            .padding(Theme.Spacing.md)
+            .navigationTitle("Log")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    VehicleSwitcher()
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Filter") {
+                        isShowingFilters = true
+                    }
+                }
+            }
+            .task { await reload() }
+            .sheet(item: $selectedEntry) { entry in
+                NavigationStack { EntryDetailView(entry: entry) }
+            }
+            .sheet(isPresented: $isShowingFilters) {
+                EntryFilterSheet(selectedTypes: $viewModel.selectedTypes)
+            }
+            .onChange(of: viewModel.searchText) { _, _ in
+                Task { await reload() }
+            }
+        }
+    }
+
+    private func reload() async {
+        guard let vehicleId = appState.currentVehicle?.id else { return }
+        await viewModel.reload(vehicleId: vehicleId)
+    }
+}
