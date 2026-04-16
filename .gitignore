@@ -15,3 +15,5 @@ Secrets.swift
 Configuration/Secrets.swift
 CloudFunctions/node_modules/
 CloudFunctions/lib/
+firebase-debug.log
+firebase-debug.*.log

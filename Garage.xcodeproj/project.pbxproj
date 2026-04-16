@@ -1017,6 +1017,7 @@
 				A0201BD38F89ACE1F83667C2 /* Sources */,
 				4227146B4775A0AEC883B018 /* Resources */,
 				F61673EA3AD1EBDD77520B01 /* Frameworks */,
+				F8A3E12C14B1111A9182BDB7 /* Bundle Local Firebase Config */,
 			);
 			buildRules = (
 			);
@@ -1138,6 +1139,31 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		F8A3E12C14B1111A9182BDB7 /* Bundle Local Firebase Config */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Garage/Resources/GoogleService-Info.plist",
+			);
+			name = "Bundle Local Firebase Config";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "GOOGLE_SERVICE_INFO_PATH=\"${SRCROOT}/Garage/Resources/GoogleService-Info.plist\"\nBUNDLED_CONFIG_PATH=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\n\nif [ -f \"${GOOGLE_SERVICE_INFO_PATH}\" ]; then\n  cp \"${GOOGLE_SERVICE_INFO_PATH}\" \"${BUNDLED_CONFIG_PATH}\"\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		7589FC07C1F638975D2B8AF9 /* Sources */ = {

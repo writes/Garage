@@ -33,8 +33,22 @@ Full Xcode.app is required. Apple Command Line Tools are not sufficient for this
 - `Debug.xcconfig` points at development identifiers and enables debug-only seed data.
 - `Release.xcconfig` is for production endpoints and hardened logging.
 - `Configuration/Secrets.swift` stores compile-time secrets that must never be committed.
+- `.firebaserc` defines the shared Firebase aliases: `dev -> harrys-playhouse-dev` and `prod -> harrys-playhouse-prod`.
 - `CloudFunctions/.env.local` should hold local emulator secrets when needed.
 - `Garage/Resources/PrivacyInfo.xcprivacy` should be reviewed before each release because third-party SDK manifests can change over time.
+- `Garage/Resources/GoogleService-Info.plist` is copied into the app bundle by the generated Xcode project when the file exists locally. Keep it out of Git.
+
+## Firebase Projects
+
+- Development project: `harrys-playhouse-dev`
+- Production project: `harrys-playhouse-prod`
+
+Common alias commands:
+
+- `firebase use dev`
+- `firebase use prod`
+
+Firestore rules and indexes are deployed from this repo to both projects. Storage buckets and Cloud Functions still require a linked billing account before they can be provisioned or deployed.
 
 ## Daily Workflow
 

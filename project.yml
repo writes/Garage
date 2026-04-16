@@ -104,6 +104,22 @@ targets:
       - path: Configuration/Secrets.swift
     resources:
       - Garage/Resources
+    postBuildScripts:
+      - name: Bundle Local Firebase Config
+        shell: /bin/sh
+        script: |
+          GOOGLE_SERVICE_INFO_PATH="${SRCROOT}/Garage/Resources/GoogleService-Info.plist"
+          BUNDLED_CONFIG_PATH="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
+
+          if [ -f "${GOOGLE_SERVICE_INFO_PATH}" ]; then
+            cp "${GOOGLE_SERVICE_INFO_PATH}" "${BUNDLED_CONFIG_PATH}"
+          fi
+        inputFiles:
+          - $(SRCROOT)/Garage/Resources/GoogleService-Info.plist
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist
+        basedOnDependencyAnalysis: false
+        showEnvVars: false
   GarageUnitTests:
     type: bundle.unit-test
     platform: iOS

@@ -1,0 +1,9 @@
+{
+  "projects": {
+    "default": "harrys-playhouse-dev",
+    "dev": "harrys-playhouse-dev",
+    "prod": "harrys-playhouse-prod"
+  },
+  "targets": {},
+  "etags": {}
+}
