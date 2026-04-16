@@ -60,7 +60,7 @@ final class EntryService {
         return try snapshot.documents.first.map { try firestore.decode(FirestoreEntry.self, from: $0.data()) }
     }
 
-    static func filter(_ entries: [FirestoreEntry], with searchText: String) -> [FirestoreEntry] {
+    nonisolated static func filter(_ entries: [FirestoreEntry], with searchText: String) -> [FirestoreEntry] {
         guard searchText.isNotEmpty else { return entries }
         let lowered = searchText.lowercased()
         return entries.filter { entry in

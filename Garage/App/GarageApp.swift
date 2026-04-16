@@ -117,7 +117,9 @@ private struct LocalSetupRequiredView: View {
                         "Garage needs Firebase setup",
                         systemImage: "wrench.and.screwdriver.fill",
                         description: Text(
-                            "The app did not find a bundled GoogleService-Info.plist, so live services were not started."
+                            """
+                            The app did not find a bundled GoogleService-Info.plist, so live services were not started.
+                            """
                         )
                     )
 
@@ -127,7 +129,11 @@ private struct LocalSetupRequiredView: View {
                         Text("1. Add `GoogleService-Info.plist` to the Garage app target.")
                         Text("2. Place the file under `Garage/Resources/` in this workspace.")
                         Text("3. Rebuild and launch again.")
-                        Text("RevenueCat and Firebase-backed features stay disabled until the Firebase config is present.")
+                        Text(
+                            """
+                            RevenueCat and Firebase-backed features stay disabled until the Firebase config is present.
+                            """
+                        )
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }

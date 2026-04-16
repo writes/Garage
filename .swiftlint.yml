@@ -56,3 +56,5 @@ line_length:
 excluded:
   - CloudFunctions
   - .build
+  - .deriveddata-localrun
+  - build

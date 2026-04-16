@@ -14,9 +14,22 @@ final class AppIntegrityService {
 
     func configure() {
         guard !isConfigured else { return }
-        AppCheck.setAppCheckProviderFactory(GarageAppCheckProviderFactory())
+        AppCheck.setAppCheckProviderFactory(providerFactory())
         isConfigured = true
         AppLogger.shared.info("App Check provider configured")
+    }
+
+    private func providerFactory() -> AppCheckProviderFactory {
+#if DEBUG
+        if ProcessInfo.processInfo.environment["FIRAAppCheckDebugToken"]?.isEmpty == false {
+            return AppCheckDebugProviderFactory()
+        }
+
+        #if targetEnvironment(simulator)
+        return AppCheckDebugProviderFactory()
+        #endif
+#endif
+        return GarageAppCheckProviderFactory()
     }
 }
 

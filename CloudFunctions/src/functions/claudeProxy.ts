@@ -23,7 +23,7 @@ type OilAnalysisResponse = {
   labRecommendation?: string | null;
 };
 
-export const parseOilAnalysis = onCall(async (request): Promise<OilAnalysisResponse> => {
+export const parseOilAnalysis = onCall({ region: "us-central1" }, async (request): Promise<OilAnalysisResponse> => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Must be signed in.");
   }
@@ -83,4 +83,3 @@ export const parseOilAnalysis = onCall(async (request): Promise<OilAnalysisRespo
     throw new HttpsError("internal", "Claude returned malformed JSON.");
   }
 });
-

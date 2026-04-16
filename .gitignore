@@ -15,5 +15,8 @@ Secrets.swift
 Configuration/Secrets.swift
 CloudFunctions/node_modules/
 CloudFunctions/lib/
+CloudFunctions/.env.local
+CloudFunctions/.env.harrys-playhouse-dev
+CloudFunctions/.env.harrys-playhouse-prod
 firebase-debug.log
 firebase-debug.*.log

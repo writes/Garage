@@ -14,8 +14,8 @@ for file in "${SWIFT_FILES[@]}"; do
   fi
 done
 
-if rg -n '\bTODO\b|\bFIXME\b' Garage Tests CloudFunctions docs Configuration >/dev/null 2>&1; then
-  echo "TODO/FIXME markers are not allowed without issue linkage"
+if rg -n '\bTODO\b|\bFIXME\b' Garage Tests CloudFunctions/src docs Configuration .github project.yml scripts >/dev/null 2>&1; then
+  echo "Task markers are not allowed without issue linkage"
   exit 1
 fi
 
@@ -30,4 +30,3 @@ if rg -n '\w+!\.' Garage Tests >/dev/null 2>&1; then
 fi
 
 echo "Policy checks passed"
-

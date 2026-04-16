@@ -29,7 +29,7 @@ final class WearService {
         }
     }
 
-    static func latestDashboardItems(from snapshots: [WearSnapshot]) -> [WearItem] {
+    nonisolated static func latestDashboardItems(from snapshots: [WearSnapshot]) -> [WearItem] {
         let latestByType = Dictionary(grouping: snapshots.sorted(by: { $0.recordedAt > $1.recordedAt }), by: \.wearItem)
             .compactMapValues(\.first)
 
