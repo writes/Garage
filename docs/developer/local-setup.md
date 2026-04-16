@@ -42,7 +42,7 @@ Full Xcode.app is required. Apple Command Line Tools are not sufficient for this
 - `CloudFunctions/.env.example` documents the expected function environment keys.
 - `Garage/Resources/PrivacyInfo.xcprivacy` should be reviewed before each release because third-party SDK manifests can change over time.
 - `Garage/Resources/GoogleService-Info.plist` is copied into the app bundle by the generated Xcode project when the file exists locally. Keep it out of Git.
-- Debug builds intentionally use `GarageDebug.entitlements`, which omits push and Sign in with Apple entitlements so local device installs are easier to provision. Release builds continue to use `Garage.entitlements`.
+- Debug builds intentionally use `GarageDebug.entitlements`, which keeps Sign in with Apple but omits push entitlements so local simulator and device installs are easier to provision. Release builds continue to use `Garage.entitlements`.
 
 ## Firebase Projects
 

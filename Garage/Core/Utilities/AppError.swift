@@ -1,3 +1,4 @@
+import AuthenticationServices
 import Foundation
 
 enum AppError: LocalizedError, Equatable, Sendable {
@@ -39,6 +40,8 @@ enum AppError: LocalizedError, Equatable, Sendable {
         switch nsError.domain {
         case "FIRAuthErrorDomain":
             self = .auth(nsError.localizedDescription)
+        case ASAuthorizationError.errorDomain:
+            self = .auth(Self.appleAuthorizationMessage(for: nsError))
         case "FIRFirestoreErrorDomain":
             self = .database(nsError.localizedDescription)
         case "FIRStorageErrorDomain":
@@ -48,5 +51,15 @@ enum AppError: LocalizedError, Equatable, Sendable {
         default:
             self = .unknown(nsError.localizedDescription)
         }
+    }
+
+    private static func appleAuthorizationMessage(for error: NSError) -> String {
+        if error.code == ASAuthorizationError.Code.unknown.rawValue {
+            return
+                "Sign in with Apple couldn't start for this build. " +
+                "Rebuild and verify the Sign in with Apple capability is enabled."
+        }
+
+        return error.localizedDescription
     }
 }
