@@ -20,16 +20,17 @@ final class AppIntegrityService {
     }
 
     private func providerFactory() -> AppCheckProviderFactory {
-#if DEBUG
+#if DEBUG && targetEnvironment(simulator)
+        return AppCheckDebugProviderFactory()
+#elseif DEBUG
         if ProcessInfo.processInfo.environment["FIRAAppCheckDebugToken"]?.isEmpty == false {
             return AppCheckDebugProviderFactory()
         }
 
-        #if targetEnvironment(simulator)
-        return AppCheckDebugProviderFactory()
-        #endif
-#endif
         return GarageAppCheckProviderFactory()
+#else
+        return GarageAppCheckProviderFactory()
+#endif
     }
 }
 
