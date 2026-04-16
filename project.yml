@@ -25,7 +25,6 @@ settings:
     SWIFT_VERSION: 6.0
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_USER_SCRIPT_SANDBOXING: YES
-    DEVELOPMENT_TEAM: ""
     SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
     GCC_TREAT_WARNINGS_AS_ERRORS: YES
     ALWAYS_SEARCH_USER_PATHS: NO
@@ -50,12 +49,6 @@ targets:
         NSPhotoLibraryUsageDescription: Select receipts and vehicle photos.
         NSPhotoLibraryAddUsageDescription: Save generated reports to your photo library.
         CFBundleDisplayName: Garage
-    entitlements:
-      path: Garage.entitlements
-      properties:
-        aps-environment: development
-        com.apple.developer.applesignin:
-          - Default
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.writes.harrysplayhouse
@@ -65,9 +58,11 @@ targets:
         ENABLE_USER_SCRIPT_SANDBOXING: NO
       configs:
         Debug:
+          CODE_SIGN_ENTITLEMENTS: GarageDebug.entitlements
           PRODUCT_BUNDLE_IDENTIFIER: com.writes.harrysplayhouse.debug
           ONLY_ACTIVE_ARCH: YES
         Release:
+          CODE_SIGN_ENTITLEMENTS: Garage.entitlements
           PRODUCT_BUNDLE_IDENTIFIER: com.writes.harrysplayhouse
           SWIFT_COMPILATION_MODE: wholemodule
           COPY_PHASE_STRIP: YES

@@ -1,3 +1,5 @@
+#include? "Local.xcconfig"
+
 PRODUCT_BUNDLE_IDENTIFIER = com.writes.harrysplayhouse
 SWIFT_COMPILATION_MODE = wholemodule
 SWIFT_TREAT_WARNINGS_AS_ERRORS = YES

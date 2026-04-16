@@ -15,12 +15,14 @@ Full Xcode.app is required. Apple Command Line Tools are not sufficient for this
 ## Bootstrapping
 
 1. Copy `Configuration/Secrets.template.swift` to `Configuration/Secrets.swift`.
-2. Add `Garage/Resources/GoogleService-Info.plist`.
-3. Update the bundle identifier in `project.yml`.
-4. Run `xcodegen generate`.
-5. Open the generated Xcode project.
-6. Add the required URL schemes for Google Sign-In in the Firebase console and Xcode.
-7. Configure Apple Sign-In in the Apple Developer portal and Firebase Auth.
+2. Copy `Configuration/Local.template.xcconfig` to `Configuration/Local.xcconfig`.
+3. Add your Apple Developer Team ID to `Configuration/Local.xcconfig`.
+4. Add `Garage/Resources/GoogleService-Info.plist`.
+5. Update the bundle identifier in `project.yml`.
+6. Run `xcodegen generate`.
+7. Open the generated Xcode project.
+8. Add the required URL schemes for Google Sign-In in the Firebase console and Xcode.
+9. Configure Apple Sign-In in the Apple Developer portal and Firebase Auth.
 
 ## Xcode Install Note
 
@@ -33,12 +35,14 @@ Full Xcode.app is required. Apple Command Line Tools are not sufficient for this
 - `Debug.xcconfig` points at development identifiers and enables debug-only seed data.
 - `Release.xcconfig` is for production endpoints and hardened logging.
 - `Configuration/Secrets.swift` stores compile-time secrets that must never be committed.
+- `Configuration/Local.xcconfig` stores local signing overrides such as `DEVELOPMENT_TEAM` and should never be committed.
 - `.firebaserc` defines the shared Firebase aliases: `dev -> harrys-playhouse-dev` and `prod -> harrys-playhouse-prod`.
 - `CloudFunctions/.env.local` should hold local emulator secrets when needed.
 - `CloudFunctions/.env.<projectId>` should hold deploy-time function environment variables when needed.
 - `CloudFunctions/.env.example` documents the expected function environment keys.
 - `Garage/Resources/PrivacyInfo.xcprivacy` should be reviewed before each release because third-party SDK manifests can change over time.
 - `Garage/Resources/GoogleService-Info.plist` is copied into the app bundle by the generated Xcode project when the file exists locally. Keep it out of Git.
+- Debug builds intentionally use `GarageDebug.entitlements`, which omits push and Sign in with Apple entitlements so local device installs are easier to provision. Release builds continue to use `Garage.entitlements`.
 
 ## Firebase Projects
 

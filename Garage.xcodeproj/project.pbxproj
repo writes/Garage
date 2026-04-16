@@ -1093,15 +1093,8 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
-					0369170BECB297C21810E7E5 = {
-						DevelopmentTeam = "";
-					};
 					722A96A22D0FF1FDCC6B192B = {
-						DevelopmentTeam = "";
 						TestTargetID = 0369170BECB297C21810E7E5;
-					};
-					FFFD4FE183E5DD7A4C01E45F = {
-						DevelopmentTeam = "";
 					};
 				};
 			};
@@ -1380,7 +1373,6 @@
 			baseConfigurationReference = 6A813665827A885CCA945095 /* Release.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				DEVELOPMENT_TEAM = "";
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_TREAT_WARNINGS_AS_ERRORS = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -1443,7 +1435,7 @@
 		8626079F815C3AC15D703CB5 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = Garage.entitlements;
+				CODE_SIGN_ENTITLEMENTS = GarageDebug.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -1460,7 +1452,6 @@
 			baseConfigurationReference = 19A79F7264618E6ABE51C0B9 /* Debug.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				DEVELOPMENT_TEAM = "";
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_TREAT_WARNINGS_AS_ERRORS = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;

@@ -33,5 +33,6 @@
 
 1. Keep `Garage/Resources/GoogleService-Info.plist` local and out of Git.
 2. Keep `Configuration/Secrets.swift` local and out of Git.
-3. Keep `CloudFunctions/.env.local` and `CloudFunctions/.env.<projectId>` local and out of Git.
-4. Run `./scripts/ci/verify-ios.sh` before opening a pull request.
+3. Keep `Configuration/Local.xcconfig` local and out of Git.
+4. Keep `CloudFunctions/.env.local` and `CloudFunctions/.env.<projectId>` local and out of Git.
+5. Run `./scripts/ci/verify-ios.sh` before opening a pull request.

@@ -1,0 +1,5 @@
+// Copy this file to Configuration/Local.xcconfig for local device signing.
+// Keep Configuration/Local.xcconfig out of Git.
+
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+CODE_SIGN_STYLE = Automatic
