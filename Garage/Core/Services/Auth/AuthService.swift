@@ -1,3 +1,4 @@
+import Foundation
 import FirebaseAuth
 import Observation
 
@@ -33,22 +34,22 @@ final class AuthService {
         currentUser?.uid
     }
 
-    func signInWithApple(idToken: String, nonce: String) async throws {
+    func signInWithApple(idToken: String, nonce: String, fullName: PersonNameComponents? = nil) async throws {
         guard mode == .live else {
             throw AppError.auth("Authentication is disabled in UI tests")
         }
 
-        let credential = OAuthProvider.appleCredential(withIDToken: idToken, rawNonce: nonce, fullName: nil)
+        let credential = OAuthProvider.appleCredential(withIDToken: idToken, rawNonce: nonce, fullName: fullName)
         try await Auth.auth().signIn(with: credential)
     }
 
-    func signInWithGoogle(idToken: String, accessToken: String) async throws {
+    func signInWithGoogle() async throws {
         guard mode == .live else {
             throw AppError.auth("Authentication is disabled in UI tests")
         }
 
-        let credential = GoogleAuthProvider.credential(withIDToken: idToken, accessToken: accessToken)
-        try await Auth.auth().signIn(with: credential)
+        let provider = OAuthProvider.provider(providerID: .google, auth: Auth.auth())
+        try await Auth.auth().signIn(with: provider, uiDelegate: nil)
     }
 
     func signOut() throws {

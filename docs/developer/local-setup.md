@@ -50,6 +50,56 @@ Common alias commands:
 
 Firestore rules and indexes are deployed from this repo to both projects. Storage buckets and Cloud Functions still require a linked billing account before they can be provisioned or deployed.
 
+## Authentication Providers
+
+The login screen is wired for Firebase Authentication with Apple and Google.
+
+Provider setup still has two manual parts:
+
+1. Firebase Console
+2. Apple Developer
+
+### Firebase Console
+
+For both `harrys-playhouse-dev` and `harrys-playhouse-prod`:
+
+- Open Authentication.
+- Enable the Google provider.
+- Enable the Apple provider.
+
+The Apple provider needs the following values:
+
+- Apple Team ID
+- Apple Key ID
+- Apple private key (`.p8`)
+- Apple Services ID
+
+Firebase OAuth handler URLs:
+
+- Development: `https://harrys-playhouse-dev.firebaseapp.com/__/auth/handler`
+- Production: `https://harrys-playhouse-prod.firebaseapp.com/__/auth/handler`
+
+### Apple Developer
+
+For Apple Sign-In:
+
+- Keep Sign in with Apple enabled for the iOS App IDs:
+  - `com.writes.harrysplayhouse.debug`
+  - `com.writes.harrysplayhouse`
+- Create Apple Services IDs for the Firebase OAuth callback flow.
+- Allow the matching Firebase handler URL for each environment.
+- Create an Apple Sign-In private key and record the Team ID and Key ID for Firebase.
+
+### Google Sign-In Build Behavior
+
+When a local `Garage/Resources/GoogleService-Info.plist` is present, the generated Xcode project now does three things during the app build:
+
+- copies the plist into the app bundle
+- derives the Firebase Auth callback URL scheme from `GOOGLE_APP_ID`
+- adds that callback scheme to the built `Info.plist`
+
+That means the checked-in project can stay free of local Firebase plist values while the local Firebase Auth web flow still has the bundle metadata it needs at runtime.
+
 ## Daily Workflow
 
 1. Implement work in phase order.

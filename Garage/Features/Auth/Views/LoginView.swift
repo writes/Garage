@@ -17,19 +17,32 @@ struct LoginView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            SignInWithAppleButton(.signIn) { _ in
-            } onCompletion: { _ in
+            SignInWithAppleButton(.signIn) { request in
+                viewModel.prepareAppleRequest(request)
+            } onCompletion: { result in
+                Task {
+                    await viewModel.handleAppleCompletion(result)
+                }
             }
             .signInWithAppleButtonStyle(.black)
             .frame(height: 54)
+            .disabled(viewModel.isLoading)
 
             Button("Continue with Google") {
-                viewModel.showSetupMessage()
+                Task {
+                    await viewModel.signInWithGoogle()
+                }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, Theme.Spacing.md)
             .background(Theme.Colors.surface)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
+            .disabled(viewModel.isLoading)
+
+            if viewModel.isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
 
             if let error = viewModel.error {
                 ErrorBanner(error: error)

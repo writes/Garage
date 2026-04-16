@@ -1,4 +1,5 @@
 import FirebaseCore
+import FirebaseAuth
 import RevenueCat
 import SwiftData
 import SwiftUI
@@ -60,6 +61,9 @@ struct GarageApp: App {
                     .environment(appState)
                     .environment(router)
                     .modelContainer(modelContainer)
+                    .onOpenURL { url in
+                        _ = Auth.auth().canHandle(url)
+                    }
             }
         }
     }
