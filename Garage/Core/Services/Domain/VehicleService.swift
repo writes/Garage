@@ -22,11 +22,12 @@ final class VehicleService {
         purchaseService: PurchaseService? = nil
     ) {
         self.mode = mode
-        self.firestore = firestore ?? (mode == .live ? .shared : nil)
-        self.purchaseService = purchaseService ?? (mode == .live ? .shared : .uiTest)
+        self.firestore = firestore ?? (mode == .live && !AppRuntime.isLocalDemoMode ? .shared : nil)
+        self.purchaseService = purchaseService ?? (mode == .live && !AppRuntime.isLocalDemoMode ? .shared : .uiTest)
     }
 
     func createVehicle(_ vehicle: Vehicle) async throws -> Vehicle {
+        guard !AppRuntime.isLocalDemoMode else { return vehicle }
         guard mode == .live else { return vehicle }
         guard let uid = AuthService.shared.uid else {
             throw AppError.auth("Not authenticated")
@@ -52,6 +53,7 @@ final class VehicleService {
     }
 
     func updateVehicle(_ vehicle: Vehicle) async throws {
+        guard !AppRuntime.isLocalDemoMode else { return }
         guard mode == .live else { return }
         guard let firestore else {
             throw AppError.database("Firestore unavailable")
@@ -63,7 +65,7 @@ final class VehicleService {
     }
 
     func fetchVehicles() async throws -> [Vehicle] {
-        guard mode == .live else {
+        guard mode == .live, !AppRuntime.isLocalDemoMode else {
             return SeedData.vehicles
         }
         guard let uid = AuthService.shared.uid else {
@@ -85,7 +87,7 @@ final class VehicleService {
     }
 
     func listenToVehicles() -> AsyncThrowingStream<[Vehicle], Error> {
-        guard mode == .live else {
+        guard mode == .live, !AppRuntime.isLocalDemoMode else {
             return AsyncThrowingStream { continuation in
                 continuation.yield(SeedData.vehicles)
                 continuation.finish()

@@ -1,17 +1,34 @@
 import AuthenticationServices
+import Foundation
 import Observation
 
 @MainActor
 @Observable
 final class AuthViewModel {
     private let authService: AuthService
+    private let appleSignInTimeoutNanoseconds: UInt64
     private var currentAppleNonce: String?
 
     private(set) var isLoading = false
     private(set) var error: AppError?
 
-    init(authService: AuthService = .shared) {
+    init(
+        authService: AuthService = .shared,
+        appleSignInTimeoutNanoseconds: UInt64 = Constants.appleSignInTimeoutNanoseconds
+    ) {
         self.authService = authService
+        self.appleSignInTimeoutNanoseconds = appleSignInTimeoutNanoseconds
+    }
+
+    static var simulatorHelpText: String? {
+#if targetEnvironment(simulator)
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "this debug app ID"
+        return
+            "Simulator note: Sign in with Apple needs the simulator signed into an Apple ID, " +
+            "and \(bundleIdentifier) must be enabled for Sign in with Apple in Apple Developer and Firebase."
+#else
+        return nil
+#endif
     }
 
     func prepareAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
@@ -19,6 +36,7 @@ final class AuthViewModel {
         currentAppleNonce = nonce
         request.requestedScopes = [.fullName, .email]
         request.nonce = AppleSignInNonce.sha256(nonce)
+        AppLogger.auth.info("Prepared Sign in with Apple request")
     }
 
     func handleAppleCompletion(_ result: Result<ASAuthorization, Error>) async {
@@ -43,11 +61,26 @@ final class AuthViewModel {
                 throw AppError.auth("Apple returned an unreadable identity token.")
             }
 
-            try await authService.signInWithApple(
-                idToken: idToken,
-                nonce: nonce,
-                fullName: credential.fullName
-            )
+            let signInTask = Task { @MainActor [authService] in
+                try await authService.signInWithApple(
+                    idToken: idToken,
+                    nonce: nonce,
+                    fullName: credential.fullName
+                )
+            }
+
+            defer {
+                signInTask.cancel()
+            }
+
+            let timeoutMessage = Self.appleSignInTimeoutMessage
+
+            try await AsyncTimeout.run(
+                nanoseconds: appleSignInTimeoutNanoseconds,
+                timeoutError: AppError.auth(timeoutMessage)
+            ) {
+                try await signInTask.value
+            }
         }
     }
 
@@ -65,7 +98,18 @@ final class AuthViewModel {
             error = nil
             try await task()
         } catch {
+            AppLogger.auth.error("Authentication failed: \(error.localizedDescription)")
             self.error = AppError(from: error)
         }
+    }
+
+    private static var appleSignInTimeoutMessage: String {
+#if targetEnvironment(simulator)
+        return
+            "Sign in with Apple timed out on the simulator. Sign into an Apple ID in the Simulator Settings app, " +
+            "confirm the debug app ID is enabled for Sign in with Apple, or use a physical device."
+#else
+        return "Sign in with Apple timed out. Check your connection and try again."
+#endif
     }
 }
