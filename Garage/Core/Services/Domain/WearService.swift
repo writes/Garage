@@ -6,11 +6,15 @@ import Observation
 final class WearService {
     static let shared = WearService()
 
-    private let firestore = FirestoreService.shared
+    private var firestore: FirestoreService { .shared }
 
     private init() {}
 
     func fetchDashboard(vehicleId: String) async throws -> [WearItem] {
+        if AppRuntime.isLocalDemoMode {
+            return Self.latestDashboardItems(from: SeedData.wearSnapshots(for: vehicleId))
+        }
+
         let snapshot = try await firestore.db.collection(FirestorePaths.vehicleWear(vehicleId: vehicleId))
             .order(by: "recordedAt", descending: true)
             .limit(to: 50)
@@ -21,6 +25,8 @@ final class WearService {
     }
 
     func saveSnapshots(_ snapshots: [WearSnapshot], vehicleId: String) async throws {
+        guard !AppRuntime.isLocalDemoMode else { return }
+
         for snapshot in snapshots {
             let reference = firestore.db
                 .collection(FirestorePaths.vehicleWear(vehicleId: vehicleId))

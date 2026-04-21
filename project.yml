@@ -112,15 +112,38 @@ targets:
             cp "${GOOGLE_SERVICE_INFO_PATH}" "${BUNDLED_CONFIG_PATH}"
 
             FIREBASE_GOOGLE_APP_ID=$(/usr/libexec/PlistBuddy -c "Print :GOOGLE_APP_ID" "${GOOGLE_SERVICE_INFO_PATH}" 2>/dev/null || true)
+            GOOGLE_CLIENT_ID=$(/usr/libexec/PlistBuddy -c "Print :CLIENT_ID" "${GOOGLE_SERVICE_INFO_PATH}" 2>/dev/null || true)
+            GOOGLE_REVERSED_CLIENT_ID=$(/usr/libexec/PlistBuddy -c "Print :REVERSED_CLIENT_ID" "${GOOGLE_SERVICE_INFO_PATH}" 2>/dev/null || true)
 
             if [ -n "${FIREBASE_GOOGLE_APP_ID}" ]; then
               FIREBASE_AUTH_CALLBACK_SCHEME="app-${FIREBASE_GOOGLE_APP_ID//:/-}"
+            fi
 
+            /usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" "${APP_INFO_PLIST_PATH}" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "${APP_INFO_PLIST_PATH}"
+
+            URL_TYPE_INDEX=0
+            add_url_scheme() {
+              URL_SCHEME="$1"
+
+              if [ -n "${URL_SCHEME}" ]; then
+                /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:${URL_TYPE_INDEX} dict" "${APP_INFO_PLIST_PATH}"
+                /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:${URL_TYPE_INDEX}:CFBundleURLSchemes array" "${APP_INFO_PLIST_PATH}"
+                /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:${URL_TYPE_INDEX}:CFBundleURLSchemes:0 string ${URL_SCHEME}" "${APP_INFO_PLIST_PATH}"
+                URL_TYPE_INDEX=$((URL_TYPE_INDEX + 1))
+              fi
+            }
+
+            add_url_scheme "${FIREBASE_AUTH_CALLBACK_SCHEME}"
+            add_url_scheme "${GOOGLE_REVERSED_CLIENT_ID}"
+
+            if [ "${URL_TYPE_INDEX}" -eq 0 ]; then
               /usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" "${APP_INFO_PLIST_PATH}" 2>/dev/null || true
-              /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "${APP_INFO_PLIST_PATH}"
-              /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "${APP_INFO_PLIST_PATH}"
-              /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "${APP_INFO_PLIST_PATH}"
-              /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string ${FIREBASE_AUTH_CALLBACK_SCHEME}" "${APP_INFO_PLIST_PATH}"
+            fi
+
+            if [ -n "${GOOGLE_CLIENT_ID}" ]; then
+              /usr/libexec/PlistBuddy -c "Delete :GIDClientID" "${APP_INFO_PLIST_PATH}" 2>/dev/null || true
+              /usr/libexec/PlistBuddy -c "Add :GIDClientID string ${GOOGLE_CLIENT_ID}" "${APP_INFO_PLIST_PATH}"
             fi
           fi
         inputFiles:

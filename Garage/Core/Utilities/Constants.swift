@@ -6,6 +6,20 @@ enum Constants {
     static let dashboardRecentLimit = 10
     static let annualPlanIdentifier = "garage_pro_annual"
     static let monthlyPlanIdentifier = "garage_pro_monthly"
+    static let appleSignInTimeoutNanoseconds: UInt64 = 15_000_000_000
+}
+
+enum AppRuntime {
+    static let localDemoLaunchArgument = "LOCAL_DEMO_MODE"
+    static let demoUserId = "debug-user"
+
+    static var isLocalDemoMode: Bool {
+#if DEBUG
+        ProcessInfo.processInfo.arguments.contains(localDemoLaunchArgument)
+#else
+        false
+#endif
+    }
 }
 
 enum FirestorePaths {

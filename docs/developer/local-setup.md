@@ -103,15 +103,35 @@ For Apple Sign-In:
 - Allow the matching Firebase handler URL for each environment.
 - Create an Apple Sign-In private key and record the Team ID and Key ID for Firebase.
 
+### Apple Sign-In On Simulator
+
+If Apple login stalls on the simulator:
+
+- Create `Configuration/Local.xcconfig` from the template and set `DEVELOPMENT_TEAM` to the Apple team that owns the app IDs.
+- Sign into an Apple ID inside the Simulator Settings app.
+- Confirm `com.writes.harrysplayhouse.debug` is enabled for Sign in with Apple in both Apple Developer and Firebase Auth.
+- Rebuild after any entitlement or signing change so the simulator picks up the updated capability set.
+
 ### Google Sign-In Build Behavior
 
-When a local `Garage/Resources/GoogleService-Info.plist` is present, the generated Xcode project now does three things during the app build:
+Google login uses the native Google Sign-In SDK and then exchanges the returned Google tokens for a Firebase credential.
+
+The local `Garage/Resources/GoogleService-Info.plist` must include:
+
+- `CLIENT_ID`
+- `REVERSED_CLIENT_ID`
+- `GOOGLE_APP_ID`
+
+If `CLIENT_ID` or `REVERSED_CLIENT_ID` is missing, enable the Google provider for the Firebase project, confirm the iOS app uses `com.writes.harrysplayhouse.debug`, then redownload `GoogleService-Info.plist` from the Firebase iOS app settings.
+
+When a valid local plist is present, the generated Xcode project does these things during the app build:
 
 - copies the plist into the app bundle
 - derives the Firebase Auth callback URL scheme from `GOOGLE_APP_ID`
-- adds that callback scheme to the built `Info.plist`
+- adds the Firebase callback scheme and Google reversed client ID scheme to the built `Info.plist`
+- adds `GIDClientID` to the built `Info.plist`
 
-That means the checked-in project can stay free of local Firebase plist values while the local Firebase Auth web flow still has the bundle metadata it needs at runtime.
+That means the checked-in project can stay free of local Firebase plist values while the native Google Sign-In flow still has the bundle metadata it needs at runtime.
 
 ## Cloud Functions
 

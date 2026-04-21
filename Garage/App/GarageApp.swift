@@ -1,5 +1,6 @@
 import FirebaseCore
 import FirebaseAuth
+import GoogleSignIn
 import RevenueCat
 import SwiftData
 import SwiftUI
@@ -19,6 +20,15 @@ struct GarageApp: App {
         case .uiTest:
             _appState = State(initialValue: AppState(
                 authService: .uiTest,
+                vehicleService: .uiTest,
+                purchaseService: .uiTest,
+                syncService: .shared
+            ))
+            _router = State(initialValue: AppRouter())
+            return
+        case .localDemo:
+            _appState = State(initialValue: AppState(
+                authService: .localDemo,
                 vehicleService: .uiTest,
                 purchaseService: .uiTest,
                 syncService: .shared
@@ -54,6 +64,11 @@ struct GarageApp: App {
             switch bootstrapMode {
             case .uiTest:
                 UITestHarnessView()
+            case .localDemo:
+                ContentView()
+                    .environment(appState)
+                    .environment(router)
+                    .modelContainer(modelContainer)
             case .localSetupRequired:
                 LocalSetupRequiredView()
             case .production:
@@ -62,6 +77,10 @@ struct GarageApp: App {
                     .environment(router)
                     .modelContainer(modelContainer)
                     .onOpenURL { url in
+                        if GIDSignIn.sharedInstance.handle(url) {
+                            return
+                        }
+
                         _ = Auth.auth().canHandle(url)
                     }
             }
@@ -73,6 +92,7 @@ private extension GarageApp {
     enum BootstrapMode {
         case production
         case uiTest
+        case localDemo
         case localSetupRequired
     }
 
@@ -85,10 +105,25 @@ private extension GarageApp {
             return .uiTest
         }
 
+        if AppRuntime.isLocalDemoMode {
+            return .localDemo
+        }
+
         return FirebaseOptions.defaultOptions() == nil ? .localSetupRequired : .production
     }
 
     static func makeModelContainer() -> ModelContainer {
+        do {
+            _ = try FileManager.default.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            )
+        } catch {
+            AppLogger.shared.error("Failed to prepare application support directory: \(error.localizedDescription)")
+        }
+
         do {
             return try ModelContainer(for: SyncQueueItem.self, DraftEntry.self)
         } catch {

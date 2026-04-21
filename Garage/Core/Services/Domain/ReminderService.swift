@@ -6,17 +6,23 @@ import Observation
 final class ReminderService {
     static let shared = ReminderService()
 
-    private let firestore = FirestoreService.shared
+    private var firestore: FirestoreService { .shared }
 
     private init() {}
 
     func save(_ reminder: Reminder) async throws {
+        guard !AppRuntime.isLocalDemoMode else { return }
+
         let reference = firestore.db.collection(FirestorePaths.vehicleReminders(vehicleId: reminder.vehicleId))
             .document(reminder.id)
         try await reference.setData(firestore.encode(reminder), merge: true)
     }
 
     func fetchUpcoming(vehicleId: String) async throws -> [Reminder] {
+        if AppRuntime.isLocalDemoMode {
+            return Self.sortUpcoming(SeedData.reminders(for: vehicleId))
+        }
+
         let snapshot = try await firestore.db.collection(FirestorePaths.vehicleReminders(vehicleId: vehicleId))
             .limit(to: 20)
             .getDocuments()
@@ -25,7 +31,7 @@ final class ReminderService {
         return Self.sortUpcoming(reminders)
     }
 
-    static func sortUpcoming(_ reminders: [Reminder]) -> [Reminder] {
+    nonisolated static func sortUpcoming(_ reminders: [Reminder]) -> [Reminder] {
         reminders.sorted {
             ($0.dueDate ?? .distantFuture) < ($1.dueDate ?? .distantFuture)
         }
