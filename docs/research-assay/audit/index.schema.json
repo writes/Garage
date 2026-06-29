@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://garage.app/research-assay/index.row.schema.json",
+  "title": "research-assay audit index row",
+  "description": "Exactly one line of docs/research-assay/audit/index.jsonl — one assayed idea. Append-only graveyard.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "assay_id",
+    "date",
+    "source",
+    "source_type",
+    "fetch_status",
+    "core_claim",
+    "surface",
+    "mechanism_source",
+    "doctrine_fit",
+    "scores",
+    "composite",
+    "tier",
+    "retention",
+    "biggest_risk",
+    "report",
+    "registry_kill_ref"
+  ],
+  "properties": {
+    "assay_id": {
+      "type": "string",
+      "description": "<YYYY-MM-DD>_<kebab-slug>",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}_[a-z0-9][a-z0-9-]*$"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "url, repo path, or operator-paste:<label>"
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "paper",
+        "blog",
+        "repo",
+        "sdk",
+        "docs",
+        "feature-request",
+        "operator-idea",
+        "internal-doc"
+      ]
+    },
+    "fetch_status": {
+      "type": "string",
+      "enum": ["fetched", "paste-only", "unreachable"]
+    },
+    "core_claim": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One falsifiable sentence: 'X improves Y via Z.'"
+    },
+    "surface": {
+      "type": "string",
+      "enum": [
+        "ui",
+        "data",
+        "auth",
+        "payments",
+        "sync",
+        "export",
+        "performance",
+        "infra",
+        "privacy",
+        "theory",
+        "full"
+      ]
+    },
+    "mechanism_source": {
+      "type": "string",
+      "enum": [
+        "real-user-value",
+        "platform-capability",
+        "cost-reduction",
+        "risk-reduction",
+        "dx-velocity",
+        "none"
+      ]
+    },
+    "doctrine_fit": {
+      "type": "string",
+      "enum": ["pass", "redesign-required", "fail"]
+    },
+    "scores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mechanism",
+        "evidence",
+        "additivity",
+        "capacity",
+        "cost_survival",
+        "testability",
+        "implementation_cost"
+      ],
+      "properties": {
+        "mechanism": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "evidence": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "additivity": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "capacity": { "type": "integer", "minimum": 0, "maximum": 2 },
+        "cost_survival": { "type": "integer", "minimum": 0, "maximum": 2 },
+        "testability": { "type": "integer", "minimum": 0, "maximum": 2 },
+        "implementation_cost": { "type": "integer", "minimum": -3, "maximum": 0 }
+      }
+    },
+    "composite": {
+      "type": "integer",
+      "minimum": -3,
+      "maximum": 15,
+      "description": "Sum of the seven scores."
+    },
+    "tier": {
+      "type": "string",
+      "enum": ["A", "B", "C", "D"]
+    },
+    "retention": {
+      "type": "string",
+      "enum": ["FULL", "SUMMARY", "REFERENCE", "TERSE"]
+    },
+    "biggest_risk": {
+      "type": "string",
+      "minLength": 1
+    },
+    "revisit_trigger": {
+      "type": ["string", "null"],
+      "description": "Tier B only: the future event that reopens this. null/omitted otherwise."
+    },
+    "report": {
+      "type": "string",
+      "pattern": "^docs/research-assay/audit/tier-[abcd]/.+\\.md$"
+    },
+    "registry_kill_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One-line reason mirrored into REGISTRY.md"
+    }
+  }
+}

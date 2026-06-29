@@ -21,3 +21,8 @@ CloudFunctions/.env.harrys-playhouse-dev
 CloudFunctions/.env.harrys-playhouse-prod
 firebase-debug.log
 firebase-debug.*.log
+
+# Machine-brain Python cache
+scripts/brain/__pycache__/
+__pycache__/
+*.pyc
