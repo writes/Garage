@@ -78,6 +78,7 @@
 		5D343C9A703AF260ED51BE4A /* Recall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1979411F68B0DC5826D54082 /* Recall.swift */; };
 		5DF995816018EC5F64C5AFDF /* ReminderConfigViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCF451B78E2F4260E6465E43 /* ReminderConfigViewModel.swift */; };
 		61B98CC79DDE3966580ED407 /* Reminder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E73E7D74607AB1FD340A5880 /* Reminder.swift */; };
+		620FD2F96FF1EADB16B4A4D2 /* SeedData+Supplemental.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26F8AA1704668FC56760FE99 /* SeedData+Supplemental.swift */; };
 		6439BB81D1F6BD3E1879B2D9 /* WearCalculationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E65CC833E14D05998190D010 /* WearCalculationTests.swift */; };
 		644E06A46A60525B52280614 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = A093B95F5E875A5ED25BC7C2 /* FirebaseCore */; };
 		683F67C69CE0EDC7EE823E7E /* DateOdometerHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6EBFBE28E86B38877D2D774 /* DateOdometerHeader.swift */; };
@@ -103,6 +104,7 @@
 		879D694DF5205FB88D7B9E34 /* ReminderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F88C862D1688F51A9278C841 /* ReminderService.swift */; };
 		87C1AF8791683487D20965E8 /* OilConsumptionEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09EEF8F73E2C8A5381A67A16 /* OilConsumptionEntry.swift */; };
 		88A80494DAF63E9FB07764E6 /* BadgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 048708A6B619A691A46B8EFF /* BadgeView.swift */; };
+		8DD5445BEEF2912F464C32BB /* SeedData+Records.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B7737A6D1D31389828CA53 /* SeedData+Records.swift */; };
 		910F18437BA03192EE179E79 /* CostBreakdownChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 795093FE4E684DED0BDB74E7 /* CostBreakdownChart.swift */; };
 		96E18F3F2F36BEF063DA2EE1 /* AsyncTimeout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98F6E209074BB8E15CF43782 /* AsyncTimeout.swift */; };
 		978BC39AFE6EBFE4A3E548F2 /* CostField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30D7F6943FE0C6AD4FA4FC0E /* CostField.swift */; };
@@ -227,6 +229,7 @@
 		239E09DCE32B241E9A94CA94 /* WarrantyRecallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WarrantyRecallView.swift; sourceTree = "<group>"; };
 		24074C172F2B41B5414FBCE9 /* Attachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Attachment.swift; sourceTree = "<group>"; };
 		24A574080C996202906B6983 /* OdometerHeroCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OdometerHeroCard.swift; sourceTree = "<group>"; };
+		26F8AA1704668FC56760FE99 /* SeedData+Supplemental.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SeedData+Supplemental.swift"; sourceTree = "<group>"; };
 		27DE347DB6FECA9B52E03559 /* SyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncService.swift; sourceTree = "<group>"; };
 		28CB94D903929AEEA53C9405 /* DashboardViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModelTests.swift; sourceTree = "<group>"; };
 		2B832D2CC52D9619C00AD87B /* DetailingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailingViewModel.swift; sourceTree = "<group>"; };
@@ -309,6 +312,7 @@
 		AA9860501F4A2FBC6B61436C /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		AE92DC0A0FB1CBE5F85DCFAC /* Warranty.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Warranty.swift; sourceTree = "<group>"; };
 		AECB15BC88D193B960B41561 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
+		B1B7737A6D1D31389828CA53 /* SeedData+Records.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SeedData+Records.swift"; sourceTree = "<group>"; };
 		B455D55D4A1514EC692F4032 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		B5701C14BE69F1E0F5A5270A /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		BAE9B7E2121F80A71FB0F3BF /* OilChangeFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OilChangeFormView.swift; sourceTree = "<group>"; };
@@ -603,6 +607,8 @@
 				81A8A4338F2F3F722BD05723 /* AppTab.swift */,
 				F33F9AD84E4E40029B068870 /* ContentView.swift */,
 				C03A64E964C5D8602359190C /* GarageApp.swift */,
+				B1B7737A6D1D31389828CA53 /* SeedData+Records.swift */,
+				26F8AA1704668FC56760FE99 /* SeedData+Supplemental.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -1306,6 +1312,8 @@
 				5785C4602C9AE6AAC0EBD282 /* SecondaryButton.swift in Sources */,
 				8654575146BBBB8459816488 /* Secrets.swift in Sources */,
 				B89DB1A16A1C541B6CAB8F7A /* SecureStoreService.swift in Sources */,
+				8DD5445BEEF2912F464C32BB /* SeedData+Records.swift in Sources */,
+				620FD2F96FF1EADB16B4A4D2 /* SeedData+Supplemental.swift in Sources */,
 				4215FE02972970A176296934 /* SettingsView.swift in Sources */,
 				C12840EC880EE29C8427C0C5 /* ShimmerModifier.swift in Sources */,
 				0EB20B271FDC3C3C4BC6E3E4 /* ShopDiyToggle.swift in Sources */,
