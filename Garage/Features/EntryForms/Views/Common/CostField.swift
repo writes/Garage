@@ -11,6 +11,7 @@ struct CostField: View {
             TextField("0.00", text: $cost)
                 .keyboardType(.decimalPad)
                 .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("entry.form.cost")
         }
         .garageCard()
     }

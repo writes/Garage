@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SubscriptionView: View {
-    @State private var purchaseService = PurchaseService.shared
+    @Environment(AppState.self) private var appState
 
     var body: some View {
         BottomSheet(title: "Garage Pro") {
@@ -12,13 +12,15 @@ struct SubscriptionView: View {
             )
                 .font(Theme.Typography.body)
             PrimaryButton(title: "Refresh Plans") {
-                Task { await purchaseService.fetchOfferings() }
+                Task { await appState.purchaseService.fetchOfferings() }
             }
-            if let offerings = purchaseService.offerings {
-                ForEach(offerings.current?.availablePackages ?? [], id: \.identifier) { package in
-                    Button(package.storeProduct.localizedTitle) {
-                        Task { try? await purchaseService.purchase(package) }
+            .accessibilityIdentifier("subscription.refresh")
+            if let packages = appState.purchaseService.offerings?.current?.availablePackages {
+                ForEach(Array(packages.enumerated()), id: \.element.identifier) { package in
+                    Button(package.element.storeProduct.localizedTitle) {
+                        Task { try? await appState.purchaseService.purchase(package.element) }
                     }
+                    .accessibilityIdentifier("subscription.package.\(package.offset)")
                 }
             } else {
                 Text("Annual should be preselected in the final paywall presentation.")

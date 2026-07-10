@@ -26,6 +26,10 @@ struct DashboardView: View {
             .navigationTitle("Dashboard")
             .background(Theme.Colors.background.ignoresSafeArea())
             .task { await reload() }
+            .onChange(of: appState.selectedTab) { _, selectedTab in
+                guard selectedTab == .dashboard else { return }
+                Task { await reload() }
+            }
         }
     }
 

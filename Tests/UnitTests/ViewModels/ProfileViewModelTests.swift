@@ -27,15 +27,22 @@ struct ProfileViewModelTests {
         #expect(store.savedUIDs == ["user"])
     }
 
-    @Test func demoMode_loadsSeededValuesAndDoesNotPersist() async {
+    @Test func demoMode_loadsAndSavesThroughTheSessionStore() async {
         let store = InMemoryProfileStore()
-        let viewModel = ProfileViewModel(store: store, userID: { "user" }, isDemoMode: true)
+        let demoStore = DemoSessionStore()
+        let viewModel = ProfileViewModel(
+            store: store,
+            userID: { "user" },
+            isDemoMode: true,
+            demoStore: demoStore
+        )
         await viewModel.load()
         viewModel.name = "Changed locally"
 
         let didSave = await viewModel.save()
         #expect(didSave)
 
+        #expect(demoStore.profile()["name"] == "Changed locally")
         #expect(viewModel.address == "123 Service Lane")
         #expect(store.savedUIDs.isEmpty)
     }

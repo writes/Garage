@@ -3,6 +3,7 @@ import Observation
 
 enum SyncStatus: String, Sendable {
     case idle
+    case upToDate
     case syncing
     case offline
     case attentionNeeded
@@ -10,6 +11,7 @@ enum SyncStatus: String, Sendable {
     var label: String {
         switch self {
         case .idle: return "Up to date"
+        case .upToDate: return "Up to date"
         case .syncing: return "Syncing"
         case .offline: return "Offline"
         case .attentionNeeded: return "Needs attention"
@@ -22,7 +24,7 @@ enum SyncStatus: String, Sendable {
 final class AppState {
     private let authService: AuthService
     private let vehicleService: VehicleService
-    private let purchaseService: PurchaseService
+    let purchaseService: PurchaseService
     private let syncService: SyncService
 
     var selectedTab: AppTab = .dashboard
@@ -57,8 +59,12 @@ final class AppState {
         isBootstrapping = true
         defer { isBootstrapping = false }
 
-        await purchaseService.checkSubscriptionStatus()
-        syncStatus = syncService.currentStatus
+        if AppRuntime.isLocalDemoMode {
+            syncStatus = .upToDate
+        } else {
+            await purchaseService.checkSubscriptionStatus()
+            syncStatus = syncService.currentStatus
+        }
 
         guard authService.isAuthenticated else { return }
 

@@ -16,5 +16,6 @@ struct FloatingAddButton: View {
                 .shadow(color: .garageShadow, radius: 10, x: 0, y: 8)
         }
         .accessibilityLabel("Add a new log entry")
+        .accessibilityIdentifier("entry.add")
     }
 }

@@ -45,6 +45,7 @@ struct LoginView: View {
             .background(Theme.Colors.surface)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
             .disabled(viewModel.isLoading)
+            .accessibilityIdentifier("login.googleButton")
 
             if viewModel.isLoading {
                 ProgressView()

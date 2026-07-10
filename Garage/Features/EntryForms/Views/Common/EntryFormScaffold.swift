@@ -27,6 +27,7 @@ struct EntryFormScaffold<Content: View>: View {
                     .padding(Theme.Spacing.xs)
                     .background(Theme.Colors.surface)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
+                    .accessibilityIdentifier("entry.form.notes")
             }
             AttachmentPicker(attachmentPaths: $viewModel.attachmentPaths)
             if let error = viewModel.error {
@@ -39,6 +40,7 @@ struct EntryFormScaffold<Content: View>: View {
                     }
                 }
             }
+            .accessibilityIdentifier("entry.form.save")
         }
     }
 }

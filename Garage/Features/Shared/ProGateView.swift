@@ -3,6 +3,7 @@ import SwiftUI
 struct ProGateView: View {
     let title: String
     let message: String
+    let actionIdentifier: String
     var action: () -> Void
 
     var body: some View {
@@ -14,6 +15,7 @@ struct ProGateView: View {
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.Colors.textSecondary)
             PrimaryButton(title: "See Pro Options", systemImage: "sparkles", action: action)
+                .accessibilityIdentifier(actionIdentifier)
         }
         .garageCard()
     }

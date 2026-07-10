@@ -11,7 +11,10 @@ final class PartsService {
     private init() {}
 
     func save(_ part: SparePart) async throws {
-        guard !AppRuntime.isLocalDemoMode else { return }
+        if AppRuntime.isLocalDemoMode {
+            DemoSessionStore.shared.save(part)
+            return
+        }
 
         let reference = firestore.db.collection(FirestorePaths.vehicleParts(vehicleId: part.vehicleId))
             .document(part.id)
@@ -20,7 +23,7 @@ final class PartsService {
 
     func fetchParts(vehicleId: String) async throws -> [SparePart] {
         if AppRuntime.isLocalDemoMode {
-            return SeedData.spareParts(for: vehicleId)
+            return DemoSessionStore.shared.parts(for: vehicleId)
         }
 
         let snapshot = try await firestore.db.collection(FirestorePaths.vehicleParts(vehicleId: vehicleId))

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LogView: View {
     @Environment(AppState.self) private var appState
+    @Environment(AppRouter.self) private var router
     @State private var viewModel = LogViewModel()
     @State private var selectedEntry: FirestoreEntry?
     @State private var isShowingFilters = false
@@ -31,6 +32,7 @@ struct LogView: View {
                                     EntryRowView(entry: entry)
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityIdentifier("log.row.\(entry.id)")
                             }
                         }
                         .padding(.bottom, Theme.Spacing.xxl)
@@ -47,6 +49,7 @@ struct LogView: View {
                     Button("Filter") {
                         isShowingFilters = true
                     }
+                    .accessibilityIdentifier("log.filter")
                 }
             }
             .task { await reload() }
@@ -57,6 +60,10 @@ struct LogView: View {
                 EntryFilterSheet(selectedTypes: $viewModel.selectedTypes)
             }
             .onChange(of: viewModel.searchText) { _, _ in
+                Task { await reload() }
+            }
+            .onChange(of: router.activeSheet) { _, activeSheet in
+                guard activeSheet == nil else { return }
                 Task { await reload() }
             }
         }

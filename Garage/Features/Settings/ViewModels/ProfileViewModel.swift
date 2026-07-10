@@ -36,9 +36,10 @@ final class FirestoreProfileStore: ProfileStore {
 @MainActor
 @Observable
 final class ProfileViewModel {
-    private let store: any ProfileStore
+    private let store: (any ProfileStore)?
     private let userID: () -> String?
     private let isDemoMode: Bool
+    private let demoStore: DemoSessionStore
 
     var name = ""
     var address = ""
@@ -48,13 +49,15 @@ final class ProfileViewModel {
     private(set) var error: AppError?
 
     init(
-        store: any ProfileStore = FirestoreProfileStore(),
+        store: (any ProfileStore)? = nil,
         userID: @escaping () -> String? = { AuthService.shared.uid },
-        isDemoMode: Bool = AppRuntime.isLocalDemoMode
+        isDemoMode: Bool = AppRuntime.isLocalDemoMode,
+        demoStore: DemoSessionStore = .shared
     ) {
-        self.store = store
         self.userID = userID
         self.isDemoMode = isDemoMode
+        self.demoStore = demoStore
+        self.store = store ?? (isDemoMode ? nil : FirestoreProfileStore())
         Task { [weak self] in
             await self?.load()
         }
@@ -62,11 +65,15 @@ final class ProfileViewModel {
 
     func load() async {
         if isDemoMode {
-            apply(Self.demoFields)
+            apply(demoStore.profile())
             return
         }
         guard let uid = userID() else {
             error = .auth("Not authenticated")
+            return
+        }
+        guard let store else {
+            error = .database("Profile storage unavailable")
             return
         }
 
@@ -80,9 +87,17 @@ final class ProfileViewModel {
 
     @discardableResult
     func save() async -> Bool {
-        guard !isDemoMode else { return true }
+        if isDemoMode {
+            demoStore.saveProfile(fields)
+            error = nil
+            return true
+        }
         guard let uid = userID() else {
             error = .auth("Not authenticated")
+            return false
+        }
+        guard let store else {
+            error = .database("Profile storage unavailable")
             return false
         }
 
@@ -114,11 +129,4 @@ final class ProfileViewModel {
         policyNumber = fields["policyNumber"] ?? ""
     }
 
-    private static let demoFields = [
-        "name": "Garage Demo",
-        "address": "123 Service Lane",
-        "phone": "555-0100",
-        "insuranceCompany": "Demo Insurance",
-        "policyNumber": "DEMO-0001"
-    ]
 }

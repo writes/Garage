@@ -32,6 +32,10 @@ struct DetailingLogView: View {
         }
         .task { await load() }
         .sheet(isPresented: $isShowingForm) { DetailingFormView() }
+        .onChange(of: isShowingForm) { _, isPresented in
+            guard !isPresented else { return }
+            Task { await load() }
+        }
     }
 
     private func load() async {

@@ -25,7 +25,10 @@ final class EntryService {
             self.testEntries = testEntries
             return
         }
-        guard !AppRuntime.isLocalDemoMode else { return }
+        if AppRuntime.isLocalDemoMode {
+            DemoSessionStore.shared.save(entry)
+            return
+        }
 
         let reference = firestore.db.collection(FirestorePaths.vehicleEntries(vehicleId: entry.vehicleId))
             .document(entry.id)
@@ -42,7 +45,7 @@ final class EntryService {
             )
         }
         if AppRuntime.isLocalDemoMode {
-            return Array(SeedData.entries(for: vehicleId).prefix(limit))
+            return Array(DemoSessionStore.shared.entries(for: vehicleId).prefix(limit))
         }
 
         let snapshot = try await firestore.db.collection(FirestorePaths.vehicleEntries(vehicleId: vehicleId))
@@ -58,7 +61,11 @@ final class EntryService {
             return Self.entries(testEntries, matching: query, limit: limit)
         }
         if AppRuntime.isLocalDemoMode {
-            return Self.entries(SeedData.entries(for: query.vehicleId), matching: query, limit: limit)
+            return Self.entries(
+                DemoSessionStore.shared.entries(for: query.vehicleId),
+                matching: query,
+                limit: limit
+            )
         }
 
         var request: Query = firestore.db.collection(FirestorePaths.vehicleEntries(vehicleId: query.vehicleId))
@@ -79,7 +86,10 @@ final class EntryService {
             return Self.latestOdometer(in: testEntries, vehicleId: vehicleId)
         }
         if AppRuntime.isLocalDemoMode {
-            return Self.latestOdometer(in: SeedData.entries(for: vehicleId), vehicleId: vehicleId)
+            return Self.latestOdometer(
+                in: DemoSessionStore.shared.entries(for: vehicleId),
+                vehicleId: vehicleId
+            )
         }
 
         let snapshot = try await firestore.db.collection(FirestorePaths.vehicleEntries(vehicleId: vehicleId))
@@ -97,7 +107,10 @@ final class EntryService {
             return Self.latestFuelEntry(in: testEntries, vehicleId: vehicleId)
         }
         if AppRuntime.isLocalDemoMode {
-            return Self.latestFuelEntry(in: SeedData.entries(for: vehicleId), vehicleId: vehicleId)
+            return Self.latestFuelEntry(
+                in: DemoSessionStore.shared.entries(for: vehicleId),
+                vehicleId: vehicleId
+            )
         }
 
         let snapshot = try await firestore.db.collection(FirestorePaths.vehicleEntries(vehicleId: vehicleId))

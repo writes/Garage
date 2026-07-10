@@ -31,10 +31,15 @@ struct SparePartsView: View {
         .navigationTitle("Spare Parts")
         .toolbar {
             Button("Add Part") { isShowingForm = true }
+                .accessibilityIdentifier("parts.add")
         }
         .task { await load() }
         .sheet(isPresented: $isShowingForm) {
             SparePartFormView()
+        }
+        .onChange(of: isShowingForm) { _, isPresented in
+            guard !isPresented else { return }
+            Task { await load() }
         }
     }
 

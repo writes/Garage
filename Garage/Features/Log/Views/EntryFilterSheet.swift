@@ -16,6 +16,7 @@ struct EntryFilterSheet: View {
                         }
                     }
                 ))
+                .accessibilityIdentifier("log.filter.\(type.rawValue)")
             }
         }
     }

@@ -13,6 +13,7 @@ struct EntryTypePicker: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, Theme.Spacing.sm)
                 }
+                .accessibilityIdentifier("entry.picker.\(entryType.rawValue)")
             }
         }
     }

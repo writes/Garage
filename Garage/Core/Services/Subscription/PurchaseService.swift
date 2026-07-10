@@ -10,14 +10,15 @@ final class PurchaseService {
     }
 
     static let shared = PurchaseService()
-    static let uiTest = PurchaseService(mode: .uiTest)
+    static let uiTest = PurchaseService(mode: .uiTest, isPro: AppRuntime.isUITestPro)
 
     private(set) var isPro = false
     private(set) var offerings: Offerings?
     private let mode: Mode
 
-    private init(mode: Mode = .live) {
+    private init(mode: Mode = .live, isPro: Bool = false) {
         self.mode = mode
+        self.isPro = isPro
     }
 
     init(testIsPro: Bool) {

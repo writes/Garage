@@ -11,11 +11,20 @@ enum Constants {
 
 enum AppRuntime {
     static let localDemoLaunchArgument = "LOCAL_DEMO_MODE"
+    static let uiTestProLaunchArgument = "UI_TEST_PRO"
     static let demoUserId = "debug-user"
 
     static var isLocalDemoMode: Bool {
 #if DEBUG
         ProcessInfo.processInfo.arguments.contains(localDemoLaunchArgument)
+#else
+        false
+#endif
+    }
+
+    static var isUITestPro: Bool {
+#if DEBUG
+        isLocalDemoMode && ProcessInfo.processInfo.arguments.contains(uiTestProLaunchArgument)
 #else
         false
 #endif

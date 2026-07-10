@@ -2,13 +2,13 @@
 
 <!--CURRENT:START-->
 ## CURRENT STATE
-- updated: 2026-07-10T17:37:12Z by **claude-fable-5** on `brain/install-v1` @ `1fd314b`
+- updated: 2026-07-10T19:17:29Z by **codex-terra** on `audit/app-hardening` @ `f9cba16`
 - runtime: (unchanged)
-- last session did: SESSION COMPLETE - Routing v3 DECISION BRIEF issued (spec section 19): 11 live tri-reviews, 12 Terra passes (R1-R56), 2 live tri-votes implemented, 62/62 selftests. Round-11: Fable GO(0.8, zero blockers) / Gemini NO-GO(infrastructural - meta-diff exceeds its lane) / Sol NO-GO(queued+standing items). RECOMMENDATION: ledgered operator override bound to head SHA + merge brain/install-v1 to main; alternative: commission queue Q1-Q5 (spec section 19) and re-review at normal scale.
+- last session did: Pass C complete: implemented voted TV-A5 demo session overlay, 62 E2E accessibility identifier call sites, debug UI_TEST_PRO entitlement, injected SubscriptionView service, fixed demo sync badge, and TV-A6 dead-view-model removal; policy/lint/XcodeGen/full iPhone 17 Pro tests green (54/54).
 - in-flight (uncommitted/partial): none
 - BLOCKED / operator-gated: none
 - ⚠ contention / landmines: none
-- ▶ **NEXT ACTION**: OPERATOR SWITCH REQUIRED: (a) merge brain/install-v1 -> main with an operator_override ledger row citing head SHA and brief 2026-07-10T17-31-28Z (recommended), or (b) commission Q1-Q5 then re-review. Worktree removed; branch brain/routing-v3 + tag routing-v3-terra-pass1 kept for audit.
+- ▶ **NEXT ACTION**: Operator review and merge candidate audit/app-hardening; no deploy action taken.
 <!--CURRENT:END-->
 
 ## WHERE THE DEEP STATE LIVES (pointers — do not duplicate content here)
@@ -20,6 +20,7 @@
 
 ## LOG (newest first; keep ~12)
 <!--LOG:START-->
+- 2026-07-10T19:17:29Z **codex-terra** @`f9cba16`: Pass C complete: implemented voted TV-A5 demo session overlay, 62 E2E accessibility identifier call sites, debug UI_TEST_PRO entitlement, injected SubscriptionView service, fixed demo sync badge, and TV-A6 dead-view-model removal; policy/lint/XcodeGen/full iPhone 17 Pro tests green (54/54).  — NEXT: Operator review and merge candidate audit/app-hardening; no deploy action taken.
 - 2026-07-10T17:37:12Z **claude-fable-5** @`1fd314b`: SESSION COMPLETE - Routing v3 DECISION BRIEF issued (spec section 19): 11 live tri-reviews, 12 Terra passes (R1-R56), 2 live tri-votes implemented, 62/62 selftests. Round-11: Fable GO(0.8, zero blockers) / Gemini NO-GO(infrastructural - meta-diff exceeds its lane) / Sol NO-GO(queued+standing items). RECOMMENDATION: ledgered operator override bound to head SHA + merge brain/install-v1 to main; alternative: commission queue Q1-Q5 (spec section 19) and re-review at normal scale.  — NEXT: OPERATOR SWITCH REQUIRED: (a) merge brain/install-v1 -> main with an operator_override ledger row citing head SHA and brief 2026-07-10T17-31-28Z (recommended), or (b) commission Q1-Q5 then re-review. Worktree removed; branch brain/routing-v3 + tag routing-v3-terra-pass1 kept for audit.
 - 2026-07-10T17:31:28Z **claude-fable-5** @`e573f9f`: Pass 12 (R54-R56) complete - 12 Terra passes, R1-R56, 62/62 selftests: loop evidence now secret-screened fail-closed (landmine-8 gap closed), ROSTER gate on every lane (shared allowlist in gemini_consult; ambient BRAIN_* deviation halts unless recorded override), --no-cross-check governed like --no-plan-review. Round-10 verdicts: Gemini GO(0.85, first clean parse) / Fable NO-GO(0.72) / Sol NO-GO(0.99); their two substantive convergent items are what R54/R55 fixed. Remaining dissent material: CLI-lane hermeticity standing limitation + queued forge-proof-ledger escalation (spec section 18).  — NEXT: Round-11 brief on this HEAD is the OPERATOR DECISION PACKAGE: merge brain/install-v1 -> main on GO; on split-with-standing-limitation-only, apply the sanctioned ledgered override bound to head SHA (spec sections 13-18). Queued separately commissionable: forge-proof ledger appends; OS-level lane isolation.
 - 2026-07-10T17:18:54Z **claude-fable-5** @`6d3ceea`: Pass 11 (R51-R53) closes round-9: DECISION_LEDGER.jsonl enforcement is now append-only (byte-prefix check, revert+halt otherwise) instead of blanket-protocol; cross-check diff excludes protocol artifacts (Gemini's actual round-8b blocker - spec section 16 erratum recorded, 3rd triage-integrity lesson: never characterize an unread/clipped verdict); verdict bounds hard-enforced 5x300. 11 Terra passes (R1-R53), tri_review selftest 61/61.  — NEXT: Round-10 (TRUE FINAL) tri-review runs on this HEAD, then the OPERATOR decides: merge brain/install-v1 to main on GO, or ledgered override bound to head SHA if residual NO-GO rests only on the documented CLI-lane hermeticity standing limitation (spec sections 13-17). Post-merge backlog: none open beyond the standing limitation.

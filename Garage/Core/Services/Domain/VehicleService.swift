@@ -41,7 +41,17 @@ final class VehicleService {
             self.testVehicles = testVehicles
             return vehicle
         }
-        guard !AppRuntime.isLocalDemoMode else { return vehicle }
+        if AppRuntime.isLocalDemoMode {
+            try Self.validateVehicleLimit(
+                existingVehicleCount: DemoSessionStore.shared.vehicles().count,
+                isPro: purchaseService.isPro
+            )
+            var demoVehicle = vehicle
+            demoVehicle.userId = AppRuntime.demoUserId
+            demoVehicle.displayOrder = DemoSessionStore.shared.vehicles().count
+            DemoSessionStore.shared.save(demoVehicle)
+            return demoVehicle
+        }
         guard mode == .live else { return vehicle }
         guard let uid = AuthService.shared.uid else {
             throw AppError.auth("Not authenticated")
@@ -73,7 +83,10 @@ final class VehicleService {
             self.testVehicles = testVehicles
             return
         }
-        guard !AppRuntime.isLocalDemoMode else { return }
+        if AppRuntime.isLocalDemoMode {
+            DemoSessionStore.shared.save(vehicle)
+            return
+        }
         guard mode == .live else { return }
         guard let firestore else {
             throw AppError.database("Firestore unavailable")
@@ -88,7 +101,10 @@ final class VehicleService {
         if let testVehicles {
             return testVehicles.values.sorted { $0.displayOrder < $1.displayOrder }
         }
-        guard mode == .live, !AppRuntime.isLocalDemoMode else {
+        if AppRuntime.isLocalDemoMode {
+            return DemoSessionStore.shared.vehicles()
+        }
+        guard mode == .live else {
             return SeedData.vehicles
         }
         guard let uid = AuthService.shared.uid else {
@@ -110,27 +126,41 @@ final class VehicleService {
     }
 
     func listenToVehicles() -> AsyncThrowingStream<[Vehicle], Error> {
-        guard mode == .live, !AppRuntime.isLocalDemoMode else {
-            return AsyncThrowingStream { continuation in
-                continuation.yield(SeedData.vehicles)
-                continuation.finish()
-            }
+        if AppRuntime.isLocalDemoMode {
+            return Self.singleVehicleStream(DemoSessionStore.shared.vehicles())
+        }
+        guard mode == .live else {
+            return Self.singleVehicleStream(SeedData.vehicles)
         }
         guard let uid = AuthService.shared.uid else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: AppError.auth("Not authenticated"))
-            }
+            return Self.failedVehicleStream(AppError.auth("Not authenticated"))
         }
         guard let firestore else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: AppError.database("Firestore unavailable"))
-            }
+            return Self.failedVehicleStream(AppError.database("Firestore unavailable"))
         }
 
-        let firestoreService = firestore
+        return Self.liveVehicleStream(uid: uid, firestore: firestore)
+    }
 
-        return AsyncThrowingStream { continuation in
-            let listener = firestoreService.db.collection(FirestorePaths.vehicles)
+    private static func singleVehicleStream(_ vehicles: [Vehicle]) -> AsyncThrowingStream<[Vehicle], Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield(vehicles)
+            continuation.finish()
+        }
+    }
+
+    private static func failedVehicleStream(_ error: AppError) -> AsyncThrowingStream<[Vehicle], Error> {
+        AsyncThrowingStream { continuation in
+            continuation.finish(throwing: error)
+        }
+    }
+
+    private static func liveVehicleStream(
+        uid: String,
+        firestore: FirestoreService
+    ) -> AsyncThrowingStream<[Vehicle], Error> {
+        AsyncThrowingStream { continuation in
+            let listener = firestore.db.collection(FirestorePaths.vehicles)
                 .whereField("userId", isEqualTo: uid)
                 .order(by: "displayOrder")
                 .limit(to: 20)
@@ -142,7 +172,7 @@ final class VehicleService {
 
                     do {
                         let vehicles = try snapshot?.documents.map {
-                            try firestoreService.decode(Vehicle.self, from: $0.data())
+                            try firestore.decode(Vehicle.self, from: $0.data())
                         } ?? []
                         continuation.yield(vehicles)
                     } catch {

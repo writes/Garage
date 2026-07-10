@@ -10,11 +10,11 @@
 		069559AFC5136845A25D30B4 /* RecallAlertBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6638610354A6305227E7F60 /* RecallAlertBadge.swift */; };
 		08A1EC58E71FCBD5A494B959 /* AnyCodable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BF01B423CAB1E0E2C1D39BD /* AnyCodable.swift */; };
 		0A2D88982A5B2DA28ED5A5CC /* ReminderServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44001C6B7DD00EEC47D71265 /* ReminderServiceTests.swift */; };
+		0AC12E2463E2EC225FE0BD00 /* DemoSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438A37476F4A6471525F29FB /* DemoSessionStore.swift */; };
 		0ADC44248DE6152C0F25BB38 /* GalleryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BC0C1F876946049AA66FFA4 /* GalleryViewModel.swift */; };
 		0C04F2345456ED15B4246471 /* UserProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC294FC65DA2C7E8EFE9B33F /* UserProfileView.swift */; };
 		0EB20B271FDC3C3C4BC6E3E4 /* ShopDiyToggle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 744B07499A4AE02AD0C28021 /* ShopDiyToggle.swift */; };
 		10B28C1E16B868436D1B8663 /* OilAnalysisFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F7C1FA5120A3974F3805512 /* OilAnalysisFormView.swift */; };
-		1195C96C2322931E53549BA8 /* OilAnalysisViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EB3C77AE3C7874D05886954 /* OilAnalysisViewModel.swift */; };
 		124F53B9F2372B11677F37B6 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F33F9AD84E4E40029B068870 /* ContentView.swift */; };
 		13FEABD1A942B88F43E075DC /* AppErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C43BDA72B0A4EF5E2AC2D514 /* AppErrorTests.swift */; };
 		1435ED7C311DABEB3CA6126A /* VehicleFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 523E9BD31D19BFF2F043D005 /* VehicleFormView.swift */; };
@@ -179,6 +179,7 @@
 		EA68323605670E8715633167 /* OilChangeFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAE9B7E2121F80A71FB0F3BF /* OilChangeFormView.swift */; };
 		EAA0C7F8F1DD874B160A0269 /* ErrorBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA23B8DE444ECDC451C5E0AD /* ErrorBanner.swift */; };
 		EFD36B6A8FEB34FD483F54C2 /* EntryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20FEA0812E4362634DB19B52 /* EntryService.swift */; };
+		F0135F46BC4EC92CEA3A8D79 /* DemoSessionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC187ADBB7F6ADB60350EB01 /* DemoSessionStoreTests.swift */; };
 		F0B788A39C3381F6546FFE47 /* ProGateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 134612394CD31DD2928FE73F /* ProGateView.swift */; };
 		F0E904ABD1453EB1DF8D16C7 /* EntryFormScaffold.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C12B23177E226DC46460EB1 /* EntryFormScaffold.swift */; };
 		F1119AE3D20E1367BC26F32A /* AppleSignInNonce.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D296C95D4FF2193232098B7 /* AppleSignInNonce.swift */; };
@@ -229,7 +230,6 @@
 		1979411F68B0DC5826D54082 /* Recall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recall.swift; sourceTree = "<group>"; };
 		19A79F7264618E6ABE51C0B9 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 		1C934606F4829E3DD927B0DC /* TireSet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TireSet.swift; sourceTree = "<group>"; };
-		1EB3C77AE3C7874D05886954 /* OilAnalysisViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OilAnalysisViewModel.swift; sourceTree = "<group>"; };
 		1FB7465033900BCC282D581E /* OilChangeEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OilChangeEntry.swift; sourceTree = "<group>"; };
 		2060BA83FE222CFD644CFCC2 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
 		20FEA0812E4362634DB19B52 /* EntryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntryService.swift; sourceTree = "<group>"; };
@@ -249,6 +249,7 @@
 		3B1D96940C60FCD0C1E6D702 /* PDFExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExportService.swift; sourceTree = "<group>"; };
 		3EA61D2ED0BF938E2E8E4BE8 /* SecureStoreService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureStoreService.swift; sourceTree = "<group>"; };
 		3EECE42DF775FE48250B458D /* DMEReportFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DMEReportFormView.swift; sourceTree = "<group>"; };
+		438A37476F4A6471525F29FB /* DemoSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoSessionStore.swift; sourceTree = "<group>"; };
 		44001C6B7DD00EEC47D71265 /* ReminderServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderServiceTests.swift; sourceTree = "<group>"; };
 		45A302777C917CE8BE096840 /* EntryFormFactoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntryFormFactoryView.swift; sourceTree = "<group>"; };
 		47D364985866B3D9D76CBFD8 /* WearService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearService.swift; sourceTree = "<group>"; };
@@ -371,6 +372,7 @@
 		E7AE04CD992F977F7E2B764D /* SparePart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparePart.swift; sourceTree = "<group>"; };
 		E860AA6FA18057984DC84234 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
 		EABBC91F29B64F51091A8D9E /* WheelGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WheelGalleryView.swift; sourceTree = "<group>"; };
+		EC187ADBB7F6ADB60350EB01 /* DemoSessionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoSessionStoreTests.swift; sourceTree = "<group>"; };
 		EC294FC65DA2C7E8EFE9B33F /* UserProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfileView.swift; sourceTree = "<group>"; };
 		EDEBCF5C894AF3DDB4C27767 /* RecentEntryFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentEntryFeed.swift; sourceTree = "<group>"; };
 		F03C03DBC1B26299723E4EDE /* AppIntegrityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIntegrityService.swift; sourceTree = "<group>"; };
@@ -482,6 +484,7 @@
 				517D3108468DA6BBA7137922 /* AsyncTimeoutTests.swift */,
 				CDA09993A5AFF070C1876BBD /* AuthServiceTests.swift */,
 				DF7F9C2290743059FCEA49CE /* CSVExportServiceTests.swift */,
+				EC187ADBB7F6ADB60350EB01 /* DemoSessionStoreTests.swift */,
 				E5FD0EB6CF63E72B9AC2AF1B /* EntryServiceTests.swift */,
 				09D4D976CED083C90134AD50 /* PDFExportServiceTests.swift */,
 				44001C6B7DD00EEC47D71265 /* ReminderServiceTests.swift */,
@@ -531,7 +534,6 @@
 			isa = PBXGroup;
 			children = (
 				4A407CCC44DA4B2B44A8BB2F /* EntryFormViewModel.swift */,
-				1EB3C77AE3C7874D05886954 /* OilAnalysisViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -948,6 +950,7 @@
 		D248245731EED18BF6CDE33F /* Domain */ = {
 			isa = PBXGroup;
 			children = (
+				438A37476F4A6471525F29FB /* DemoSessionStore.swift */,
 				0F6E3F0703B8E4DBE2B0ADD9 /* DetailingService.swift */,
 				20FEA0812E4362634DB19B52 /* EntryService.swift */,
 				9191BC70BC57CE2A4867FBF6 /* GalleryService.swift */,
@@ -1218,6 +1221,7 @@
 				A5CC0C1FF3D5D003E09962E6 /* AuthServiceTests.swift in Sources */,
 				20276F27B4595D6A624BF968 /* CSVExportServiceTests.swift in Sources */,
 				3A759384E492BDBB4C1AABF5 /* DashboardViewModelTests.swift in Sources */,
+				F0135F46BC4EC92CEA3A8D79 /* DemoSessionStoreTests.swift in Sources */,
 				A4A769CD56B01AFF0D823BCC /* EntryDecodingTests.swift in Sources */,
 				98A2B10F6AE699B8AEE5AE61 /* EntryFormViewModelTests.swift in Sources */,
 				2D2A7651F87FE0E15D40669B /* EntryServiceTests.swift in Sources */,
@@ -1272,6 +1276,7 @@
 				D3E21CC38798DC34AC6E063C /* DashboardViewModel.swift in Sources */,
 				AFD4DA4988D0F6DCB589B76F /* Date+Extensions.swift in Sources */,
 				683F67C69CE0EDC7EE823E7E /* DateOdometerHeader.swift in Sources */,
+				0AC12E2463E2EC225FE0BD00 /* DemoSessionStore.swift in Sources */,
 				CEE63D267E3188C83F72E9B0 /* DetailingFormView.swift in Sources */,
 				4135508F10C14D6DFB3272B0 /* DetailingLogView.swift in Sources */,
 				E280379F92FA1985155D6DA2 /* DetailingRecord.swift in Sources */,
@@ -1312,7 +1317,6 @@
 				2F552AF6F6DD14E36972CB5E /* OdometerHeroCard.swift in Sources */,
 				BE491FE75F21DC2DE0CF70E4 /* OilAnalysisEntry.swift in Sources */,
 				10B28C1E16B868436D1B8663 /* OilAnalysisFormView.swift in Sources */,
-				1195C96C2322931E53549BA8 /* OilAnalysisViewModel.swift in Sources */,
 				85DBB05BC67498147746EC34 /* OilChangeEntry.swift in Sources */,
 				EA68323605670E8715633167 /* OilChangeFormView.swift in Sources */,
 				87C1AF8791683487D20965E8 /* OilConsumptionEntry.swift in Sources */,
