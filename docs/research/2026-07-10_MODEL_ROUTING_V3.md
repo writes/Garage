@@ -427,3 +427,27 @@ my own convergence rule obliges fixing them (they are not new-scope):
 
 Round 10 (true final) reviews the post-R53 HEAD so the operator's decision brief is bound to
 the actual candidate — stale-tree briefs were proven noise in rounds 4 and 6.
+
+## 18. Tenth live tri-review — Gemini flips to GO; last completions (R54–R56)
+
+Brief `2026-07-10T17-19-02Z.md` on `c4a0f07`: **Gemini GO (0.85, first clean parse — R50/R53
+worked) · Fable NO-GO (0.72) · Sol NO-GO (0.99)**. Complete dispositions:
+
+| Finding | Disposition |
+|---|---|
+| Loop sends evidence diffs to providers unscreened (Sol) — a live landmine-#8 violation | **ACCEPTED → R54**: secret_scan gate + fail-closed halt on both loop stages |
+| Votes/loop trust ambient `BRAIN_*` pins with no ROSTER gate (Fable + Sol; also Gemini's round-9 clipped excerpt — §17 missed it, 4th triage erratum) | **ACCEPTED → R55**: shared ROSTER in `gemini_consult`, all lanes gated, override recorded |
+| `--no-cross-check` ungoverned (Sol) | **ACCEPTED → R56**: requires `--override-reason` + worktree-ledger override row |
+| Cross-check failure is non-fatal (Sol) | **BY DESIGN** (spec §4.3: the lane is advisory); its *bypass* is now governed (R56) |
+| Append-only ledger check accepts forged/malformed appends (Sol) | **QUEUED — new-scope escalation**: append-only + halt-on-rewrite was the fix; schema-validated orchestrator-bound appends are hardening-of-hardening. The candidate ledger merges only through the human gate. Operator may commission it separately |
+| Reviewer-lane confidentiality (Sol, 6th re-raise) | **STANDING LIMITATION — final** (§14–§17) |
+
+**§17 erratum (4th of the class):** Gemini's round-9 lane was recorded "(none)" because the
+verdict failed to parse, but its persisted raw excerpt contained readable blocking findings
+(ambient pinning — now fixed via R55). Rule tightened: mine the raw excerpt of every failed
+lane before writing dispositions.
+
+Round 11 is the operator's decision brief. Note the resolution semantics: unanimity is
+required for `GO (advisory)`, so even a 2-GO/1-NO-GO split resolves `NO-GO (advisory)` — by
+design. The operator override (ledgered, head-SHA-bound) is the sanctioned path when residual
+dissent rests on the standing limitation and queued new-scope items only.
