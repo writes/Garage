@@ -26,3 +26,6 @@ firebase-debug.*.log
 scripts/brain/__pycache__/
 __pycache__/
 *.pyc
+
+# Local editor config
+.vscode/
