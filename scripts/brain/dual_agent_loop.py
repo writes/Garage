@@ -73,7 +73,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 import scope_guard  # noqa: E402  (intentional: sibling import after path tweak)
-from gemini_consult import _extract_json  # noqa: E402  (local sibling)
+from gemini_consult import _extract_json, verify_agy_resolver  # noqa: E402  (local sibling)
 from tri_review import _coverage_markdown, cap_diff_with_coverage  # noqa: E402  (same cap mechanics)
 
 # ---------------------------------------------------------------------------
@@ -457,6 +457,17 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
     )
     if not result.ok:
         report = f"(cross-check unavailable: {result.note})\n"
+        _write(worktree, "CROSS_CHECK.md", report)
+        return report
+
+    model_verified, resolver_label = verify_agy_resolver(GEMINI_MODEL)
+    if not model_verified:
+        # Match the existing non-fatal unavailable path. A successful agy
+        # process is not usable evidence if its resolver selected another model.
+        report = (
+            "(cross-check unavailable: agy model downgrade detected "
+            f"(observed: {resolver_label}))\n"
+        )
         _write(worktree, "CROSS_CHECK.md", report)
         return report
 

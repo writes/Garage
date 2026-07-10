@@ -44,17 +44,17 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
-from gemini_consult import _extract_json  # noqa: E402  (local sibling)
+from gemini_consult import (  # noqa: E402  (local sibling)
+    _extract_json,
+    gemini_resolver_decision,
+    verify_agy_resolver,
+)
 import scope_guard  # noqa: E402  (single source of truth for protected paths)
 
 
 CLAUDE_MODEL = os.environ.get("BRAIN_CLAUDE_MODEL", "claude-fable-5")
 CODEX_STRATEGY_MODEL = os.environ.get("BRAIN_CODEX_STRATEGY_MODEL", "gpt-5.6-sol")
 GEMINI_MODEL = os.environ.get("BRAIN_GEMINI_MODEL", "Gemini 3.1 Pro (High)")
-AGY_RESOLVER_LOG = os.environ.get(
-    "BRAIN_AGY_RESOLVER_LOG",
-    os.path.expanduser("~/.gemini/antigravity-cli/cli.log"),
-)
 
 MAX_DIFF_BYTES = 120 * 1024
 REVIEWER_ORDER = ("claude", "codex", "gemini")
@@ -62,10 +62,6 @@ ISO8601_Z_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\Z")
 # Import, rather than copy, the protected list: scope_guard remains the sole
 # source of truth if the doctrine changes its protected-path boundary.
 PROTECTED_PREFIXES = scope_guard.PROTECTED_PREFIXES
-AGY_RESOLVER_LABEL_RE = re.compile(
-    r'Propagating selected model override to backend:\s*label="([^"]+)"'
-)
-
 # We report pattern labels, not the matching text, so a blocked run cannot
 # accidentally echo a secret into logs or terminal scrollback.
 SECRET_PATTERNS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
@@ -300,29 +296,6 @@ def _failed_review(
     return result
 
 
-def last_agy_resolver_label(log_text: Optional[str]) -> Optional[str]:
-    """Extract the final agy backend resolver label from already-read log text."""
-    if log_text is None:
-        return None
-    labels = AGY_RESOLVER_LABEL_RE.findall(log_text)
-    return labels[-1] if labels else None
-
-
-def gemini_resolver_decision(log_text: Optional[str], pinned_model: str) -> Tuple[bool, str]:
-    """Fail closed unless agy's final resolver label exactly matches its pin."""
-    observed = last_agy_resolver_label(log_text) or "unverified"
-    return observed == pinned_model, observed
-
-
-def _read_agy_resolver_log() -> Optional[str]:
-    """Read the resolver log without surfacing its contents to reviewer prompts."""
-    try:
-        with open(AGY_RESOLVER_LOG, encoding="utf-8", errors="replace") as handle:
-            return handle.read()
-    except OSError:
-        return None
-
-
 def run_reviewer(agent: str, prompt: str, timeout: int, repo: str) -> Dict[str, Any]:
     """Run one pinned reviewer. Gemini has no fallback ladder in this command."""
     if agent == "claude":
@@ -334,8 +307,10 @@ def run_reviewer(agent: str, prompt: str, timeout: int, repo: str) -> Dict[str, 
     elif agent == "codex":
         model = CODEX_STRATEGY_MODEL
         backend = "codex"
-        # LANDMINE #2: '-' + STDIN are both mandatory for codex exec.
-        cmd = ["codex", "exec", "-s", "read-only", "-m", model, "-"]
+        # LANDMINES #2/R12: '-' + STDIN are both mandatory. The review's
+        # intentionally empty cwd is not a trusted Git directory, so Codex
+        # must explicitly skip its repository trust preflight; isolation stays.
+        cmd = ["codex", "exec", "--skip-git-repo-check", "-s", "read-only", "-m", model, "-"]
         stdin_text = prompt
         stdin = None
     elif agent == "gemini":
@@ -370,11 +345,7 @@ def run_reviewer(agent: str, prompt: str, timeout: int, repo: str) -> Dict[str, 
         except FileNotFoundError as exc:
             return _failed_review(agent, model, backend, f"command unavailable: {exc}")
 
-        resolver_ok = True
         resolver_label: Optional[str] = None
-        if agent == "gemini":
-            resolver_ok, resolver_label = gemini_resolver_decision(_read_agy_resolver_log(), model)
-
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout).strip()
             return _failed_review(
@@ -384,6 +355,10 @@ def run_reviewer(agent: str, prompt: str, timeout: int, repo: str) -> Dict[str, 
                 f"exit {proc.returncode}: {detail[:400]}",
                 resolver_label,
             )
+
+        resolver_ok = True
+        if agent == "gemini":
+            resolver_ok, resolver_label = verify_agy_resolver(model)
         if not resolver_ok:
             return _failed_review(
                 agent,
@@ -612,6 +587,13 @@ def _selftest() -> int:
         GEMINI_MODEL,
     )
     check("Gemini resolver mismatch fails closed", not mismatch_ok and mismatch_label == "Gemini 3.5 Flash (Medium)")
+    match_ok, match_label = gemini_resolver_decision(
+        'Propagating selected model override to backend: label="Gemini 3.1 Pro (High)"',
+        GEMINI_MODEL,
+    )
+    check("Gemini resolver exact pin succeeds", match_ok and match_label == GEMINI_MODEL)
+    unreadable_ok, unreadable_label = gemini_resolver_decision(None, GEMINI_MODEL)
+    check("Gemini resolver unreadable log fails closed", not unreadable_ok and unreadable_label == "unverified")
 
     repo = "/tmp/tri-review-selftest-repo"
     allowed = resolve_out_path(repo, "reports/tri-review/test.md", "2026-07-10T00:00:00Z")
