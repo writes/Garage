@@ -402,3 +402,28 @@ NO-GO (0.98)**. Sol/Gemini caught **two real data-safety bugs in pass-8's own co
 
 Round 9 is the final review of this session; per the convergence rule, a residual NO-GO
 resting only on the standing limitation goes to the operator with an override recommendation.
+
+**§16 ERRATUM (third instance of the triage-integrity class, caught by Fable in round 9):**
+§16's claim that Gemini's round-8b NO-GO was "on exactly the two now-fixed bugs" was an
+extrapolation, not a reading — Gemini's actual (clipped) blocker was the cross-check diff not
+excluding protocol artifacts, which was real, unfixed, and undispositioned. Root cause: I
+attributed content to a verdict I could not fully read. Process rule: **never characterize a
+reviewer's finding without quoting it; a clipped verdict is 'unknown', not 'assumed
+agreeing'.**
+
+## 17. Ninth live tri-review + final micro-pass (R51–R53)
+
+Brief `2026-07-10T17-08-14Z.md` on `1ab90e1`: **Fable NO-GO (0.72) · Sol NO-GO (0.99) ·
+Gemini clipped (resolver-verified)**. All findings are regressions/omissions in prior passes —
+my own convergence rule obliges fixing them (they are not new-scope):
+
+| Finding | Disposition |
+|---|---|
+| `DECISION_LEDGER.jsonl` as blanket PROTOCOL file lets any lane rewrite the Law-1 trust anchor (Fable + Sol, independently) | **ACCEPTED → R51**: removed from PROTOCOL_FILES; enforcement allows pure byte-prefix APPENDS only, reverts+halts anything else |
+| Cross-check diff includes the loop's own protocol artifacts (Gemini's actual round-8b blocker, resurfaced) | **ACCEPTED → R52**: R38's exclusion pathspecs applied to the cross-check evidence |
+| R50 bounds are prompt-only; `validate_verdict_json` accepts unbounded lists (Sol) | **ACCEPTED → R53**: hard-enforced 5×300 + capped stdout excerpt |
+| §16 mischaracterized Gemini's verdict (Fable) | **ACCEPTED — erratum above** + never-characterize-unread-verdicts rule |
+| Reviewer-lane confidentiality (Sol, 5th re-raise) | **STANDING LIMITATION — final, no further action this layer** |
+
+Round 10 (true final) reviews the post-R53 HEAD so the operator's decision brief is bound to
+the actual candidate — stale-tree briefs were proven noise in rounds 4 and 6.
