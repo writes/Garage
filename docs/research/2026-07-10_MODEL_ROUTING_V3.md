@@ -359,3 +359,24 @@ file each invocation; size-only rotation detection misses the swap. COMPLETE dis
 | Empty cwd ≠ hermetic boundary (env/HOME inherited; prompt-injected reads) (Sol r5+r6) | **STANDING LIMITATION (re-affirmed)**: hermetic env-scrubbed/network-fenced execution is beyond a CLI-lane harness; compensating controls: tools disabled (claude), read-only sandbox + empty cwd (codex), `--sandbox` + empty cwd (agy), untrusted-data framing, protected-path fail-close, and the Law-5 human gate. Not whack-a-mole-able further at this layer |
 | HANDOFF stale at reviewed HEAD (Sol r5, Fable r5) | **FIXED in `89d5e1f`** (refresh-before-review process rule) — confirmed current at round 6 |
 | §13 dropped three Sol blockers (Fable r6) | **ACCEPTED — this §14 is the remediation**, plus the read-full-briefs process rule above |
+
+## 15. Seventh live tri-review (2026-07-10) — Fable GO; final bounded fixes (R40–R46)
+
+Brief `reports/tri-review/2026-07-10T16-34-33Z.md` on `351e288`: **Fable GO (0.78) · Sol NO-GO
+(0.99) · Gemini lane resolver-verified ✅ but its verdict JSON failed to parse** (250KB prompt;
+prose contamination). Complete triage:
+
+| Finding | Disposition |
+|---|---|
+| R33 equal-size branch reparses whole log → stale label can verify (Sol) | **ACCEPTED → R40** — orchestrator contract bug (my §14 spec said "size ≤ offset ⇒ whole file"; equality means *no fresh record* and must fail closed) |
+| `resolve_advisory` ignores coverage → GO possible on partial evidence (Sol) | **ACCEPTED → R41**: any partial/omitted file ⇒ DEGRADED |
+| Provider outputs persisted without re-scan → exfiltration channel via our own artifacts (Sol) | **ACCEPTED → R42**: redact-on-write for briefs/CROSS_CHECK/PLAN_REVIEW |
+| Cross-check single-writer "not demonstrable" (Sol) | **ACCEPTED → R43**: pre/post snapshot; ANY delta ⇒ revert + halt (stage-scoped zero-delta rule, stricter than the implementer's scope guard by design) |
+| Unbounded `flock` can wedge every lane (Sol) | **ACCEPTED → R44**: LOCK_NB + monotonic deadline, fail closed |
+| `--no-plan-review` bypass isn't durable/governed (Sol) | **ACCEPTED → R45**: requires `--override-reason`, appends a durable `operator_override` ledger row bound to head SHA |
+| Gemini verdict JSON parse failure (infra) | **ACCEPTED → R46**: one parse-failure retry + terminal JSON-only reminder (recency) |
+| Env/filesystem hermeticity (Sol, re-raised 3rd time) | **STANDING LIMITATION — final**: further containment requires OS-level sandboxing outside this harness's scope; compensating controls enumerated in §14 stand; Law-5 human gate is the backstop |
+
+Convergence status: Fable has flipped to GO; Gemini's failure was infrastructural (fixed);
+every Sol blocker above is a bounded fix or the documented standing limitation. Round 8 is the
+decision brief under the §13 convergence rule.
