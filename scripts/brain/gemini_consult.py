@@ -60,12 +60,25 @@ def gemini_resolver_decision(
     The byte offset is captured before the particular agy invocation.  Parsing
     only the later bytes prevents a previous successful run's resolver record
     from verifying a later run that silently selected a different model (or
-    logged nothing at all).  This helper is pure so each agy caller shares the
-    same offset-bound matching semantics and can self-test without host I/O.
+    logged nothing at all). If agy rotates or recreates its resolver log during
+    the invocation, its resulting size is smaller than the captured offset;
+    that new file contains only fresh content, so parsing resumes at offset 0.
+    Every other invalid input remains an unverified mismatch. This helper is
+    pure so each agy caller shares the same matching semantics and can
+    self-test without host I/O.
     """
-    if log_bytes is None or start_offset is None or start_offset < 0 or start_offset > len(log_bytes):
+    if (
+        log_bytes is None
+        or not isinstance(start_offset, int)
+        or isinstance(start_offset, bool)
+        or start_offset < 0
+    ):
         return False, "unverified"
-    appended_text = log_bytes[start_offset:].decode("utf-8", errors="replace")
+    # agy can rotate/truncate cli.log between capture and verification. A
+    # smaller file cannot contain pre-call bytes, so its complete content is
+    # the fresh region associated with this call.
+    effective_offset = 0 if len(log_bytes) < start_offset else start_offset
+    appended_text = log_bytes[effective_offset:].decode("utf-8", errors="replace")
     observed = last_agy_resolver_label(appended_text) or "unverified"
     return observed == pinned_model, observed
 
@@ -160,7 +173,7 @@ def try_agy(
     verifies only the record appended by this particular invocation.
     """
     resolver_offset = capture_agy_resolver_offset()
-    cmd = ["agy"]
+    cmd = ["agy", "--sandbox"]
     if model:
         cmd.extend(["--model", model])
     cmd.extend(["-p", prompt, "--print-timeout", f"{timeout}s"])

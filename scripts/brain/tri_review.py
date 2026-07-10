@@ -713,6 +713,13 @@ def _selftest() -> int:
     check("Gemini resolver uses last label inside appended region", not last_fresh_ok and last_fresh_label == "Gemini 3.5 Flash (Medium)")
     unreadable_ok, unreadable_label = gemini_resolver_decision(None, 0, GEMINI_MODEL)
     check("Gemini resolver unreadable log fails closed", not unreadable_ok and unreadable_label == "unverified")
+    rotated_log = ('Propagating selected model override to backend: label="' + GEMINI_MODEL + '"\n').encode()
+    rotation_ok, rotation_label = gemini_resolver_decision(
+        rotated_log,
+        len(prior_log) + 1,
+        GEMINI_MODEL,
+    )
+    check("Gemini resolver accepts fresh rotated log", rotation_ok and rotation_label == GEMINI_MODEL)
 
     check("roster accepts exact pins", roster_deviations(dict(ROSTER)) == {})
     overridden_models = dict(ROSTER)

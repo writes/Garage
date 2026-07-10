@@ -3,7 +3,7 @@
 
 This harness implements Organ II's canonical cycle:
 
-        plan(Fable 5)  ->  plan-review(GPT-5.6 Sol, advisory)  ->
+        plan(Fable 5)  ->  plan-review(GPT-5.6 Sol, rejection halts)  ->
         implement(GPT-5.6 Terra)  ->
         cross-check(Gemini 3.1 Pro High, read-only)  ->  review(Fable 5)
 
@@ -16,9 +16,11 @@ protected file was touched.
 Division of labour (and why):
   * PLAN     — Fable 5 via `claude -p --model`. Claude reads the goal + the prior REVIEW.md and
                writes a concrete PLAN.md for this iteration.
-  * PLAN REVIEW — GPT-5.6 Sol via read-only `codex exec`. Sol strategically
-               reviews the plan before implementation; its concerns are advisory
-               input to Terra, never an autonomous stop or promotion decision.
+  * PLAN REVIEW — GPT-5.6 Sol via read-only `codex exec` in an empty cwd. Sol
+               strategically reviews the plan before implementation. An unavailable
+               or malformed review is advisory input to Terra, but a schema-valid
+               `{"approve": false, ...}` HALTS for a tri-vote or operator disposition;
+               planner disagreement is never resolved by fiat.
   * IMPLEMENT— GPT-5.6 Terra via `codex exec -m ... -`. The plan is fed to Codex on STDIN and Codex
                edits files in the worktree.
   * ENFORCE  — scope_guard.enforce(): the domain fence. Out-of-scope writes
@@ -64,6 +66,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
@@ -199,6 +202,17 @@ def _run(
 
 def _git(repo: str, *args: str) -> StepResult:
     return _run(["git", "-C", repo, *args], timeout=GIT_TIMEOUT, label=f"git {args[0]}")
+
+
+def _run_in_empty_cwd(
+    cmd: List[str], *, stdin_text: str, timeout: int, label: str
+) -> StepResult:
+    """Run an isolated read-only lane without repository access or trust state."""
+    isolated_cwd = tempfile.mkdtemp(prefix="dual-agent-loop-")
+    try:
+        return _run(cmd, cwd=isolated_cwd, stdin_text=stdin_text, timeout=timeout, label=label)
+    finally:
+        shutil.rmtree(isolated_cwd, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -340,20 +354,25 @@ def stage_plan(worktree: str, goal: str, prior_review: str, iteration: int,
     return plan
 
 
-def stage_plan_review(worktree: str, goal: str, plan: str, dry_run: bool) -> Tuple[str, str]:
-    """PLAN REVIEW — Sol's non-fatal strategic input before Terra writes."""
+def stage_plan_review(
+    worktree: str, goal: str, plan: str, dry_run: bool
+) -> Tuple[str, str, bool]:
+    """PLAN REVIEW — only a schema-valid Sol rejection blocks Terra's write."""
     prompt = _plan_review_prompt(goal, plan)
-    cmd = ["codex", "exec", "-s", "read-only", "-m", CODEX_STRATEGY_MODEL, "-"]
+    cmd = [
+        "codex", "exec", "--skip-git-repo-check", "-s", "read-only",
+        "-m", CODEX_STRATEGY_MODEL, "-",
+    ]
     if dry_run:
-        print(f"  [DRY-RUN PLAN REVIEW] would run: codex exec -s read-only -m "
-              f"{CODEX_STRATEGY_MODEL} - (stdin: plan-review-prompt {len(prompt)} chars)")
+        print(f"  [DRY-RUN PLAN REVIEW] would run from a fresh empty cwd: codex exec "
+              f"--skip-git-repo-check -s read-only -m {CODEX_STRATEGY_MODEL} - "
+              f"(stdin: plan-review-prompt {len(prompt)} chars)")
         report = "# PLAN REVIEW (dry-run)\n\n(no agent invoked)\n"
         _write(worktree, "PLAN_REVIEW.md", report)
-        return report, ""
+        return report, "", False
 
-    res = _run(
+    res = _run_in_empty_cwd(
         cmd,
-        cwd=worktree,
         stdin_text=prompt,
         timeout=PLAN_REVIEW_TIMEOUT,
         label="codex/plan-review",
@@ -367,7 +386,7 @@ def stage_plan_review(worktree: str, goal: str, plan: str, dry_run: bool) -> Tup
         detail = res.note if not res.ok else "malformed JSON (expected approve bool and concerns string array)"
         report = f"# PLAN REVIEW\n\n(advisory plan review unavailable: {detail})\n"
         _write(worktree, "PLAN_REVIEW.md", report)
-        return report, ""
+        return report, "", False
 
     normalized = [concern[:500] for concern in concerns]
     concern_text = "\n".join(f"- {concern}" for concern in normalized)[:4000]
@@ -380,7 +399,7 @@ def stage_plan_review(worktree: str, goal: str, plan: str, dry_run: bool) -> Tup
         + "\n"
     )
     _write(worktree, "PLAN_REVIEW.md", report)
-    return report, concern_text
+    return report, concern_text, not approve
 
 
 def stage_implement(worktree: str, goal: str, plan: str, sol_concerns: str,
@@ -611,15 +630,27 @@ def run_loop(
         plan = stage_plan(worktree, goal, prior_review, i, dry_run)
         rec["plan_chars"] = len(plan)
 
-        # (b) PLAN REVIEW — advisory Sol review, serial with Terra's Codex call.
+        # (b) PLAN REVIEW — dead/malformed Sol is advisory; an explicit,
+        # schema-valid rejection must halt for a governed disposition.
         if run_plan_review:
-            plan_review, sol_concerns = stage_plan_review(worktree, goal, plan, dry_run)
+            plan_review, sol_concerns, plan_rejected = stage_plan_review(
+                worktree, goal, plan, dry_run
+            )
         else:
             plan_review = "# PLAN REVIEW\n\n(advisory plan review disabled)\n"
             sol_concerns = ""
+            plan_rejected = False
             _write(worktree, "PLAN_REVIEW.md", plan_review)
         rec["plan_review"] = plan_review[:4000]
         rec["sol_concerns_chars"] = len(sol_concerns)
+        rec["plan_rejected"] = plan_rejected
+        if plan_rejected:
+            print("HALT: plan rejected by Sol strategic review - escalate to a tri-vote or operator disposition (doctrine: planner disagreement is never resolved by fiat)")
+            rec["finished"] = _now_iso()
+            state["iterations"].append(rec)      # type: ignore[attr-defined]
+            state["halted"] = True
+            _write_state(worktree, state)
+            break
 
         # (c) IMPLEMENT (serial: exactly one codex track)
         impl = stage_implement(worktree, goal, plan, sol_concerns, dry_run)
@@ -648,6 +679,21 @@ def run_loop(
         else:
             cross_check = stage_cross_check(worktree, dry_run)
         rec["cross_check"] = cross_check.strip()
+
+        # Gemini receives a read-only sandbox prompt, but that is not the
+        # enforcement boundary. Re-run the same scope fence after its process
+        # returns so a compromised or buggy lane cannot leave protected edits.
+        if impl.ok and run_cross_check:
+            cross_enforced = scope_guard.enforce(worktree, revert=True)
+            rec["cross_check_reverted"] = cross_enforced.get("reverted", [])
+            rec["cross_check_protected"] = cross_enforced.get("protected", [])
+            if cross_enforced.get("halt"):
+                print("  scope_guard halted the loop (protected paths changed).")
+                rec["finished"] = _now_iso()
+                state["iterations"].append(rec)  # type: ignore[attr-defined]
+                state["halted"] = True
+                _write_state(worktree, state)
+                break
 
         # (f) REVIEW
         review, done = stage_review(worktree, goal, plan, cross_check, dry_run)

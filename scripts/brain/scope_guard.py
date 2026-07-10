@@ -75,8 +75,10 @@ ALLOWED_CANDIDATE_PREFIXES: Tuple[str, ...] = (
 PROTOCOL_FILES: Tuple[str, ...] = (
     "GOAL.md",
     "PLAN.md",
+    "PLAN_REVIEW.md",
     "RESULT.md",
     "REVIEW.md",
+    "CROSS_CHECK.md",
     "STATE.json",
     "DONE",
     "DECISION.md",
@@ -337,8 +339,10 @@ def _selftest() -> int:
         ("docs/research/notes.md", "allowed"),
         # protocol
         ("PLAN.md", "protocol"),
+        ("PLAN_REVIEW.md", "protocol"),
         ("GOAL.md", "protocol"),
         ("STATE.json", "protocol"),
+        ("CROSS_CHECK.md", "protocol"),
         ("DONE", "protocol"),
         ("RESOLUTION.md", "protocol"),
         ("./REVIEW.md", "protocol"),
