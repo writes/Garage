@@ -38,19 +38,23 @@ re-verified by the orchestrator on a clean simulator.
    refund only on infrastructure failure, **not** on a billed unrecognized response.
 9. **Firestore rules self-grant Pro** — any user could client-write `subscription` → denied;
    rules test flipped from expected-failure to **enforced**. *(Protected surface — see gate.)*
+10. **RevenueCat/Firebase identity mismatch** — RevenueCat was configured before Firebase auth
+   without an app user ID, so its webhook wrote an anonymous RevenueCat document while the app
+   read `users/{FirebaseUID}.subscription` → the auth-state seam now logs RevenueCat in with the
+   Firebase UID and logs it out on sign-out; test/local-demo modes never invoke the real SDK.
 
 **Data integrity / correctness**
-10. **CSV export** — lossy comma-mangling + formula injection (leading-space bypass,
+11. **CSV export** — lossy comma-mangling + formula injection (leading-space bypass,
     unsanitized attachment paths) → RFC-4180 + OWASP neutralization, numerics exempt.
-11. **ProfileViewModel persisted nothing**, then (Pass E) persisted to literal dotted keys the
+12. **ProfileViewModel persisted nothing**, then (Pass E) persisted to literal dotted keys the
     loader never read → nested-map `setData(merge:)`, forward-compat preserved.
-12. **PDF temp-file leak** → cleanup on success and failure.
-13. **DashboardView stale on vehicle switch** → reloads on `currentVehicle` change.
+13. **PDF temp-file leak** → cleanup on success and failure.
+14. **DashboardView stale on vehicle switch** → reloads on `currentVehicle` change.
 
 **Release hygiene**
-14. **Demo store + test-injection initializers compiled into Release** → `#if DEBUG`; Release
+15. **Demo store + test-injection initializers compiled into Release** → `#if DEBUG`; Release
     build verified.
-15. Dead `OilAnalysisViewModel` removed (tri-vote).
+16. Dead `OilAnalysisViewModel` removed (tri-vote).
 
 ## OPERATOR-GATED — your switches (Law 5)
 

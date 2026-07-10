@@ -2,13 +2,13 @@
 
 <!--CURRENT:START-->
 ## CURRENT STATE
-- updated: 2026-07-10T23:28:20Z by **codex-terra** on `audit/app-hardening` @ `36fcef7`
+- updated: 2026-07-10T23:53:17Z by **codex-terra** on `audit/app-hardening` @ `d673a8c`
 - runtime: (unchanged)
-- last session did: Implemented final hardening pass: Dashboard reload is keyed to current vehicle with a SQ5 switch journey regression; billed HTTP-OK malformed/unrecognized Claude output keeps daily quota while network/5xx refunds; four named test-only service initializers are DEBUG-gated. Cloud 31/31, rules 8/8, TypeScript build, policy/security, SwiftLint, and Release build pass. Full clean iPhone 17 Pro suite is blocked by stale xcodebuild PID 94465 repeatedly restarting the UI runner after signal-kill events; no assertion failure or valid final count.
+- last session did: Bound RevenueCat identity to Firebase auth: the live auth listener calls logIn(Firebase UID), sign-out calls logOut, and a test-injected identity seam covers both. Policy, strict SwiftLint, and Release build pass; no Cloud Functions change.
 - in-flight (uncommitted/partial): none
-- BLOCKED / operator-gated: none
-- ⚠ contention / landmines: none
-- ▶ **NEXT ACTION**: Obtain approval to terminate local stale xcodebuild PID 94465, then shutdown/erase iPhone 17 Pro and rerun one non-overlapping full xcodebuild test suite; record its final Executed N tests line.
+- BLOCKED / operator-gated: Full XCTest verification is blocked: local xcodebuild PIDs 3615 and 3861 remained live after clean erased-simulator attempts, leaving the result bundle unfinalized. No process was terminated without approval.
+- ⚠ contention / landmines: Stale local xcodebuild hosts only; working-tree files are otherwise uncontended.
+- ▶ **NEXT ACTION**: With explicit approval, terminate the stale local xcodebuild PIDs 3615 and 3861, then erase iPhone 17 Pro and rerun one non-overlapping full suite to record its final Executed N tests line.
 <!--CURRENT:END-->
 
 ## WHERE THE DEEP STATE LIVES (pointers — do not duplicate content here)
@@ -20,6 +20,7 @@
 
 ## LOG (newest first; keep ~12)
 <!--LOG:START-->
+- 2026-07-10T23:53:17Z **codex-terra** @`d673a8c`: Bound RevenueCat identity to Firebase auth: the live auth listener calls logIn(Firebase UID), sign-out calls logOut, and a test-injected identity seam covers both. Policy, strict SwiftLint, and Release build pass; no Cloud Functions change.  — NEXT: With explicit approval, terminate the stale local xcodebuild PIDs 3615 and 3861, then erase iPhone 17 Pro and rerun one non-overlapping full suite to record its final Executed N tests line.
 - 2026-07-10T23:28:20Z **codex-terra** @`36fcef7`: Implemented final hardening pass: Dashboard reload is keyed to current vehicle with a SQ5 switch journey regression; billed HTTP-OK malformed/unrecognized Claude output keeps daily quota while network/5xx refunds; four named test-only service initializers are DEBUG-gated. Cloud 31/31, rules 8/8, TypeScript build, policy/security, SwiftLint, and Release build pass. Full clean iPhone 17 Pro suite is blocked by stale xcodebuild PID 94465 repeatedly restarting the UI runner after signal-kill events; no assertion failure or valid final count.  — NEXT: Obtain approval to terminate local stale xcodebuild PID 94465, then shutdown/erase iPhone 17 Pro and rerun one non-overlapping full xcodebuild test suite; record its final Executed N tests line.
 - 2026-07-10T23:09:22Z **codex-terra** @`c6d7a92`: Fixed the production-critical RevenueCat webhook transaction ordering: standard events now read the idempotency and user documents before any write. The in-memory Firestore transaction fake now rejects reads after a write, with a regression test. Cloud build, 31 unit tests, and 8 rules tests are green.  — NEXT: Run the required tri-provider pre-main review, then human review and merge; no deploy action taken.
 - 2026-07-10T22:54:16Z **codex-terra** @`f5d3a5e`: Moved subscription policy links before package purchase actions and made the UI test use type-agnostic accessibility identifier queries with initial-visibility assertions. Clean erased iPhone 17 Pro full XCTest is 78/78; policy checks and strict SwiftLint are green.  — NEXT: Run the required tri-provider pre-main review, then human review and merge; no deploy action taken.
@@ -31,5 +32,4 @@
 - 2026-07-10T21:05:56Z **codex-terra** @`406a2e4`: Pass D complete: added 10 hermetic LOCAL_DEMO_MODE UI-routing journey files (15 new UI tests), plus demo-only routing/readiness fixes discovered by XCTest. Clean full suite 71/71; GarageUITests 17/17 twice with erase between runs.  — NEXT: Operator review and merge candidate audit/app-hardening; no deploy action taken.
 - 2026-07-10T19:27:40Z **codex-terra** @`de99993`: Pass C2 resolved the five confirmed cross-check defects: upstream quota refunds, RevenueCat fail-safe entitlement ordering/type handling, and CSV injection hardening for leading whitespace/control prefixes and attachments. Cloud 24/24; policy/lint and clean iPhone 17 Pro XCTest 56/56 green.  — NEXT: Operator review and merge candidate audit/app-hardening; no deploy action taken.
 - 2026-07-10T19:17:29Z **codex-terra** @`f9cba16`: Pass C complete: implemented voted TV-A5 demo session overlay, 62 E2E accessibility identifier call sites, debug UI_TEST_PRO entitlement, injected SubscriptionView service, fixed demo sync badge, and TV-A6 dead-view-model removal; policy/lint/XcodeGen/full iPhone 17 Pro tests green (54/54).  — NEXT: Operator review and merge candidate audit/app-hardening; no deploy action taken.
-- 2026-07-10T17:37:12Z **claude-fable-5** @`1fd314b`: SESSION COMPLETE - Routing v3 DECISION BRIEF issued (spec section 19): 11 live tri-reviews, 12 Terra passes (R1-R56), 2 live tri-votes implemented, 62/62 selftests. Round-11: Fable GO(0.8, zero blockers) / Gemini NO-GO(infrastructural - meta-diff exceeds its lane) / Sol NO-GO(queued+standing items). RECOMMENDATION: ledgered operator override bound to head SHA + merge brain/install-v1 to main; alternative: commission queue Q1-Q5 (spec section 19) and re-review at normal scale.  — NEXT: OPERATOR SWITCH REQUIRED: (a) merge brain/install-v1 -> main with an operator_override ledger row citing head SHA and brief 2026-07-10T17-31-28Z (recommended), or (b) commission Q1-Q5 then re-review. Worktree removed; branch brain/routing-v3 + tag routing-v3-terra-pass1 kept for audit.
 <!--LOG:END-->

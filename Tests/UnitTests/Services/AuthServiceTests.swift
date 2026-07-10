@@ -25,4 +25,27 @@ struct AuthServiceTests {
         #expect(!service.isAuthenticated)
         #expect(service.uid == nil)
     }
+
+    @Test func authenticatedUser_syncsRevenueCatIdentityAndSignOutClearsIt() throws {
+        let identityProbe = PurchasesIdentityProbe()
+        let service = AuthService(
+            testUID: "firebase-user",
+            purchasesIdentitySync: identityProbe.record
+        )
+
+        #expect(identityProbe.actions == [.logIn("firebase-user")])
+
+        try service.signOut()
+
+        #expect(identityProbe.actions == [.logIn("firebase-user"), .logOut])
+    }
+}
+
+@MainActor
+private final class PurchasesIdentityProbe {
+    private(set) var actions: [PurchasesIdentityAction] = []
+
+    func record(_ action: PurchasesIdentityAction) {
+        actions.append(action)
+    }
 }

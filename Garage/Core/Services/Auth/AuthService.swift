@@ -3,7 +3,15 @@ import FirebaseAuth
 import FirebaseCore
 import GoogleSignIn
 import Observation
+import RevenueCat
 import UIKit
+
+enum PurchasesIdentityAction: Equatable {
+    case logIn(String)
+    case logOut
+}
+
+typealias PurchasesIdentitySync = @MainActor (PurchasesIdentityAction) -> Void
 
 @MainActor
 @Observable
@@ -22,10 +30,13 @@ final class AuthService {
     private(set) var isAuthenticated = false
     private var authListener: AuthStateDidChangeListenerHandle?
     private let mode: Mode
+    private let purchasesIdentitySync: PurchasesIdentitySync?
+    private var lastPurchasesIdentity: PurchasesIdentityAction = .logOut
     private var testUID: String?
 
     private init(mode: Mode = .live) {
         self.mode = mode
+        purchasesIdentitySync = mode == .live ? Self.syncRevenueCatIdentity : nil
         guard mode == .live else {
             isAuthenticated = mode == .localDemo
             return
@@ -33,17 +44,18 @@ final class AuthService {
 
         authListener = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             Task { @MainActor in
-                self?.currentUser = user
-                self?.isAuthenticated = user != nil
+                self?.applyAuthenticationState(user)
             }
         }
     }
 
 #if DEBUG
-    init(testUID: String) {
+    init(testUID: String, purchasesIdentitySync: PurchasesIdentitySync? = nil) {
         mode = .uiTest
         self.testUID = testUID
+        self.purchasesIdentitySync = purchasesIdentitySync
         isAuthenticated = true
+        syncPurchasesIdentity(for: testUID)
     }
 #endif
 
@@ -120,18 +132,47 @@ final class AuthService {
         guard !AppRuntime.isLocalDemoMode else { return }
         guard mode == .live else {
             testUID = nil
-            currentUser = nil
-            isAuthenticated = false
+            applyAuthenticationState(nil)
             return
         }
         GIDSignIn.sharedInstance.signOut()
         try Auth.auth().signOut()
-        currentUser = nil
-        isAuthenticated = false
+        applyAuthenticationState(nil)
     }
 }
 
 private extension AuthService {
+    func applyAuthenticationState(_ user: FirebaseAuth.User?) {
+        currentUser = user
+        isAuthenticated = user != nil
+        syncPurchasesIdentity(for: user?.uid)
+    }
+
+    func syncPurchasesIdentity(for userID: String?) {
+        let action = userID.map(PurchasesIdentityAction.logIn) ?? .logOut
+        guard action != lastPurchasesIdentity else { return }
+
+        lastPurchasesIdentity = action
+        purchasesIdentitySync?(action)
+    }
+
+    static func syncRevenueCatIdentity(_ action: PurchasesIdentityAction) {
+        switch action {
+        case .logIn(let userID):
+            Purchases.shared.logIn(userID) { _, _, error in
+                if let error {
+                    AppLogger.purchase.error("RevenueCat logIn failed: \(error.localizedDescription)")
+                }
+            }
+        case .logOut:
+            Purchases.shared.logOut { _, error in
+                if let error {
+                    AppLogger.purchase.error("RevenueCat logOut failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
     struct GoogleSignInTokens: Sendable {
         let idToken: String
         let accessToken: String
