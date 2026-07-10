@@ -44,5 +44,6 @@ If you find a match, you are done — report the prior tier and stop.
 
 ## Assays (newest first)
 
+- 2026-06-29 · **Tier C** · Adopting 10x (agentic NL→SwiftUI app builder; client-side Claude tool-loop + XcodeGen + Simulator preview) as Garage's build tool. · composite 6 · keep-as-REFERENCE: doctrine-compatible & likely this repo's progenitor, but PolyForm-Noncommercial license blocks commercial adoption (and is a possible existing exposure) → redesign-required · → tier-c/2026-06-29_10x-agentic-ios-app-builder.md
 - 2026-06-29 · **Tier D** · Rewriting the Garage app as a React PWA (React + Tailwind + Supabase + Vercel) per blueprint.md's stack would improve velocity/cost via a web stack, replacing native SwiftUI + Firebase. · composite 2 · kill: doctrine_fit=fail (native iOS architecture is LOCKED per README.md; blueprint is product truth, not stack truth) · → tier-d/2026-06-29_react-pwa-supabase-rewrite.md
 <!-- newest assays are PREPENDED above this line; keep this comment last -->
