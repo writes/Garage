@@ -231,3 +231,23 @@ triage:
 
 Remediations R1–R9 implemented by Terra (second pass, same worktree); re-review required
 before merge per §3 validity policy.
+
+## 9. Second live tri-review + remediation disposition (2026-07-10)
+
+Landed commit `04ec7e7` (+`52a0d91`) re-reviewed — brief
+`reports/tri-review/2026-07-10T15-11-35Z.md`: **Fable GO (0.8) · Sol NO-GO (0.99) · Gemini
+NO-GO (0.98) → NO-GO (advisory)**. Triage:
+
+| Finding | Disposition |
+|---|---|
+| `claude -p --model …` fatally mangles arguments (Gemini, 0.98, sole blocker) | **REFUTED live**: `echo … \| claude -p --model claude-fable-5 --tools ""` → `LANE-OK`. Second confidently-wrong blocker of the day (one per non-Anthropic reviewer) — the verify-before-acting layer is load-bearing |
+| agy effective model recorded without resolver verification (Sol, re-raised) | **ACCEPTED → R13**: post-call resolver-log binding; mismatch/unreadable ⇒ failed reviewer (DEGRADED), observed label in the brief |
+| Untracked files invisible to loop cross-check/review (Sol, re-raised as routine case) | **ACCEPTED → R11**: `git add --intent-to-add -A` before evidence diffs |
+| Single-writer not enforced — plan/review lanes keep tools (Sol) | **ACCEPTED → R10**: `--tools ""` + STDIN for loop claude lanes |
+| Reviewers can *read* repo secrets from cwd despite read-only sandbox (Sol) | **ACCEPTED → R12**: reviewers run in an empty temp cwd; all evidence travels in the prompt |
+| Doctrine promises Sol plan co-review; loop had none (Sol) | **ACCEPTED → R14**: advisory `stage_plan_review` (Sol, read-only, concerns fed to implementer) |
+| `is_protected_path` prefix-boundary bug; diff_stat unscreened (Fable + Gemini advisory) | **ACCEPTED → R15** (+R16 selftests) |
+| Manifest→header matching by index (Fable, advisory, re-raised) | **DEFERRED** — advisory-grade; conservative fallback already in place |
+
+Loop-bound: if the round-3 re-review returns NO-GO on genuinely new findings, STOP and hand
+the brief to the operator (the merge gate is theirs regardless — Law 5).
