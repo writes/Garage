@@ -139,9 +139,9 @@ export async function consumeDailyOilAnalysisQuota(
 }
 
 /**
- * Returns a previously consumed quota unit when Anthropic was unavailable or
- * returned unusable output. Input and quota validation failures occur before
- * consumption and must never call this function.
+ * Returns a previously consumed quota unit only after a genuine upstream
+ * infrastructure failure. A completed model response consumes upstream cost,
+ * even when its output is malformed or cannot be recognized as an analysis.
  */
 export async function refundDailyOilAnalysisQuota(
   db: QuotaFirestore,
@@ -293,8 +293,9 @@ export async function parseOilAnalysisRequest(
   const now = (dependencies.now ?? (() => new Date()))();
   await consumeDailyOilAnalysisQuota(dependencies.db, request.auth.uid, now);
 
+  let response: Response;
   try {
-    const response = await dependencies.fetchImpl("https://api.anthropic.com/v1/messages", {
+    response = await dependencies.fetchImpl("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -325,42 +326,44 @@ export async function parseOilAnalysisRequest(
         ],
       }),
     });
-
-    if (!response.ok) {
-      throw new HttpsError("internal", `Claude request failed with ${response.status}.`);
-    }
-
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch {
-      throw new HttpsError("internal", "Claude returned malformed JSON.");
-    }
-
-    const text = modelTextFromPayload(payload);
-    if (!text) {
-      throw new HttpsError("internal", "Claude returned malformed JSON.");
-    }
-
-    try {
-      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim()) as unknown;
-      const sanitized = sanitizeOilAnalysisResponse(parsed);
-      if (!isRecognizableOilAnalysis(parsed, sanitized)) {
-        throw new HttpsError("internal", "unrecognized analysis response");
-      }
-      return sanitized;
-    } catch (error) {
-      if (error instanceof HttpsError) {
-        throw error;
-      }
-      throw new HttpsError("internal", "Claude returned malformed JSON.");
-    }
   } catch (error) {
     await refundDailyOilAnalysisQuota(dependencies.db, request.auth.uid, now);
+    throw new HttpsError("internal", "Claude request failed.");
+  }
+
+  if (!response.ok) {
+    // Anthropic did not complete billable inference on a 5xx response. Other
+    // HTTP failures and all HTTP-OK model-output errors keep their quota unit.
+    if (response.status >= 500) {
+      await refundDailyOilAnalysisQuota(dependencies.db, request.auth.uid, now);
+    }
+    throw new HttpsError("internal", `Claude request failed with ${response.status}.`);
+  }
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new HttpsError("internal", "Claude returned malformed JSON.");
+  }
+
+  const text = modelTextFromPayload(payload);
+  if (!text) {
+    throw new HttpsError("internal", "Claude returned malformed JSON.");
+  }
+
+  try {
+    const parsed = JSON.parse(text.replace(/```json|```/g, "").trim()) as unknown;
+    const sanitized = sanitizeOilAnalysisResponse(parsed);
+    if (!isRecognizableOilAnalysis(parsed, sanitized)) {
+      throw new HttpsError("internal", "unrecognized analysis response");
+    }
+    return sanitized;
+  } catch (error) {
     if (error instanceof HttpsError) {
       throw error;
     }
-    throw new HttpsError("internal", "Claude request failed.");
+    throw new HttpsError("internal", "Claude returned malformed JSON.");
   }
 }
 

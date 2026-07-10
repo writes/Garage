@@ -28,11 +28,10 @@ struct DashboardView: View {
             }
             .navigationTitle("Dashboard")
             .background(Theme.Colors.background.ignoresSafeArea())
-            .task { await reload() }
+            .task(id: appState.currentVehicle?.id) { await reload() }
 #if DEBUG
             .task(id: demoStore.revision) { await reload() }
 #endif
-            .onAppear { Task { await reload() } }
             .onChange(of: appState.selectedTab) { _, selectedTab in
                 guard selectedTab == .dashboard else { return }
                 Task { await reload() }

@@ -32,12 +32,14 @@ final class VehicleService {
 #endif
     }
 
+#if DEBUG
     init(testVehicles: [Vehicle], purchaseService: PurchaseService) {
         mode = .uiTest
         firestore = nil
         self.purchaseService = purchaseService
         self.testVehicles = Dictionary(uniqueKeysWithValues: testVehicles.map { ($0.id, $0) })
     }
+#endif
 
     func createVehicle(_ vehicle: Vehicle) async throws -> Vehicle {
         if var testVehicles {

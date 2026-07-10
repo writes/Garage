@@ -111,7 +111,7 @@ describe("parseOilAnalysisRequest", () => {
     expect(db.data("usage_quotas/owner-1_2026-07-10")).toMatchObject({ count: 0 });
   });
 
-  it("refunds consumed quota when the model returns malformed JSON", async () => {
+  it("keeps consumed quota when an HTTP-OK model response is malformed", async () => {
     const db = new InMemoryFirestore();
 
     await expectHttpsError(parseOilAnalysisRequest({
@@ -119,7 +119,7 @@ describe("parseOilAnalysisRequest", () => {
       data: { pdfBase64: "cGRm" },
     }, dependencies(db, "this is not JSON")), "internal");
 
-    expect(db.data("usage_quotas/owner-1_2026-07-10")).toMatchObject({ count: 0 });
+    expect(db.data("usage_quotas/owner-1_2026-07-10")).toMatchObject({ count: 1 });
   });
 
   it("turns invalid present numeric output into null rather than fabricating a clamped value", () => {
@@ -157,7 +157,7 @@ describe("parseOilAnalysisRequest", () => {
         code: "internal",
         message: "unrecognized analysis response",
       });
-      expect(db.data("usage_quotas/owner-1_2026-07-10")).toMatchObject({ count: 0 });
+      expect(db.data("usage_quotas/owner-1_2026-07-10")).toMatchObject({ count: 1 });
     }
   });
 

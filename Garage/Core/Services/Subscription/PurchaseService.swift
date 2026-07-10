@@ -23,6 +23,7 @@ final class PurchaseService {
         restorePurchasesOverride = nil
     }
 
+#if DEBUG
     init(
         testIsPro: Bool,
         restorePurchasesOverride: (@MainActor () async throws -> Bool)? = nil
@@ -31,6 +32,7 @@ final class PurchaseService {
         isPro = testIsPro
         self.restorePurchasesOverride = restorePurchasesOverride
     }
+#endif
 
     func checkSubscriptionStatus() async {
         guard mode == .live else { return }

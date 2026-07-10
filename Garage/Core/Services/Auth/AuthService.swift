@@ -39,11 +39,13 @@ final class AuthService {
         }
     }
 
+#if DEBUG
     init(testUID: String) {
         mode = .uiTest
         self.testUID = testUID
         isAuthenticated = true
     }
+#endif
 
     var uid: String? {
         if mode == .localDemo || AppRuntime.isLocalDemoMode {

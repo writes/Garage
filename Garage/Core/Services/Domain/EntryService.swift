@@ -11,9 +11,11 @@ final class EntryService {
 
     private init() {}
 
+#if DEBUG
     init(testEntries: [FirestoreEntry]) {
         self.testEntries = testEntries
     }
+#endif
 
     func save(_ entry: FirestoreEntry) async throws {
         if var testEntries {

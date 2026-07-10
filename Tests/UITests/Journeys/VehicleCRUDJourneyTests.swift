@@ -3,6 +3,18 @@ import XCTest
 /// Hermetic UI-routing journey: LOCAL_DEMO_MODE only; no live Firebase or RevenueCat evidence.
 @MainActor
 final class VehicleCRUDJourneyTests: JourneyTestCase {
+    func testDashboardReloadsEntriesForTheNewlySelectedVehicle() {
+        let app = launchDemo()
+        let viperEntry = app.staticTexts["entry.row.odometer.18240"]
+        require(viperEntry)
+
+        tapWhenHittable(app.buttons["vehicle.switcher"])
+        tapWhenHittable(app.buttons["Daily SQ5"])
+
+        require(app.staticTexts["entry.row.odometer.82440"])
+        XCTAssertFalse(viperEntry.exists, "Dashboard must not retain the previous vehicle's entries after switching.")
+    }
+
     func testProDemoAddsAndSelectsVehicleFromSwitcher() {
         let app = launchDemo(pro: true)
         openVehicleForm(in: app)
