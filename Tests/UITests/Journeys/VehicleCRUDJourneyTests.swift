@@ -19,11 +19,9 @@ final class VehicleCRUDJourneyTests: JourneyTestCase {
         requireGone(save)
 
         let switcher = app.buttons["vehicle.switcher"]
-        require(switcher)
-        switcher.tap()
+        tapWhenHittable(switcher)
         let addedVehicle = app.buttons["Journey GT3"]
-        require(addedVehicle)
-        addedVehicle.tap()
+        tapWhenHittable(addedVehicle)
         require(app.staticTexts["Journey GT3"])
     }
 
@@ -44,11 +42,9 @@ final class VehicleCRUDJourneyTests: JourneyTestCase {
 
     private func openVehicleForm(in app: XCUIApplication) {
         let switcher = app.buttons["vehicle.switcher"]
-        require(switcher)
-        switcher.tap()
+        tapWhenHittable(switcher)
         let addVehicle = app.buttons["vehicle.switcher.add"]
-        require(addVehicle)
-        addVehicle.tap()
+        tapWhenHittable(addVehicle)
         require(app.textFields["vehicle.form.nickname"])
     }
 }

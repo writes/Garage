@@ -38,8 +38,10 @@ final class FirestoreProfileStore: ProfileStore {
 final class ProfileViewModel {
     private let store: (any ProfileStore)?
     private let userID: () -> String?
+#if DEBUG
     private let isDemoMode: Bool
     private let demoStore: DemoSessionStore
+#endif
 
     var name = ""
     var address = ""
@@ -48,6 +50,7 @@ final class ProfileViewModel {
     var policyNumber = ""
     private(set) var error: AppError?
 
+#if DEBUG
     init(
         store: (any ProfileStore)? = nil,
         userID: @escaping () -> String? = { AuthService.shared.uid },
@@ -57,17 +60,35 @@ final class ProfileViewModel {
         self.userID = userID
         self.isDemoMode = isDemoMode
         self.demoStore = demoStore
-        self.store = store ?? (isDemoMode ? nil : FirestoreProfileStore())
+        if isDemoMode {
+            self.store = store
+        } else {
+            self.store = store ?? FirestoreProfileStore()
+        }
         Task { [weak self] in
             await self?.load()
         }
     }
+#else
+    init(
+        store: (any ProfileStore)? = nil,
+        userID: @escaping () -> String? = { AuthService.shared.uid }
+    ) {
+        self.userID = userID
+        self.store = store ?? FirestoreProfileStore()
+        Task { [weak self] in
+            await self?.load()
+        }
+    }
+#endif
 
     func load() async {
+#if DEBUG
         if isDemoMode {
             apply(demoStore.profile())
             return
         }
+#endif
         guard let uid = userID() else {
             error = .auth("Not authenticated")
             return
@@ -87,11 +108,13 @@ final class ProfileViewModel {
 
     @discardableResult
     func save() async -> Bool {
+#if DEBUG
         if isDemoMode {
             demoStore.saveProfile(fields)
             error = nil
             return true
         }
+#endif
         guard let uid = userID() else {
             error = .auth("Not authenticated")
             return false

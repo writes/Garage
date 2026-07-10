@@ -7,8 +7,7 @@ final class RemindersGateJourneyTests: JourneyTestCase {
         let app = launchDemo()
         tapTab("Settings", in: app)
         let reminders = app.buttons["settings.reminders"]
-        require(reminders)
-        reminders.tap()
+        tapWhenHittable(reminders)
 
         require(app.buttons["reminder.gate.cta"])
         XCTAssertFalse(app.textFields["reminder.form.title"].exists)
@@ -18,8 +17,7 @@ final class RemindersGateJourneyTests: JourneyTestCase {
         let app = launchDemo(pro: true)
         tapTab("Settings", in: app)
         let reminders = app.buttons["settings.reminders"]
-        require(reminders)
-        reminders.tap()
+        tapWhenHittable(reminders)
 
         replaceText(in: app.textFields["reminder.form.title"], with: "Journey Reminder")
         replaceText(in: app.textFields["reminder.form.mileage"], with: "19000")

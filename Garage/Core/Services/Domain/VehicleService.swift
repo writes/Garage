@@ -23,8 +23,13 @@ final class VehicleService {
         purchaseService: PurchaseService? = nil
     ) {
         self.mode = mode
+#if DEBUG
         self.firestore = firestore ?? (mode == .live && !AppRuntime.isLocalDemoMode ? .shared : nil)
         self.purchaseService = purchaseService ?? (mode == .live && !AppRuntime.isLocalDemoMode ? .shared : .uiTest)
+#else
+        self.firestore = firestore ?? (mode == .live ? .shared : nil)
+        self.purchaseService = purchaseService ?? (mode == .live ? .shared : .uiTest)
+#endif
     }
 
     init(testVehicles: [Vehicle], purchaseService: PurchaseService) {
@@ -41,6 +46,7 @@ final class VehicleService {
             self.testVehicles = testVehicles
             return vehicle
         }
+#if DEBUG
         if AppRuntime.isLocalDemoMode {
             try Self.validateVehicleLimit(
                 existingVehicleCount: DemoSessionStore.shared.vehicles().count,
@@ -52,6 +58,7 @@ final class VehicleService {
             DemoSessionStore.shared.save(demoVehicle)
             return demoVehicle
         }
+#endif
         guard mode == .live else { return vehicle }
         guard let uid = AuthService.shared.uid else {
             throw AppError.auth("Not authenticated")
@@ -83,10 +90,12 @@ final class VehicleService {
             self.testVehicles = testVehicles
             return
         }
+#if DEBUG
         if AppRuntime.isLocalDemoMode {
             DemoSessionStore.shared.save(vehicle)
             return
         }
+#endif
         guard mode == .live else { return }
         guard let firestore else {
             throw AppError.database("Firestore unavailable")
@@ -101,9 +110,11 @@ final class VehicleService {
         if let testVehicles {
             return testVehicles.values.sorted { $0.displayOrder < $1.displayOrder }
         }
+#if DEBUG
         if AppRuntime.isLocalDemoMode {
             return DemoSessionStore.shared.vehicles()
         }
+#endif
         guard mode == .live else {
             return SeedData.vehicles
         }
@@ -126,9 +137,11 @@ final class VehicleService {
     }
 
     func listenToVehicles() -> AsyncThrowingStream<[Vehicle], Error> {
+#if DEBUG
         if AppRuntime.isLocalDemoMode {
             return Self.singleVehicleStream(DemoSessionStore.shared.vehicles())
         }
+#endif
         guard mode == .live else {
             return Self.singleVehicleStream(SeedData.vehicles)
         }

@@ -43,11 +43,9 @@ final class EntryCreateJourneyTests: JourneyTestCase {
 
     private func openFuelForm(in app: XCUIApplication) {
         let addEntry = app.buttons["entry.add"]
-        require(addEntry)
-        addEntry.tap()
+        tapWhenHittable(addEntry)
         let fuel = app.buttons["entry.picker.fuel"]
-        require(fuel)
-        fuel.tap()
+        tapWhenHittable(fuel)
         require(app.textFields["fuel.form.gallons"])
     }
 }

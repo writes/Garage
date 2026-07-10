@@ -12,17 +12,14 @@ final class PaywallRoutingJourneyTests: JourneyTestCase {
 
         tapTab("Settings", in: app)
         let reminders = app.buttons["settings.reminders"]
-        require(reminders)
-        reminders.tap()
+        tapWhenHittable(reminders)
         routeToSubscription(from: app.buttons["reminder.gate.cta"], in: app)
         dismissSheet(in: app, waitingFor: app.buttons["subscription.refresh"])
 
         let settingsBack = app.navigationBars.buttons["Settings"]
-        require(settingsBack)
-        settingsBack.tap()
+        tapWhenHittable(settingsBack)
         let export = app.buttons["settings.export"]
-        require(export)
-        export.tap()
+        tapWhenHittable(export)
         routeToSubscription(from: app.buttons["export.gate.cta"], in: app)
     }
 
@@ -35,23 +32,19 @@ final class PaywallRoutingJourneyTests: JourneyTestCase {
 
         tapTab("Settings", in: app)
         let reminders = app.buttons["settings.reminders"]
-        require(reminders)
-        reminders.tap()
+        tapWhenHittable(reminders)
         require(app.textFields["reminder.form.title"])
 
         let settingsBack = app.navigationBars.buttons["Settings"]
-        require(settingsBack)
-        settingsBack.tap()
+        tapWhenHittable(settingsBack)
         let export = app.buttons["settings.export"]
-        require(export)
-        export.tap()
+        tapWhenHittable(export)
         require(app.buttons["export.buildCSV"])
         XCTAssertFalse(app.buttons["export.gate.cta"].exists)
     }
 
     private func routeToSubscription(from gate: XCUIElement, in app: XCUIApplication) {
-        require(gate)
-        gate.tap()
+        tapWhenHittable(gate)
         require(app.buttons["subscription.refresh"])
     }
 }

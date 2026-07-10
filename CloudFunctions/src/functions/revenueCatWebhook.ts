@@ -150,11 +150,11 @@ function storedSubscriptionUpdatedAt(userData: Record<string, unknown> | undefin
  */
 function entitlementActivityForEvent(event: RevenueCatEvent): boolean | undefined {
   if (grantEventTypes.has(event.type)) {
-    return event.entitlementIds.includes("pro");
+    return event.entitlementIds.includes("pro") ? true : undefined;
   }
 
   if (event.type === "EXPIRATION") {
-    return false;
+    return event.entitlementIds.includes("pro") ? false : undefined;
   }
 
   return undefined;

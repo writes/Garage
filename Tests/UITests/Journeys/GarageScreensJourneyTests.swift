@@ -30,14 +30,12 @@ final class GarageScreensJourneyTests: JourneyTestCase {
     }
 
     private func open(_ element: XCUIElement, in app: XCUIApplication) {
-        require(element)
-        element.tap()
+        tapWhenHittable(element)
     }
 
     private func addSparePart(in app: XCUIApplication) {
         let add = app.buttons["parts.add"]
-        require(add)
-        add.tap()
+        tapWhenHittable(add)
         replaceText(in: app.textFields["parts.form.name"], with: "Journey Brake Pads")
         replaceText(in: app.textFields["parts.form.quantity"], with: "2")
         replaceText(in: app.textFields["parts.form.location"], with: "Test Shelf")

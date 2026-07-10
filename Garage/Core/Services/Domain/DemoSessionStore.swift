@@ -1,3 +1,4 @@
+#if DEBUG
 import Foundation
 import Observation
 
@@ -99,3 +100,4 @@ final class DemoSessionStore {
             .map { $0 }
     }
 }
+#endif

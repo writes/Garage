@@ -7,20 +7,17 @@ final class ProfilePersistenceJourneyTests: JourneyTestCase {
         let app = launchDemo()
         tapTab("Settings", in: app)
         let profile = app.buttons["settings.profile"]
-        require(profile)
-        profile.tap()
+        tapWhenHittable(profile)
 
         replaceText(in: app.textFields["profile.name"], with: "Journey Driver")
         replaceText(in: app.textFields["profile.phone"], with: "555-0199")
         dismissKeyboard(in: app)
         let save = app.buttons["profile.save"]
-        require(save)
-        save.tap()
+        tapWhenHittable(save)
 
         let settingsBack = app.navigationBars.buttons["Settings"]
-        require(settingsBack)
-        settingsBack.tap()
-        profile.tap()
+        tapWhenHittable(settingsBack)
+        tapWhenHittable(profile)
 
         let name = app.textFields["profile.name"]
         let phone = app.textFields["profile.phone"]

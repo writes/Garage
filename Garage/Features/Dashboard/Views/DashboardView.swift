@@ -3,7 +3,9 @@ import SwiftUI
 struct DashboardView: View {
     @Environment(AppState.self) private var appState
     @State private var viewModel = DashboardViewModel()
+#if DEBUG
     @State private var demoStore = DemoSessionStore.shared
+#endif
 
     var body: some View {
         NavigationStack {
@@ -27,7 +29,9 @@ struct DashboardView: View {
             .navigationTitle("Dashboard")
             .background(Theme.Colors.background.ignoresSafeArea())
             .task { await reload() }
+#if DEBUG
             .task(id: demoStore.revision) { await reload() }
+#endif
             .onAppear { Task { await reload() } }
             .onChange(of: appState.selectedTab) { _, selectedTab in
                 guard selectedTab == .dashboard else { return }
@@ -77,13 +81,15 @@ struct DashboardView: View {
     }
 
     private var displayedReminders: [Reminder] {
-        guard AppRuntime.isLocalDemoMode, let vehicleId = appState.currentVehicle?.id else {
-            return viewModel.upcomingReminders
-        }
+#if DEBUG
+        if AppRuntime.isLocalDemoMode, let vehicleId = appState.currentVehicle?.id {
         _ = demoStore.revision
         return demoStore.reminders(for: vehicleId).sorted {
             ($0.dueDate ?? .distantFuture) < ($1.dueDate ?? .distantFuture)
         }
+        }
+#endif
+        return viewModel.upcomingReminders
     }
 
     private func reload() async {

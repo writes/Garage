@@ -12,8 +12,7 @@ final class AuthRoutingJourneyTests: JourneyTestCase {
 
         tapTab("Settings", in: app)
         let signOut = app.buttons["settings.signout"]
-        require(signOut)
-        signOut.tap()
+        tapWhenHittable(signOut)
 
         require(app.buttons["login.googleButton"])
         XCTAssertFalse(app.tabBars.buttons["Dashboard"].exists)

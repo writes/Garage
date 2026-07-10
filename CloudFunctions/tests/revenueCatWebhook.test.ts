@@ -94,7 +94,7 @@ describe("handleRevenueCatWebhookRequest", () => {
     });
   });
 
-  it("deactivates an EXPIRATION even when the expired pro entitlement is listed", async () => {
+  it("deactivates an EXPIRATION when the expired pro entitlement is listed", async () => {
     const db = new InMemoryFirestore();
     db.seed("users/owner-1", {});
 
@@ -114,6 +114,56 @@ describe("handleRevenueCatWebhookRequest", () => {
 
     expect(db.data("users/owner-1")).toMatchObject({
       subscription: { isActive: true },
+    });
+  });
+
+  it("records an unrelated renewal without changing the active pro entitlement", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/owner-1", {
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        updatedAt: "2026-07-09T10:00:00.000Z",
+      },
+    });
+
+    await send(db, event({ entitlement_ids: ["premium_support"], id: "unrelated-renewal" }));
+
+    expect(db.data("users/owner-1")).toMatchObject({
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        updatedAt: "2026-07-09T10:00:00.000Z",
+      },
+    });
+    expect(db.data("revenuecat_events/unrelated-renewal")).toMatchObject({
+      entitlementIds: ["premium_support"],
+      type: "RENEWAL",
+    });
+  });
+
+  it("records an unrelated expiration without changing the active pro entitlement", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/owner-1", {
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        updatedAt: "2026-07-09T10:00:00.000Z",
+      },
+    });
+
+    await send(db, event({ entitlement_ids: ["premium_support"], id: "unrelated-expiration", type: "EXPIRATION" }));
+
+    expect(db.data("users/owner-1")).toMatchObject({
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        updatedAt: "2026-07-09T10:00:00.000Z",
+      },
+    });
+    expect(db.data("revenuecat_events/unrelated-expiration")).toMatchObject({
+      entitlementIds: ["premium_support"],
+      type: "EXPIRATION",
     });
   });
 
@@ -226,7 +276,12 @@ describe("handleRevenueCatWebhookRequest", () => {
     const timestamp = Date.parse("2026-07-12T10:00:00.000Z");
 
     await send(db, event({ id: "same-ms-grant", event_timestamp_ms: timestamp, type: "RENEWAL" }));
-    await send(db, event({ id: "same-ms-revoke", event_timestamp_ms: timestamp, type: "EXPIRATION" }));
+    await send(db, event({
+      id: "same-ms-revoke",
+      entitlement_ids: ["pro"],
+      event_timestamp_ms: timestamp,
+      type: "EXPIRATION",
+    }));
 
     expect(db.data("users/owner-1")).toMatchObject({
       subscription: { isActive: false, updatedAt: "2026-07-12T10:00:00.000Z" },

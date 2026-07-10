@@ -20,20 +20,17 @@ final class LogSearchFilterJourneyTests: JourneyTestCase {
         require(oilRow)
 
         let filter = app.buttons["log.filter"]
-        require(filter)
-        filter.tap()
+        tapWhenHittable(filter)
         let oilFilter = app.switches["log.filter.oil_change"]
-        require(oilFilter)
-        oilFilter.tap()
+        tapWhenHittable(oilFilter)
         dismissSheet(in: app, waitingFor: oilFilter)
 
         require(oilRow)
         XCTAssertFalse(trackRow.exists)
         XCTAssertFalse(app.buttons["log.row.seed-viper-brake"].exists)
 
-        filter.tap()
-        require(oilFilter)
-        oilFilter.tap()
+        tapWhenHittable(filter)
+        tapWhenHittable(oilFilter)
         dismissSheet(in: app, waitingFor: oilFilter)
         require(trackRow)
         require(oilRow)

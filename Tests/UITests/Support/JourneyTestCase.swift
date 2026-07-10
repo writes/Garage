@@ -1,6 +1,25 @@
 import XCTest
 
 @MainActor
+extension XCTestCase {
+    func tapWhenHittable(
+        _ element: XCUIElement,
+        timeout: TimeInterval = 12,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND hittable == true"),
+            object: element
+        )
+        let result = XCTWaiter.wait(for: [expectation], timeout: timeout)
+        XCTAssertEqual(result, .completed, "Expected hittable \(element)", file: file, line: line)
+        guard result == .completed else { return }
+        element.tap()
+    }
+}
+
+@MainActor
 class JourneyTestCase: XCTestCase {
     static let timeout: TimeInterval = 12
 
@@ -50,8 +69,7 @@ class JourneyTestCase: XCTestCase {
     }
 
     func replaceText(in field: XCUIElement, with text: String) {
-        require(field)
-        field.tap()
+        tapWhenHittable(field)
         if let existing = field.value as? String, !existing.isEmpty {
             field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count))
         }
@@ -67,8 +85,7 @@ class JourneyTestCase: XCTestCase {
 
     func tapTab(_ title: String, in app: XCUIApplication) {
         let tab = app.tabBars.buttons[title]
-        require(tab)
-        tab.tap()
+        tapWhenHittable(tab)
     }
 
     func revealAndTap(_ element: XCUIElement, in app: XCUIApplication) {
@@ -76,31 +93,24 @@ class JourneyTestCase: XCTestCase {
         for _ in 0..<3 where !element.isHittable {
             app.swipeUp()
         }
-        let expectation = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "exists == true AND hittable == true"),
-            object: element
-        )
-        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: JourneyTestCase.timeout), .completed)
-        element.tap()
+        tapWhenHittable(element)
     }
 
     func returnToGarage(in app: XCUIApplication) {
         let backButton = app.navigationBars.buttons["Garage"]
-        require(backButton)
-        backButton.tap()
+        tapWhenHittable(backButton)
     }
 
     func dismissSheet(in app: XCUIApplication, waitingFor element: XCUIElement) {
         let close = app.buttons["sheet.dismiss"]
-        require(close)
-        close.tap()
+        tapWhenHittable(close)
         requireGone(element)
     }
 
     func dismissSheetIfPresented(in app: XCUIApplication) {
         let close = app.buttons["sheet.dismiss"]
         guard close.waitForExistence(timeout: 5) else { return }
-        close.tap()
+        tapWhenHittable(close, timeout: 5)
         requireGone(close)
     }
 

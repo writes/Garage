@@ -16,8 +16,7 @@ final class ExportFlowJourneyTests: JourneyTestCase {
         openExport(in: app)
 
         let galleryToggle = app.switches["export.toggle.galleryPhotos"]
-        require(galleryToggle)
-        galleryToggle.tap()
+        tapWhenHittable(galleryToggle)
         revealAndTap(app.buttons["export.buildCSV"], in: app)
 
         let result = app.staticTexts["export.result"]
@@ -29,7 +28,6 @@ final class ExportFlowJourneyTests: JourneyTestCase {
     private func openExport(in app: XCUIApplication) {
         tapTab("Settings", in: app)
         let export = app.buttons["settings.export"]
-        require(export)
-        export.tap()
+        tapWhenHittable(export)
     }
 }
