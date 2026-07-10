@@ -60,6 +60,7 @@ Cleanup (human, after inspecting the worktree):
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -87,6 +88,9 @@ from tri_review import (  # noqa: E402  (same cap mechanics)
     _coverage_markdown,
     _parse_name_status,
     cap_diff_with_coverage,
+    redact_secret_content,
+    secret_scan,
+    valid_timestamp,
 )
 
 # ---------------------------------------------------------------------------
@@ -137,6 +141,7 @@ REVIEW_PROTOCOL_ARTIFACTS = (
     "DECISION.md",
     "RESOLUTION.md",
 )
+CROSS_CHECK_VIOLATION = "CROSS-CHECK VIOLATION: unexpected worktree delta (reverted)"
 
 
 def _now_iso() -> str:
@@ -289,6 +294,36 @@ def cleanup_hint(repo: str, worktree: str, branch: str) -> str:
     )
 
 
+def append_plan_review_bypass_override(
+    repo: str, worktree: str, timestamp: str, reason: str, branch: str
+) -> Dict[str, str]:
+    """Durably record the governed Sol-plan-review bypass before implementation."""
+    head = _git(worktree, "rev-parse", "HEAD")
+    if not head.ok or not head.stdout.strip():
+        raise RuntimeError(f"unable to resolve candidate HEAD for operator override: {head.note}")
+    safe_reason, labels = redact_secret_content(reason.strip())
+    row: Dict[str, str] = {
+        "timestamp": timestamp,
+        "type": "operator_override",
+        "protocol": "operator_override",
+        "action": "plan-review-bypass",
+        "reason": safe_reason,
+        "branch": branch,
+        "head_sha": head.stdout.strip(),
+    }
+    if labels:
+        row["redactions"] = ", ".join(labels)
+    ledger_path = os.path.join(repo, "DECISION_LEDGER.jsonl")
+    try:
+        with open(ledger_path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+    except OSError as exc:
+        raise RuntimeError(f"unable to append operator override ledger row: {exc}") from exc
+    return row
+
+
 # ---------------------------------------------------------------------------
 # Prompt construction
 # ---------------------------------------------------------------------------
@@ -370,12 +405,64 @@ def _write(worktree: str, name: str, content: str) -> None:
         fh.write(content)
 
 
+def _write_sanitized_provider_artifact(
+    worktree: str, name: str, content: str, raw_stdout: str = ""
+) -> str:
+    """Persist a provider-derived artifact only after content/output secret redaction."""
+    sanitized, content_labels = redact_secret_content(content)
+    raw_labels = secret_scan(raw_stdout) if raw_stdout else []
+    labels = list(dict.fromkeys([*content_labels, *raw_labels]))
+    if labels:
+        sanitized = (
+            sanitized.rstrip()
+            + "\n\n## Output redaction\n\n"
+            + "- Redacted secret-like provider-output pattern(s): "
+            + ", ".join(labels)
+            + "\n"
+        )
+    _write(worktree, name, sanitized)
+    return sanitized
+
+
 def _read(worktree: str, name: str) -> str:
     path = os.path.join(worktree, name)
     if not os.path.exists(path):
         return ""
     with open(path, encoding="utf-8") as fh:
         return fh.read()
+
+
+def _cross_check_delta_snapshot(worktree: str) -> Tuple[str, str]:
+    """Capture the status and exact HEAD-diff digest immediately before agy runs."""
+    status = _git(worktree, "status", "--porcelain")
+    diff = _git(worktree, "diff", "HEAD")
+    if not status.ok or not diff.ok:
+        detail = status.note if not status.ok else diff.note
+        raise RuntimeError(f"unable to snapshot cross-check worktree state: {detail}")
+    return status.stdout, hashlib.sha256(diff.stdout.encode("utf-8")).hexdigest()
+
+
+def _cross_check_delta_changed(worktree: str, before: Tuple[str, str]) -> bool:
+    """Return True when either required zero-delta structural snapshot changed."""
+    return _cross_check_delta_snapshot(worktree) != before
+
+
+def _revert_cross_check_delta(worktree: str) -> Tuple[StepResult, StepResult]:
+    """Apply the mandated hard reset of a writing cross-checker's worktree delta."""
+    checkout = _git(worktree, "checkout", "--", ".")
+    clean = _git(worktree, "clean", "-fd")
+    return checkout, clean
+
+
+def _cross_check_violation_report(worktree: str) -> str:
+    """Record and contain the protocol breach after an unexpected agy delta."""
+    checkout, clean = _revert_cross_check_delta(worktree)
+    restoration_note = ""
+    if not checkout.ok or not clean.ok:
+        details = [res.note for res in (checkout, clean) if not res.ok]
+        restoration_note = "\n- Restoration command failure: " + "; ".join(details)
+    report = "# CROSS_CHECK\n\n" + CROSS_CHECK_VIOLATION + restoration_note + "\n"
+    return _write_sanitized_provider_artifact(worktree, "CROSS_CHECK.md", report)
 
 
 def stage_plan(worktree: str, goal: str, prior_review: str, iteration: int,
@@ -412,7 +499,7 @@ def stage_plan_review(
             "# PLAN REVIEW (dry-run)\n\n"
             "(Sol plan co-review unavailable in dry-run; fail-closed halt)\n"
         )
-        _write(worktree, "PLAN_REVIEW.md", report)
+        report = _write_sanitized_provider_artifact(worktree, "PLAN_REVIEW.md", report)
         return report, "", True
 
     res = _run_in_empty_cwd(
@@ -432,10 +519,12 @@ def stage_plan_review(
             "# PLAN REVIEW\n\n"
             f"(Sol plan co-review unavailable or malformed: {detail}; fail-closed halt)\n"
         )
-        _write(worktree, "PLAN_REVIEW.md", report)
+        report = _write_sanitized_provider_artifact(
+            worktree, "PLAN_REVIEW.md", report, res.stdout
+        )
         return report, "", True
 
-    normalized = [concern[:500] for concern in concerns]
+    normalized = [redact_secret_content(concern[:500])[0] for concern in concerns]
     concern_text = "\n".join(f"- {concern}" for concern in normalized)[:4000]
     report = (
         "# PLAN REVIEW\n\n"
@@ -445,7 +534,7 @@ def stage_plan_review(
         + (concern_text if concern_text else "- (none)")
         + "\n"
     )
-    _write(worktree, "PLAN_REVIEW.md", report)
+    report = _write_sanitized_provider_artifact(worktree, "PLAN_REVIEW.md", report, res.stdout)
     return report, concern_text, not approve
 
 
@@ -487,16 +576,14 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
     intent_result = _git(worktree, "add", "--intent-to-add", "-A")
     if not intent_result.ok:
         report = f"(cross-check unavailable: {intent_result.note})\n"
-        _write(worktree, "CROSS_CHECK.md", report)
-        return report
+        return _write_sanitized_provider_artifact(worktree, "CROSS_CHECK.md", report)
 
     diff_result = _git(worktree, "diff", "HEAD")
     manifest_result = _git(worktree, "diff", "--name-status", "HEAD")
     if not diff_result.ok or not manifest_result.ok:
         note = diff_result.note if not diff_result.ok else manifest_result.note
         report = f"(cross-check unavailable: {note})\n"
-        _write(worktree, "CROSS_CHECK.md", report)
-        return report
+        return _write_sanitized_provider_artifact(worktree, "CROSS_CHECK.md", report)
 
     manifest_entries = _parse_name_status(manifest_result.stdout)
     capped_diff, coverage = cap_diff_with_coverage(diff_result.stdout, manifest_entries)
@@ -515,15 +602,16 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
         print(f"  [DRY-RUN CROSS-CHECK] would run: agy --sandbox --model {GEMINI_MODEL!r} "
               f"-p <cross-check-prompt {len(prompt)} chars> --print-timeout {CROSS_CHECK_TIMEOUT}s < /dev/null")
         report = "# CROSS_CHECK (dry-run)\n\n(no agent invoked)\n"
-        _write(worktree, "CROSS_CHECK.md", report)
-        return report
+        return _write_sanitized_provider_artifact(worktree, "CROSS_CHECK.md", report)
 
+    raw_stdout = ""
     try:
         # The cross-checker gets only the capped diff and coverage in its
         # prompt. Running it from a brand-new empty cwd makes a second writer
         # structurally impossible; the post-stage scope guard remains a belt
         # and suspenders containment check.
         with agy_resolver_lock():
+            pre_agy_snapshot = _cross_check_delta_snapshot(worktree)
             resolver_snapshot = capture_agy_resolver_offset()
             result = _run_in_empty_cwd(
                 cmd,
@@ -531,10 +619,14 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
                 timeout=CROSS_CHECK_TIMEOUT + 30,
                 label="gemini/cross-check",
             )
+            raw_stdout = result.stdout or ""
+            if _cross_check_delta_changed(worktree, pre_agy_snapshot):
+                return _cross_check_violation_report(worktree)
             if not result.ok:
                 report = f"(cross-check unavailable: {result.note})\n"
-                _write(worktree, "CROSS_CHECK.md", report)
-                return report
+                return _write_sanitized_provider_artifact(
+                    worktree, "CROSS_CHECK.md", report, raw_stdout
+                )
 
             model_verified, resolver_label = verify_agy_resolver(GEMINI_MODEL, resolver_snapshot)
             if not model_verified:
@@ -545,8 +637,9 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
                     "(cross-check unavailable: agy model downgrade detected "
                     f"(observed: {resolver_label}))\n"
                 )
-                _write(worktree, "CROSS_CHECK.md", report)
-                return report
+                return _write_sanitized_provider_artifact(
+                    worktree, "CROSS_CHECK.md", report, raw_stdout
+                )
 
             # Parse while the resolver lock is still held so this command's
             # evidence cannot be interleaved with another agy lane.
@@ -554,15 +647,16 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
             findings = parsed.get("findings") if isinstance(parsed, dict) else None
     except AgyResolverLockError as exc:
         report = f"(cross-check unavailable: agy resolver lock unavailable: {exc})\n"
-        _write(worktree, "CROSS_CHECK.md", report)
-        return report
+        return _write_sanitized_provider_artifact(worktree, "CROSS_CHECK.md", report)
+    except RuntimeError as exc:
+        report = f"(cross-check unavailable: {exc})\n"
+        return _write_sanitized_provider_artifact(worktree, "CROSS_CHECK.md", report, raw_stdout)
 
     if not isinstance(findings, list) or not all(isinstance(item, str) for item in findings):
         report = "(cross-check unavailable: malformed JSON findings)\n"
-        _write(worktree, "CROSS_CHECK.md", report)
-        return report
+        return _write_sanitized_provider_artifact(worktree, "CROSS_CHECK.md", report, raw_stdout)
 
-    normalized = [item[:500] for item in findings]
+    normalized = [redact_secret_content(item[:500])[0] for item in findings]
     report = (
         "# CROSS_CHECK\n\n"
         f"- Model: `{GEMINI_MODEL}`\n"
@@ -571,8 +665,7 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
         + ("\n".join(f"- {item}" for item in normalized) if normalized else "- (none)")
         + "\n"
     )
-    _write(worktree, "CROSS_CHECK.md", report)
-    return report
+    return _write_sanitized_provider_artifact(worktree, "CROSS_CHECK.md", report, raw_stdout)
 
 
 def _review_diff_pathspec() -> List[str]:
@@ -713,6 +806,8 @@ def run_loop(
     run_gate_each: bool,
     run_cross_check: bool,
     run_plan_review: bool,
+    override_reason: Optional[str],
+    timestamp: Optional[str],
     dry_run: bool,
 ) -> Dict[str, object]:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -722,6 +817,13 @@ def run_loop(
     print(f"  branch:   {branch}  (base: {base})")
 
     _write(worktree, "GOAL.md", f"# GOAL\n\n{goal}\n")
+    override_row: Optional[Dict[str, str]] = None
+    if not run_plan_review:
+        if not override_reason or not timestamp:
+            raise RuntimeError("--no-plan-review requires --override-reason and --timestamp")
+        override_row = append_plan_review_bypass_override(
+            repo, worktree, timestamp, override_reason, branch
+        )
 
     state: Dict[str, object] = {
         "goal": goal,
@@ -733,6 +835,7 @@ def run_loop(
         "dry_run": dry_run,
         "cross_check_enabled": run_cross_check,
         "plan_review_enabled": run_plan_review,
+        "plan_review_override": override_row,
         "iterations": [],
         "halted": False,
         "done": False,
@@ -755,12 +858,19 @@ def run_loop(
                 worktree, goal, plan, dry_run
             )
         else:
+            safe_reason, _ = redact_secret_content(override_reason or "")
             override_line = "OPERATOR OVERRIDE: Sol plan co-review disabled"
             print(override_line)
-            plan_review = f"# PLAN REVIEW\n\n{override_line}\n"
+            plan_review = (
+                f"# PLAN REVIEW\n\n{override_line}\n"
+                f"- Reason: {safe_reason}\n"
+                f"- Ledger timestamp: `{timestamp}`\n"
+            )
             sol_concerns = ""
             plan_rejected = False
-            _write(worktree, "PLAN_REVIEW.md", plan_review)
+            plan_review = _write_sanitized_provider_artifact(
+                worktree, "PLAN_REVIEW.md", plan_review
+            )
         rec["plan_review"] = plan_review[:4000]
         rec["sol_concerns_chars"] = len(sol_concerns)
         rec["plan_rejected"] = plan_rejected
@@ -799,6 +909,14 @@ def run_loop(
         else:
             cross_check = stage_cross_check(worktree, dry_run)
         rec["cross_check"] = cross_check.strip()
+        if CROSS_CHECK_VIOLATION in cross_check:
+            print("HALT: Gemini cross-check produced an unexpected worktree delta (reverted).")
+            rec["cross_check_violation"] = True
+            rec["finished"] = _now_iso()
+            state["iterations"].append(rec)      # type: ignore[attr-defined]
+            state["halted"] = True
+            _write_state(worktree, state)
+            break
 
         # Gemini receives a read-only sandbox prompt, but that is not the
         # enforcement boundary. Re-run the same scope fence after its process
@@ -870,6 +988,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                     help="Skip the non-fatal read-only Gemini implementation cross-check.")
     ap.add_argument("--no-plan-review", action="store_true",
                     help="Governed operator override: disable the required GPT-5.6 Sol plan co-review.")
+    ap.add_argument("--override-reason",
+                    help="Required durable operator reason when --no-plan-review is used.")
+    ap.add_argument("--timestamp",
+                    help="Required ISO8601 UTC timestamp for a --no-plan-review operator override.")
     ap.add_argument("--dry-run", action="store_true",
                     help="Print the claude/codex commands instead of running them; still "
                          "creates the worktree and runs scope_guard so it is verifiable.")
@@ -879,6 +1001,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     goal = _load_goal(args)
     if not goal:
         ap.error("a goal is required: pass --goal \"...\" or --goal-file PATH")
+    if args.no_plan_review:
+        if not args.override_reason or not args.override_reason.strip():
+            ap.error("--no-plan-review requires --override-reason \"<text>\"")
+        if not args.timestamp or not valid_timestamp(args.timestamp):
+            ap.error("--no-plan-review requires --timestamp YYYY-MM-DDTHH:MM:SSZ")
+    elif args.override_reason:
+        ap.error("--override-reason is valid only with --no-plan-review")
+    elif args.timestamp and not valid_timestamp(args.timestamp):
+        ap.error("--timestamp must be YYYY-MM-DDTHH:MM:SSZ")
 
     repo = os.path.abspath(args.repo)
     base = args.base or _current_branch(repo)
@@ -900,6 +1031,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             run_gate_each=args.gate,
             run_cross_check=not args.no_cross_check,
             run_plan_review=not args.no_plan_review,
+            override_reason=args.override_reason,
+            timestamp=args.timestamp,
             dry_run=args.dry_run,
         )
     except RuntimeError as exc:

@@ -29,6 +29,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from typing import Dict, Optional, Tuple
 
 VERTEX_MODEL = "gemini-2.5-pro"
@@ -105,6 +106,17 @@ def _agy_resolver_log_path() -> str:
     )
 
 
+def _agy_lock_timeout() -> float:
+    """Return the bounded resolver-lock wait, defaulting safely to 120 seconds."""
+    raw = os.environ.get("BRAIN_AGY_LOCK_TIMEOUT")
+    if raw is None:
+        return 120.0
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 120.0
+
+
 def _agy_lock_paths() -> Tuple[str, ...]:
     """Return the configured lock path followed by the safe temp fallback."""
     configured = os.environ.get("BRAIN_AGY_LOCK")
@@ -129,16 +141,35 @@ def agy_resolver_lock():
     """
     fd: Optional[int] = None
     errors = []
+    deadline = time.monotonic() + _agy_lock_timeout()
     for candidate in _agy_lock_paths():
         try:
             fd = os.open(candidate, os.O_CREAT | os.O_RDWR, 0o600)
-            fcntl.flock(fd, fcntl.LOCK_EX)
-            break
         except OSError as exc:
             errors.append(f"{candidate}: {exc}")
-            if fd is not None:
+            continue
+
+        # A usable primary lock must not fall through to the fallback merely
+        # because another process holds it. That would create two independent
+        # lock domains and let resolver evidence cross lanes. Instead retry a
+        # non-blocking flock until the monotonic deadline, then fail closed.
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    os.close(fd)
+                    raise AgyResolverLockError("agy lock timeout")
+                time.sleep(min(0.1, remaining))
+            except OSError as exc:
+                errors.append(f"{candidate}: {exc}")
                 os.close(fd)
                 fd = None
+                break
+        if fd is not None:
+            break
     if fd is None:
         raise AgyResolverLockError("unable to acquire agy resolver lock; " + "; ".join(errors))
     try:
@@ -176,9 +207,12 @@ def verify_agy_resolver(
 
     After agy returns we resolve ``cli.log`` again. A replacement target path
     or inode is parsed in full even if it is larger than the prior offset;
-    otherwise only a growing file's appended region is parsed. A same-inode
-    file that did not grow is parsed in full, covering truncation/overwrite.
-    Unreadable or malformed evidence remains an ``unverified`` mismatch.
+    a same-inode target is parsed only when it grew. A same-inode truncated
+    target is parsed in full because all its bytes are fresh relative to the
+    captured offset. Crucially, an unchanged target at the same byte size has
+    no fresh resolver record and therefore fails closed; reparsing that whole
+    file could bind this invocation to a stale earlier record. Unreadable or
+    malformed evidence remains an ``unverified`` mismatch.
     """
     if not isinstance(start_snapshot, AgyResolverSnapshot):
         return False, "unverified"
@@ -198,6 +232,8 @@ def verify_agy_resolver(
         offset = 0
     elif stat.st_size > start_snapshot.size:
         offset = start_snapshot.size
+    elif stat.st_size == start_snapshot.size:
+        return False, "unverified: no fresh resolver record"
     else:
         offset = 0
     return gemini_resolver_decision(log_bytes, offset, pinned_model)

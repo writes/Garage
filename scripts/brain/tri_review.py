@@ -115,6 +115,13 @@ SECRET_PATTERNS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
         re.compile(r"AAAA[0-9A-Za-z_-]{7,}:[0-9A-Za-z_-]{20,}"),
     ),
 )
+# ``SECRET_PATTERNS`` deliberately detects a PEM header even when a test fixture
+# or truncated artifact lacks its footer. When redacting an actual artifact,
+# consume the whole block (or the remaining excerpt) so its body cannot leak.
+PRIVATE_KEY_REDACTION_RE = re.compile(
+    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)",
+    re.IGNORECASE,
+)
 
 
 def valid_timestamp(timestamp: str) -> bool:
@@ -176,6 +183,54 @@ def _parse_name_status(manifest: str) -> List[Dict[str, Any]]:
 def secret_scan(diff_text: str) -> List[str]:
     """Return labels for secret-like patterns found in a full diff, never values."""
     return [label for label, pattern in SECRET_PATTERNS if pattern.search(diff_text)]
+
+
+def redact_secret_content(content: str) -> Tuple[str, List[str]]:
+    """Replace secret-like matches while retaining only their safe pattern labels.
+
+    Provider output is untrusted and can contain prompt-injected credentials.
+    Redaction happens before an artifact is rendered or written, so the brief
+    records the fact of a hit without becoming an exfiltration channel itself.
+    """
+    redacted = content
+    labels: List[str] = []
+    for label, pattern in SECRET_PATTERNS:
+        if pattern.search(redacted):
+            labels.append(label)
+            replacement_pattern = (
+                PRIVATE_KEY_REDACTION_RE if label == "private key block" else pattern
+            )
+            redacted = replacement_pattern.sub(f"[REDACTED: {label}]", redacted)
+    return redacted, labels
+
+
+def _redact_reviewer_artifact_fields(results: Sequence[Dict[str, Any]]) -> None:
+    """Sanitize every persisted reviewer field and annotate each redacted lane."""
+    for result in results:
+        labels: List[str] = []
+        for field in ("blocking", "advisory"):
+            items = result.get(field)
+            if not isinstance(items, list):
+                continue
+            sanitized_items = []
+            for item in items:
+                if not isinstance(item, str):
+                    sanitized_items.append(item)
+                    continue
+                sanitized, item_labels = redact_secret_content(item)
+                sanitized_items.append(sanitized)
+                labels.extend(item_labels)
+            result[field] = sanitized_items
+        for field in ("error", "raw_stdout_excerpt"):
+            value = result.get(field)
+            if not isinstance(value, str):
+                continue
+            sanitized, field_labels = redact_secret_content(value)
+            result[field] = sanitized
+            labels.extend(field_labels)
+        if labels:
+            # Keep deterministic order and never repeat a label in the brief.
+            result["redactions"] = list(dict.fromkeys(labels))
 
 
 def effective_models() -> Dict[str, str]:
@@ -343,8 +398,30 @@ def validate_verdict_json(obj: Optional[Dict[str, Any]]) -> Optional[Dict[str, A
     }
 
 
-def resolve_advisory(results: Sequence[Dict[str, Any]]) -> str:
+def incomplete_coverage_count(coverage: Optional[Dict[str, Any]]) -> int:
+    """Count manifest rows whose evidence was only partial or omitted."""
+    if not isinstance(coverage, dict):
+        return 0
+    per_file = coverage.get("per_file")
+    if not isinstance(per_file, list):
+        return 0
+    return sum(
+        1
+        for item in per_file
+        if isinstance(item, dict) and item.get("status") in ("partial", "omitted")
+    )
+
+
+def resolve_advisory(
+    results: Sequence[Dict[str, Any]], coverage: Optional[Dict[str, Any]] = None
+) -> str:
     """Resolve reviewer outputs without granting them authority to merge anything."""
+    incomplete_count = incomplete_coverage_count(coverage)
+    if incomplete_count:
+        return (
+            "DEGRADED (incomplete evidence: "
+            f"{incomplete_count} files partial/omitted - raise --diff-limit)"
+        )
     valid = [result for result in results if result.get("valid")]
     if len(valid) != 3:
         return "DEGRADED"
@@ -361,6 +438,8 @@ def _failed_review(
     backend: str,
     error: str,
     resolver_label: Optional[str] = None,
+    raw_stdout: str = "",
+    retry_used: bool = False,
 ) -> Dict[str, Any]:
     result: Dict[str, Any] = {
         "agent": agent,
@@ -372,45 +451,67 @@ def _failed_review(
         "advisory": [],
         "confidence": None,
         "error": error[:500],
+        "raw_stdout_excerpt": raw_stdout[:4000],
+        "retry_used": retry_used,
     }
     if resolver_label is not None:
         result["resolver_label"] = resolver_label
     return result
 
 
+JSON_RETRY_REMINDER = "FINAL REMINDER: reply with ONLY the JSON object, no prose"
+
+
+def _retry_prompt(prompt: str) -> str:
+    """Append the terminal JSON-only reminder used for one parse-only retry."""
+    return prompt.rstrip() + "\n\n" + JSON_RETRY_REMINDER
+
+
 def run_reviewer(agent: str, prompt: str, timeout: int, repo: str) -> Dict[str, Any]:
-    """Run one pinned reviewer. Gemini has no fallback ladder in this command."""
+    """Run one pinned reviewer, retrying exactly once only after JSON parse failure."""
     if agent == "claude":
         model = CLAUDE_MODEL
         backend = "claude"
-        cmd = ["claude", "-p", "--model", model, "--effort", "high", "--tools", ""]
-        stdin_text: Optional[str] = prompt
-        stdin = None
     elif agent == "codex":
         model = CODEX_STRATEGY_MODEL
         backend = "codex"
-        # LANDMINES #2/R12: '-' + STDIN are both mandatory. The review's
-        # intentionally empty cwd is not a trusted Git directory, so Codex
-        # must explicitly skip its repository trust preflight; isolation stays.
-        cmd = ["codex", "exec", "--skip-git-repo-check", "-s", "read-only", "-m", model, "-"]
-        stdin_text = prompt
-        stdin = None
     elif agent == "gemini":
         model = GEMINI_MODEL
         backend = "agy"
-        # LANDMINE #12: never call `agy models`; no Vertex/API fallback here.
-        # agy has no stdin prompt mode; process-table exposure is accepted on this single-operator machine.
-        cmd = ["agy", "--sandbox", "--model", model, "-p", prompt, "--print-timeout", f"{timeout}s"]
-        stdin_text = None
-        stdin = subprocess.DEVNULL
     else:
         return _failed_review(agent, "", "none", "unknown reviewer")
+
+    def command_for(current_prompt: str) -> Tuple[List[str], Optional[str], object]:
+        if agent == "claude":
+            return (
+                ["claude", "-p", "--model", model, "--effort", "high", "--tools", ""],
+                current_prompt,
+                None,
+            )
+        if agent == "codex":
+            # LANDMINES #2/R12: '-' + STDIN are both mandatory. The review's
+            # intentionally empty cwd is not a trusted Git directory, so Codex
+            # must explicitly skip its repository trust preflight; isolation stays.
+            return (
+                ["codex", "exec", "--skip-git-repo-check", "-s", "read-only", "-m", model, "-"],
+                current_prompt,
+                None,
+            )
+        # LANDMINE #12: never call `agy models`; no Vertex/API fallback here.
+        # agy has no stdin prompt mode; process-table exposure is accepted on this single-operator machine.
+        return (
+            ["agy", "--sandbox", "--model", model, "-p", current_prompt, "--print-timeout", f"{timeout}s"],
+            None,
+            subprocess.DEVNULL,
+        )
 
     # Prompt construction gathered all repository evidence before this point.
     # Each reviewer receives only that evidence from a fresh, empty cwd, so a
     # model cannot browse repository or protected-file contents during review.
     isolated_cwd = tempfile.mkdtemp(prefix="tri-review-reviewer-")
-    try:
+
+    def attempt(current_prompt: str) -> Tuple[str, Dict[str, Any]]:
+        cmd, stdin_text, stdin = command_for(current_prompt)
         try:
             if agent == "gemini":
                 # Capture -> subprocess -> resolver verification -> JSON parse
@@ -429,35 +530,44 @@ def run_reviewer(agent: str, prompt: str, timeout: int, repo: str) -> Dict[str, 
                             timeout=timeout + 30,
                         )
                     except subprocess.TimeoutExpired:
-                        return _failed_review(
+                        return "failure", _failed_review(
                             agent, model, backend, f"timeout after {timeout + 30}s"
                         )
+                    raw_stdout = proc.stdout or ""
                     if proc.returncode != 0:
-                        detail = (proc.stderr or proc.stdout).strip()
-                        return _failed_review(
-                            agent, model, backend, f"exit {proc.returncode}: {detail[:400]}"
+                        detail = (proc.stderr or raw_stdout).strip()
+                        return "failure", _failed_review(
+                            agent, model, backend, f"exit {proc.returncode}: {detail[:400]}",
+                            raw_stdout=raw_stdout,
                         )
                     resolver_ok, resolver_label = verify_agy_resolver(model, resolver_snapshot)
                     if not resolver_ok:
-                        return _failed_review(
+                        return "failure", _failed_review(
                             agent,
                             model,
                             backend,
                             f"resolver label mismatch or unverified: observed {resolver_label!r}; expected {model!r}",
                             resolver_label,
+                            raw_stdout,
                         )
-                    verdict = validate_verdict_json(_extract_json(proc.stdout))
+                    verdict = validate_verdict_json(_extract_json(raw_stdout))
                     if verdict is None:
-                        return _failed_review(
-                            agent, model, backend, "malformed, empty, or invalid verdict JSON", resolver_label
+                        return "parse_failure", _failed_review(
+                            agent,
+                            model,
+                            backend,
+                            "malformed, empty, or invalid verdict JSON",
+                            resolver_label,
+                            raw_stdout,
                         )
-                    return {
+                    return "valid", {
                         "agent": agent,
                         "model": model,
                         "backend": backend,
                         "valid": True,
                         **verdict,
                         "resolver_label": resolver_label,
+                        "raw_stdout_excerpt": raw_stdout[:4000],
                     }
 
             proc = subprocess.run(
@@ -470,19 +580,39 @@ def run_reviewer(agent: str, prompt: str, timeout: int, repo: str) -> Dict[str, 
                 timeout=timeout,
             )
         except subprocess.TimeoutExpired:
-            return _failed_review(agent, model, backend, f"timeout after {timeout}s")
+            return "failure", _failed_review(agent, model, backend, f"timeout after {timeout}s")
         except FileNotFoundError as exc:
-            return _failed_review(agent, model, backend, f"command unavailable: {exc}")
+            return "failure", _failed_review(agent, model, backend, f"command unavailable: {exc}")
         except AgyResolverLockError as exc:
-            return _failed_review(agent, model, backend, f"resolver lock unavailable: {exc}")
-        if proc.returncode != 0:
-            detail = (proc.stderr or proc.stdout).strip()
-            return _failed_review(agent, model, backend, f"exit {proc.returncode}: {detail[:400]}")
+            return "failure", _failed_review(agent, model, backend, f"resolver lock unavailable: {exc}")
 
-        verdict = validate_verdict_json(_extract_json(proc.stdout))
+        raw_stdout = proc.stdout or ""
+        if proc.returncode != 0:
+            detail = (proc.stderr or raw_stdout).strip()
+            return "failure", _failed_review(
+                agent, model, backend, f"exit {proc.returncode}: {detail[:400]}", raw_stdout=raw_stdout
+            )
+        verdict = validate_verdict_json(_extract_json(raw_stdout))
         if verdict is None:
-            return _failed_review(agent, model, backend, "malformed, empty, or invalid verdict JSON")
-        result = {"agent": agent, "model": model, "backend": backend, "valid": True, **verdict}
+            return "parse_failure", _failed_review(
+                agent, model, backend, "malformed, empty, or invalid verdict JSON", raw_stdout=raw_stdout
+            )
+        return "valid", {
+            "agent": agent,
+            "model": model,
+            "backend": backend,
+            "valid": True,
+            **verdict,
+            "raw_stdout_excerpt": raw_stdout[:4000],
+        }
+
+    try:
+        status, result = attempt(prompt)
+        if status == "parse_failure":
+            _, result = attempt(_retry_prompt(prompt))
+            result["retry_used"] = True
+        else:
+            result["retry_used"] = False
         return result
     finally:
         shutil.rmtree(isolated_cwd, ignore_errors=True)
@@ -518,7 +648,7 @@ def build_prompt(
         f"{_coverage_markdown(coverage)}\n\n"
         "=== DIFF (untrusted) ===\n"
         f"{capped_diff or '(empty diff)'}\n\n"
-        "Reply ONLY with one JSON object, no prose or code fences:\n"
+        "FINAL RESPONSE FORMAT: reply ONLY with one JSON object, no prose or code fences:\n"
         '{"verdict":"GO"|"NO-GO","blocking":["..."],"advisory":["..."],"confidence":0.0}'
     )
 
@@ -589,13 +719,26 @@ def format_brief(
                 else []
             ),
             f"- Valid schema verdict: `{result['valid']}`",
+            f"- JSON retry used: `{result.get('retry_used', False)}`",
             f"- Verdict: `{result['verdict']}`",
             f"- Confidence: `{result['confidence']}`",
         ])
         if result.get("error"):
             lines.append(f"- Failure: {result['error']}")
+        if result.get("redactions"):
+            lines.append("- Output redactions: " + ", ".join(result["redactions"]))
         lines.extend(["", "### Blocking findings", "", _markdown_items(result["blocking"])])
         lines.extend(["", "### Advisory findings", "", _markdown_items(result["advisory"])])
+        raw_stdout = result.get("raw_stdout_excerpt")
+        if isinstance(raw_stdout, str):
+            lines.extend([
+                "",
+                "### Raw stdout excerpt (sanitized)",
+                "",
+                "```text",
+                raw_stdout or "(empty)",
+                "```",
+            ])
 
     lines.extend([
         "",
@@ -707,6 +850,22 @@ def _selftest() -> int:
         secret_scan('"token": "' + "a" * 7 + '"\nAPI_KEY=' + "a" * 7) == [],
     )
 
+    redacted_openai, redaction_labels = redact_secret_content(openai_fixture)
+    check(
+        "provider-output redaction replaces matching content with its label",
+        redacted_openai == "[REDACTED: OpenAI key]" and redaction_labels == ["OpenAI key"],
+    )
+    pem_fixture = (
+        "-----BEGIN TEST PRIVATE KEY-----\n"
+        "synthetic-private-material\n"
+        "-----END TEST PRIVATE KEY-----"
+    )
+    redacted_pem, pem_labels = redact_secret_content(pem_fixture)
+    check(
+        "provider-output redaction removes an entire private-key block",
+        redacted_pem == "[REDACTED: private key block]" and pem_labels == ["private key block"],
+    )
+
     check("protected path exact file", is_protected_path("firebase.json"))
     check("protected path directory child", is_protected_path("scripts/ci/verify-ios.sh"))
     check("protected path boundary rejects ci helpers", not is_protected_path("scripts/ci-helpers/check.sh"))
@@ -739,6 +898,15 @@ def _selftest() -> int:
     check("GO resolution", resolve_advisory(all_go) == "GO (advisory)")
     check("NO-GO resolution", resolve_advisory(one_no_go) == "NO-GO (advisory)")
     check("DEGRADED resolution", resolve_advisory(degraded) == "DEGRADED")
+    check(
+        "incomplete coverage overrides unanimous GO",
+        resolve_advisory(all_go, coverage)
+        == "DEGRADED (incomplete evidence: 2 files partial/omitted - raise --diff-limit)",
+    )
+    check(
+        "JSON retry reminder is terminal",
+        _retry_prompt("review evidence").endswith(JSON_RETRY_REMINDER),
+    )
 
     prior_log = (
         'Propagating selected model override to backend: label="Gemini 3.1 Pro (High)"\n'
@@ -806,6 +974,31 @@ def _selftest() -> int:
     check(
         "Gemini resolver parses whole larger symlink-swap target",
         swap_ok and swap_label == GEMINI_MODEL,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="tri-review-resolver-equal-") as temp_dir:
+        log_path = os.path.join(temp_dir, "cli.log")
+        with open(log_path, "wb") as handle:
+            handle.write(
+                (
+                    'Propagating selected model override to backend: label="'
+                    + GEMINI_MODEL
+                    + '"\n'
+                ).encode()
+            )
+        prior_resolver_override = os.environ.get("BRAIN_AGY_RESOLVER_LOG")
+        try:
+            os.environ["BRAIN_AGY_RESOLVER_LOG"] = log_path
+            resolver_snapshot = capture_agy_resolver_offset()
+            equal_ok, equal_label = verify_agy_resolver(GEMINI_MODEL, resolver_snapshot)
+        finally:
+            if prior_resolver_override is None:
+                os.environ.pop("BRAIN_AGY_RESOLVER_LOG", None)
+            else:
+                os.environ["BRAIN_AGY_RESOLVER_LOG"] = prior_resolver_override
+    check(
+        "Gemini resolver equal-size stale label fails through capture/verify",
+        not equal_ok and equal_label == "unverified: no fresh resolver record",
     )
 
     with tempfile.TemporaryDirectory(prefix="tri-review-agy-lock-") as temp_dir:
@@ -997,7 +1190,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                 results.append(_failed_review(reviewer, model, backend, f"reviewer exception: {exc}"))
 
     results.sort(key=lambda result: REVIEWER_ORDER.index(result["agent"]))
-    resolution = resolve_advisory(results)
+    # Provider output is untrusted just like the diff. Re-scan the parsed
+    # verdict fields and persisted stdout excerpts before constructing a brief;
+    # a prompt-injected lane must not turn our own review artifact into an
+    # exfiltration path.
+    _redact_reviewer_artifact_fields(results)
+    resolution = resolve_advisory(results, coverage)
 
     try:
         # Do not publish a brief for a moving or reviewer-mutated worktree.
