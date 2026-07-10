@@ -380,3 +380,25 @@ prose contamination). Complete triage:
 Convergence status: Fable has flipped to GO; Gemini's failure was infrastructural (fixed);
 every Sol blocker above is a bounded fix or the documented standing limitation. Round 8 is the
 decision brief under the §13 convergence rule.
+
+## 16. Round 8 (two attempts) + final fixes (R47–R50)
+
+**8a — the review blocked itself (EXIT 3, zero provider tokens):** the fail-closed secret
+screen matched "private key block" in the diff — pass-8's own PEM test fixtures. The screen
+scanning its own fixtures is the designed behavior meeting self-reference. → **R47**: all
+secret-shaped fixtures rebuilt via runtime concatenation; independent self-scan of every
+`scripts/brain/*.py` source now returns clean.
+
+**8b on `78df0fa`** (brief `2026-07-10T16-56-21Z.md`): **Fable GO (0.78) · Sol NO-GO (0.99) ·
+Gemini resolver-verified, verdict clipped mid-JSON — raw excerpt shows it was substantively
+NO-GO (0.98)**. Sol/Gemini caught **two real data-safety bugs in pass-8's own code**:
+
+| Finding | Disposition |
+|---|---|
+| R43's violation handler (`git checkout -- .` + `git clean -fd`) resets the whole candidate — destroys Terra's uncommitted work (Sol) | **ACCEPTED → R48**: halt WITHOUT destructive cleanup; record the delta as evidence |
+| R45's override row writes to the PRIMARY checkout's ledger, even under --dry-run (Sol) | **ACCEPTED → R49**: row goes to the worktree's candidate ledger; dry-run is a no-op |
+| Gemini verdict clipped (output length) (infra) | **ACCEPTED → R50**: bounded reviewer lists (≤5 items, ≤300 chars) |
+| Reviewer lanes lack OS-level confidentiality isolation (Sol, 4th re-raise) | **STANDING LIMITATION — no further action at this layer** (§14/§15) |
+
+Round 9 is the final review of this session; per the convergence rule, a residual NO-GO
+resting only on the standing limitation goes to the operator with an override recommendation.

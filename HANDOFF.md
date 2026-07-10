@@ -2,13 +2,13 @@
 
 <!--CURRENT:START-->
 ## CURRENT STATE
-- updated: 2026-07-10T16:55:36Z by **codex-terra** on `brain/routing-v3` @ `9ad491c`
+- updated: 2026-07-10T17:08:05Z by **claude-fable-5** on `brain/install-v1` @ `5223b87`
 - runtime: (unchanged)
-- last session did: R47: runtime-concatenated the PEM redaction fixture so the fail-closed source scan cannot match its own test literal; all scripts/brain source scans clean, tri_review 58/58, consensus 17/17.
+- last session did: Final passes 9-10 (R47-R50): secret fixtures made non-self-matching (round 8a: the review BLOCKED ITSELF on its own PEM fixtures - fail-closed proven live, zero tokens), non-destructive cross-check halt (pass-8 handler would have nuked the candidate), override ledger row sandboxed to the worktree + dry-run no-op, bounded reviewer output (Gemini's round-8 NO-GO was valid but clipped mid-JSON). 10 Terra passes total (R1-R50), tri_review selftest 59/59. Round-8b verdicts: Fable GO / Sol NO-GO(0.99) / Gemini clipped-but-substantively-NO-GO on exactly the two now-fixed bugs.
 - in-flight (uncommitted/partial): none
 - BLOCKED / operator-gated: none
 - ⚠ contention / landmines: none
-- ▶ **NEXT ACTION**: Re-run Round-8 tri-review on this candidate; the operator retains the merge gate.
+- ▶ **NEXT ACTION**: Round-9 (FINAL this session) tri-review runs on this HEAD. OPERATOR then decides per spec section 13/15/16 convergence rule: merge on GO, or ledgered override bound to head SHA if the residual NO-GO rests only on the documented CLI-lane hermeticity standing limitation.
 <!--CURRENT:END-->
 
 ## WHERE THE DEEP STATE LIVES (pointers — do not duplicate content here)
@@ -20,6 +20,7 @@
 
 ## LOG (newest first; keep ~12)
 <!--LOG:START-->
+- 2026-07-10T17:08:05Z **claude-fable-5** @`5223b87`: Final passes 9-10 (R47-R50): secret fixtures made non-self-matching (round 8a: the review BLOCKED ITSELF on its own PEM fixtures - fail-closed proven live, zero tokens), non-destructive cross-check halt (pass-8 handler would have nuked the candidate), override ledger row sandboxed to the worktree + dry-run no-op, bounded reviewer output (Gemini's round-8 NO-GO was valid but clipped mid-JSON). 10 Terra passes total (R1-R50), tri_review selftest 59/59. Round-8b verdicts: Fable GO / Sol NO-GO(0.99) / Gemini clipped-but-substantively-NO-GO on exactly the two now-fixed bugs.  — NEXT: Round-9 (FINAL this session) tri-review runs on this HEAD. OPERATOR then decides per spec section 13/15/16 convergence rule: merge on GO, or ledgered override bound to head SHA if the residual NO-GO rests only on the documented CLI-lane hermeticity standing limitation.
 - 2026-07-10T16:55:36Z **codex-terra** @`9ad491c`: R47: runtime-concatenated the PEM redaction fixture so the fail-closed source scan cannot match its own test literal; all scripts/brain source scans clean, tri_review 58/58, consensus 17/17.  — NEXT: Re-run Round-8 tri-review on this candidate; the operator retains the merge gate.
 - 2026-07-10T16:52:13Z **claude-fable-5** @`6effec8`: Pass 8 (R40-R46) landed - 8 Terra passes total (R1-R46), 58/58 selftests: fail-closed resolver equality (fixed an orchestrator contract bug from R33), coverage-gated review resolution (partial evidence => DEGRADED), redact-on-write for all provider-produced artifacts, zero-delta cross-check with revert+halt, bounded agy lock, --no-plan-review now needs --override-reason + durable ledger row, one JSON-parse retry per reviewer. Round-7 verdicts were Fable GO / Gemini infra-failure (fixed) / Sol NO-GO (all six findings fixed this pass or standing-limitation).  — NEXT: Round-8 tri-review on this HEAD is the decision brief per spec section 13/15 convergence rule: OPERATOR merges to main on GO or unanimity-shortfall-with-only-standing-limitation findings (documented override path, ledger row bound to head SHA).
 - 2026-07-10T16:34:26Z **claude-fable-5** @`265daa0`: Convergence pass R33-R39 landed (7 Terra passes total, R1-R39): symlink-aware+inode-bound agy resolver verification (live-verified model_verified=true), cross-process agy lock, cross-check moved to empty evidence-only cwd (second writer structurally impossible), degraded vote pairs must agree (no confidence tie-break appends), secret denylist broadened + guarantee honestly narrowed, loop review coverage-accounted with forced-CONTINUE on omissions, Sol plan co-review fail-closed with governed override. tri_review selftest 53/53. Spec sections 13-14 carry complete dispositions incl. two triage errata (process rule: read FULL briefs).  — NEXT: Round-7 tri-review on this HEAD is the decision brief: OPERATOR merges brain/install-v1 to main on GO, or applies the documented override (spec section 13 convergence rule) if any reviewer raises only new-scope hardening. Standing limitation on CLI-lane hermeticity is documented in spec section 14.
