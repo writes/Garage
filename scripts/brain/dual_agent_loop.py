@@ -3,7 +3,8 @@
 
 This harness implements Organ II's canonical cycle:
 
-        plan(Fable 5)  ->  implement(GPT-5.6 Terra)  ->
+        plan(Fable 5)  ->  plan-review(GPT-5.6 Sol, advisory)  ->
+        implement(GPT-5.6 Terra)  ->
         cross-check(Gemini 3.1 Pro High, read-only)  ->  review(Fable 5)
 
 repeated for N iterations, with every turn executed *inside a dedicated git
@@ -15,6 +16,9 @@ protected file was touched.
 Division of labour (and why):
   * PLAN     — Fable 5 via `claude -p --model`. Claude reads the goal + the prior REVIEW.md and
                writes a concrete PLAN.md for this iteration.
+  * PLAN REVIEW — GPT-5.6 Sol via read-only `codex exec`. Sol strategically
+               reviews the plan before implementation; its concerns are advisory
+               input to Terra, never an autonomous stop or promotion decision.
   * IMPLEMENT— GPT-5.6 Terra via `codex exec -m ... -`. The plan is fed to Codex on STDIN and Codex
                edits files in the worktree.
   * ENFORCE  — scope_guard.enforce(): the domain fence. Out-of-scope writes
@@ -81,10 +85,12 @@ SCRATCH_ROOT = os.path.join(_SCRIPT_DIR, "..", "..", ".brain-worktrees")
 
 CLAUDE_MODEL = os.environ.get("BRAIN_CLAUDE_MODEL", "claude-fable-5")
 CODEX_IMPLEMENT_MODEL = os.environ.get("BRAIN_CODEX_IMPLEMENT_MODEL", "gpt-5.6-terra")
+CODEX_STRATEGY_MODEL = os.environ.get("BRAIN_CODEX_STRATEGY_MODEL", "gpt-5.6-sol")
 GEMINI_MODEL = os.environ.get("BRAIN_GEMINI_MODEL", "Gemini 3.1 Pro (High)")
 
 # Per-call timeouts (seconds). Agent calls get a generous bound; git is fast.
 PLAN_TIMEOUT = 1800
+PLAN_REVIEW_TIMEOUT = 1800
 IMPLEMENT_TIMEOUT = 3600
 REVIEW_TIMEOUT = 1800
 CROSS_CHECK_TIMEOUT = 1800
@@ -244,13 +250,31 @@ def _plan_prompt(goal: str, prior_review: str, iteration: int) -> str:
     )
 
 
-def _implement_prompt(goal: str, plan: str) -> str:
-    return (
+def _implement_prompt(goal: str, plan: str, sol_concerns: str) -> str:
+    prompt = (
         "You are the IMPLEMENT stage of an autonomous dual-agent build loop.\n"
         "Apply the following plan by editing files in this repository. Make the "
         "smallest correct change. Do NOT edit secrets, signing, CI scripts, "
         "firebase config, or the Xcode project; stay within allowed candidate "
         "paths.\n\n"
+        f"GOAL:\n{goal}\n\n"
+        f"PLAN:\n{plan}\n"
+    )
+    if sol_concerns:
+        prompt += (
+            "\nSOL STRATEGIC CONCERNS (address or rebut):\n"
+            f"{sol_concerns[:4000]}\n"
+        )
+    return prompt
+
+
+def _plan_review_prompt(goal: str, plan: str) -> str:
+    return (
+        "You are the advisory PLAN REVIEW stage of an autonomous build loop. "
+        "Strategically review this implementation plan for omissions, unsafe assumptions, "
+        "or a poor sequence. Do not inspect files or use tools. Reply ONLY with one JSON "
+        "object and no prose or code fences:\n"
+        '{"approve":true|false,"concerns":["..."]}.\n\n'
         f"GOAL:\n{goal}\n\n"
         f"PLAN:\n{plan}\n"
     )
@@ -295,27 +319,71 @@ def stage_plan(worktree: str, goal: str, prior_review: str, iteration: int,
                dry_run: bool) -> str:
     """PLAN — Fable 5. Returns the plan text and writes PLAN.md."""
     prompt = _plan_prompt(goal, prior_review, iteration)
-    cmd = ["claude", "-p", "--model", CLAUDE_MODEL, prompt]
+    cmd = ["claude", "-p", "--model", CLAUDE_MODEL, "--tools", ""]
     if dry_run:
         print(f"  [DRY-RUN PLAN] would run: claude -p --model {CLAUDE_MODEL} "
-              f"<plan-prompt {len(prompt)} chars>")
+              f"--tools '' (stdin: plan-prompt {len(prompt)} chars)")
         plan = f"# PLAN (dry-run, iter {iteration})\n\nGoal: {goal}\n\n(no agent invoked)\n"
         _write(worktree, "PLAN.md", plan)
         return plan
-    res = _run(cmd, cwd=worktree, stdin_text="", timeout=PLAN_TIMEOUT, label="claude/plan")
+    res = _run(cmd, cwd=worktree, stdin_text=prompt, timeout=PLAN_TIMEOUT, label="claude/plan")
     plan = res.stdout.strip() or f"(plan stage produced no output; note={res.note})"
     _write(worktree, "PLAN.md", plan)
     return plan
 
 
-def stage_implement(worktree: str, goal: str, plan: str, dry_run: bool) -> StepResult:
+def stage_plan_review(worktree: str, goal: str, plan: str, dry_run: bool) -> Tuple[str, str]:
+    """PLAN REVIEW — Sol's non-fatal strategic input before Terra writes."""
+    prompt = _plan_review_prompt(goal, plan)
+    cmd = ["codex", "exec", "-s", "read-only", "-m", CODEX_STRATEGY_MODEL, "-"]
+    if dry_run:
+        print(f"  [DRY-RUN PLAN REVIEW] would run: codex exec -s read-only -m "
+              f"{CODEX_STRATEGY_MODEL} - (stdin: plan-review-prompt {len(prompt)} chars)")
+        report = "# PLAN REVIEW (dry-run)\n\n(no agent invoked)\n"
+        _write(worktree, "PLAN_REVIEW.md", report)
+        return report, ""
+
+    res = _run(
+        cmd,
+        cwd=worktree,
+        stdin_text=prompt,
+        timeout=PLAN_REVIEW_TIMEOUT,
+        label="codex/plan-review",
+    )
+    parsed = _extract_json(res.stdout) if res.ok else None
+    approve = parsed.get("approve") if isinstance(parsed, dict) else None
+    concerns = parsed.get("concerns") if isinstance(parsed, dict) else None
+    if not isinstance(approve, bool) or not isinstance(concerns, list) or not all(
+        isinstance(concern, str) for concern in concerns
+    ):
+        detail = res.note if not res.ok else "malformed JSON (expected approve bool and concerns string array)"
+        report = f"# PLAN REVIEW\n\n(advisory plan review unavailable: {detail})\n"
+        _write(worktree, "PLAN_REVIEW.md", report)
+        return report, ""
+
+    normalized = [concern[:500] for concern in concerns]
+    concern_text = "\n".join(f"- {concern}" for concern in normalized)[:4000]
+    report = (
+        "# PLAN REVIEW\n\n"
+        f"- Model: `{CODEX_STRATEGY_MODEL}`\n"
+        f"- Approve: `{approve}`\n\n"
+        "## Concerns\n\n"
+        + (concern_text if concern_text else "- (none)")
+        + "\n"
+    )
+    _write(worktree, "PLAN_REVIEW.md", report)
+    return report, concern_text
+
+
+def stage_implement(worktree: str, goal: str, plan: str, sol_concerns: str,
+                    dry_run: bool) -> StepResult:
     """IMPLEMENT — GPT-5.6 Terra via `codex exec -m ... -` on STDIN.
 
     CRITICAL: bare `codex exec` with no stdin HANGS. We pass the trailing '-'
     (read prompt from stdin) AND feed stdin_text, AND bound it with a timeout.
     Serial only — exactly one codex track at a time.
     """
-    prompt = _implement_prompt(goal, plan)
+    prompt = _implement_prompt(goal, plan, sol_concerns)
     cmd = ["codex", "exec", "-m", CODEX_IMPLEMENT_MODEL, "-"]
     if dry_run:
         print(f"  [DRY-RUN IMPLEMENT] would run: codex exec -m {CODEX_IMPLEMENT_MODEL} -  "
@@ -339,6 +407,15 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
     moving. agy is passed an exact pinned label and DEVNULL stdin; never call
     `agy models` (landmines #1 and #12).
     """
+    # `git diff HEAD` ignores ordinary untracked files. Mark them intent-to-add
+    # first so routine new-file implementations are reviewable; -N stages no
+    # content and therefore does not change scope_guard's enforcement boundary.
+    intent_result = _git(worktree, "add", "--intent-to-add", "-A")
+    if not intent_result.ok:
+        report = f"(cross-check unavailable: {intent_result.note})\n"
+        _write(worktree, "CROSS_CHECK.md", report)
+        return report
+
     diff_result = _git(worktree, "diff", "HEAD")
     manifest_result = _git(worktree, "diff", "--name-status", "HEAD")
     if not diff_result.ok or not manifest_result.ok:
@@ -406,16 +483,23 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
 def stage_review(worktree: str, goal: str, plan: str, cross_check: str,
                  dry_run: bool) -> Tuple[str, bool]:
     """REVIEW — Fable 5. Returns (review_text, done_flag); writes REVIEW.md."""
-    diff = _git(worktree, "diff", "HEAD").stdout
+    # Match the cross-check evidence: expose untracked candidate files to the
+    # diff without staging their contents, leaving scope_guard semantics intact.
+    intent_result = _git(worktree, "add", "--intent-to-add", "-A")
+    diff = (
+        _git(worktree, "diff", "HEAD").stdout
+        if intent_result.ok
+        else f"(diff unavailable: {intent_result.note})\n"
+    )
     prompt = _review_prompt(goal, plan, diff, cross_check)
-    cmd = ["claude", "-p", "--model", CLAUDE_MODEL, prompt]
+    cmd = ["claude", "-p", "--model", CLAUDE_MODEL, "--tools", ""]
     if dry_run:
         print(f"  [DRY-RUN REVIEW] would run: claude -p --model {CLAUDE_MODEL} "
-              f"<review-prompt {len(prompt)} chars>")
+              f"--tools '' (stdin: review-prompt {len(prompt)} chars)")
         review = ("# REVIEW (dry-run)\n\nNo agent invoked.\n\nVERDICT: CONTINUE\n")
         _write(worktree, "REVIEW.md", review)
         return review, _verdict_done(review)
-    res = _run(cmd, cwd=worktree, stdin_text="", timeout=REVIEW_TIMEOUT, label="claude/review")
+    res = _run(cmd, cwd=worktree, stdin_text=prompt, timeout=REVIEW_TIMEOUT, label="claude/review")
     review = res.stdout.strip() or f"(review stage produced no output; note={res.note})\nVERDICT: CONTINUE"
     _write(worktree, "REVIEW.md", review)
     return review, _verdict_done(review)
@@ -476,6 +560,7 @@ def run_loop(
     base: str,
     run_gate_each: bool,
     run_cross_check: bool,
+    run_plan_review: bool,
     dry_run: bool,
 ) -> Dict[str, object]:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -495,6 +580,7 @@ def run_loop(
         "iterations_planned": iterations,
         "dry_run": dry_run,
         "cross_check_enabled": run_cross_check,
+        "plan_review_enabled": run_plan_review,
         "iterations": [],
         "halted": False,
         "done": False,
@@ -509,14 +595,24 @@ def run_loop(
         plan = stage_plan(worktree, goal, prior_review, i, dry_run)
         rec["plan_chars"] = len(plan)
 
-        # (b) IMPLEMENT (serial: exactly one codex track)
-        impl = stage_implement(worktree, goal, plan, dry_run)
+        # (b) PLAN REVIEW — advisory Sol review, serial with Terra's Codex call.
+        if run_plan_review:
+            plan_review, sol_concerns = stage_plan_review(worktree, goal, plan, dry_run)
+        else:
+            plan_review = "# PLAN REVIEW\n\n(advisory plan review disabled)\n"
+            sol_concerns = ""
+            _write(worktree, "PLAN_REVIEW.md", plan_review)
+        rec["plan_review"] = plan_review[:4000]
+        rec["sol_concerns_chars"] = len(sol_concerns)
+
+        # (c) IMPLEMENT (serial: exactly one codex track)
+        impl = stage_implement(worktree, goal, plan, sol_concerns, dry_run)
         rec["implement_ok"] = impl.ok
         rec["implement_note"] = impl.note
         if not impl.ok:
             print(f"  implement stage failed: {impl.note}")
 
-        # (c) ENFORCE the domain fence
+        # (d) ENFORCE the domain fence
         enforced = scope_guard.enforce(worktree, revert=True)
         rec["reverted"] = enforced.get("reverted", [])
         rec["protected"] = enforced.get("protected", [])
@@ -528,7 +624,7 @@ def run_loop(
             _write_state(worktree, state)
             break
 
-        # (d) GEMINI CROSS-CHECK — only after a successful implementation.
+        # (e) GEMINI CROSS-CHECK — only after a successful implementation.
         if not impl.ok:
             cross_check = "(cross-check unavailable: implementation stage failed)\n"
         elif not run_cross_check:
@@ -537,12 +633,12 @@ def run_loop(
             cross_check = stage_cross_check(worktree, dry_run)
         rec["cross_check"] = cross_check.strip()
 
-        # (e) REVIEW
+        # (f) REVIEW
         review, done = stage_review(worktree, goal, plan, cross_check, dry_run)
         prior_review = review
         rec["review_done"] = done
 
-        # (f) GATE (optional; sole promoter, only recorded here)
+        # (g) GATE (optional; sole promoter, only recorded here)
         if run_gate_each:
             gate = run_gate(worktree, dry_run)
             rec["gate_pass"] = gate
@@ -573,7 +669,7 @@ def _load_goal(args: argparse.Namespace) -> str:
 
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(
-        description="Organ II dual-agent loop: plan(Claude) -> implement(Codex) "
+        description="Organ II dual-agent loop: plan(Claude) -> plan-review(Sol) -> implement(Codex) "
                     "-> cross-check(Gemini, read-only) -> review(Claude), worktree-isolated and scope-fenced.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -590,6 +686,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                     help="Run scripts/ci/verify-ios.sh after each review and record pass/fail.")
     ap.add_argument("--no-cross-check", action="store_true",
                     help="Skip the non-fatal read-only Gemini implementation cross-check.")
+    ap.add_argument("--no-plan-review", action="store_true",
+                    help="Skip the non-fatal read-only GPT-5.6 Sol strategic plan review.")
     ap.add_argument("--dry-run", action="store_true",
                     help="Print the claude/codex commands instead of running them; still "
                          "creates the worktree and runs scope_guard so it is verifiable.")
@@ -619,6 +717,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             base=base,
             run_gate_each=args.gate,
             run_cross_check=not args.no_cross_check,
+            run_plan_review=not args.no_plan_review,
             dry_run=args.dry_run,
         )
     except RuntimeError as exc:

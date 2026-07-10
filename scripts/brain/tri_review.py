@@ -8,8 +8,6 @@ promotion gate. The human and deterministic CI gate retain that authority.
 Resolution is Law-5 verification: advisory and fail-closed, it requires unanimous
 GO, reports NO-GO when any lane is NO-GO, is intentionally STRICTER than Law-1's
 2/3 no-veto resolution, is not a consensus vote, and keeps merges human-gated.
-Known limitation: the loop cross-check and review diffs use `git diff HEAD`, which
-omits untracked files; track that follow-up, but do not change this behavior now.
 
 The review is deliberately fail-closed before any provider sees a diff:
 protected surfaces and secret-like content block the review outright. Evidence
@@ -35,6 +33,7 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -52,6 +51,10 @@ import scope_guard  # noqa: E402  (single source of truth for protected paths)
 CLAUDE_MODEL = os.environ.get("BRAIN_CLAUDE_MODEL", "claude-fable-5")
 CODEX_STRATEGY_MODEL = os.environ.get("BRAIN_CODEX_STRATEGY_MODEL", "gpt-5.6-sol")
 GEMINI_MODEL = os.environ.get("BRAIN_GEMINI_MODEL", "Gemini 3.1 Pro (High)")
+AGY_RESOLVER_LOG = os.environ.get(
+    "BRAIN_AGY_RESOLVER_LOG",
+    os.path.expanduser("~/.gemini/antigravity-cli/cli.log"),
+)
 
 MAX_DIFF_BYTES = 120 * 1024
 REVIEWER_ORDER = ("claude", "codex", "gemini")
@@ -59,6 +62,9 @@ ISO8601_Z_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\Z")
 # Import, rather than copy, the protected list: scope_guard remains the sole
 # source of truth if the doctrine changes its protected-path boundary.
 PROTECTED_PREFIXES = scope_guard.PROTECTED_PREFIXES
+AGY_RESOLVER_LABEL_RE = re.compile(
+    r'Propagating selected model override to backend:\s*label="([^"]+)"'
+)
 
 # We report pattern labels, not the matching text, so a blocked run cannot
 # accidentally echo a secret into logs or terminal scrollback.
@@ -146,7 +152,12 @@ def is_protected_path(path: str) -> bool:
     normalized = path.replace("\\", "/")
     while normalized.startswith("./"):
         normalized = normalized[2:]
-    return any(normalized == prefix or normalized.startswith(prefix) for prefix in PROTECTED_PREFIXES)
+    return any(
+        normalized == prefix
+        or (prefix.endswith("/") and normalized.startswith(prefix))
+        or normalized.startswith(prefix + "/")
+        for prefix in PROTECTED_PREFIXES
+    )
 
 
 def _header_offsets(diff_bytes: bytes) -> List[int]:
@@ -266,8 +277,14 @@ def resolve_advisory(results: Sequence[Dict[str, Any]]) -> str:
     return "DEGRADED"
 
 
-def _failed_review(agent: str, model: str, backend: str, error: str) -> Dict[str, Any]:
-    return {
+def _failed_review(
+    agent: str,
+    model: str,
+    backend: str,
+    error: str,
+    resolver_label: Optional[str] = None,
+) -> Dict[str, Any]:
+    result: Dict[str, Any] = {
         "agent": agent,
         "model": model,
         "backend": backend,
@@ -278,6 +295,32 @@ def _failed_review(agent: str, model: str, backend: str, error: str) -> Dict[str
         "confidence": None,
         "error": error[:500],
     }
+    if resolver_label is not None:
+        result["resolver_label"] = resolver_label
+    return result
+
+
+def last_agy_resolver_label(log_text: Optional[str]) -> Optional[str]:
+    """Extract the final agy backend resolver label from already-read log text."""
+    if log_text is None:
+        return None
+    labels = AGY_RESOLVER_LABEL_RE.findall(log_text)
+    return labels[-1] if labels else None
+
+
+def gemini_resolver_decision(log_text: Optional[str], pinned_model: str) -> Tuple[bool, str]:
+    """Fail closed unless agy's final resolver label exactly matches its pin."""
+    observed = last_agy_resolver_label(log_text) or "unverified"
+    return observed == pinned_model, observed
+
+
+def _read_agy_resolver_log() -> Optional[str]:
+    """Read the resolver log without surfacing its contents to reviewer prompts."""
+    try:
+        with open(AGY_RESOLVER_LOG, encoding="utf-8", errors="replace") as handle:
+            return handle.read()
+    except OSError:
+        return None
 
 
 def run_reviewer(agent: str, prompt: str, timeout: int, repo: str) -> Dict[str, Any]:
@@ -306,30 +349,59 @@ def run_reviewer(agent: str, prompt: str, timeout: int, repo: str) -> Dict[str, 
     else:
         return _failed_review(agent, "", "none", "unknown reviewer")
 
+    # Prompt construction gathered all repository evidence before this point.
+    # Each reviewer receives only that evidence from a fresh, empty cwd, so a
+    # model cannot browse repository or protected-file contents during review.
+    isolated_cwd = tempfile.mkdtemp(prefix="tri-review-reviewer-")
     try:
-        proc = subprocess.run(
-            cmd,
-            cwd=repo,
-            input=stdin_text,
-            stdin=stdin,
-            capture_output=True,
-            text=True,
-            timeout=timeout + 30 if agent == "gemini" else timeout,
-        )
-    except subprocess.TimeoutExpired:
-        outer_timeout = timeout + 30 if agent == "gemini" else timeout
-        return _failed_review(agent, model, backend, f"timeout after {outer_timeout}s")
-    except FileNotFoundError as exc:
-        return _failed_review(agent, model, backend, f"command unavailable: {exc}")
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=isolated_cwd,
+                input=stdin_text,
+                stdin=stdin,
+                capture_output=True,
+                text=True,
+                timeout=timeout + 30 if agent == "gemini" else timeout,
+            )
+        except subprocess.TimeoutExpired:
+            outer_timeout = timeout + 30 if agent == "gemini" else timeout
+            return _failed_review(agent, model, backend, f"timeout after {outer_timeout}s")
+        except FileNotFoundError as exc:
+            return _failed_review(agent, model, backend, f"command unavailable: {exc}")
 
-    if proc.returncode != 0:
-        detail = (proc.stderr or proc.stdout).strip()
-        return _failed_review(agent, model, backend, f"exit {proc.returncode}: {detail[:400]}")
+        resolver_ok = True
+        resolver_label: Optional[str] = None
+        if agent == "gemini":
+            resolver_ok, resolver_label = gemini_resolver_decision(_read_agy_resolver_log(), model)
 
-    verdict = validate_verdict_json(_extract_json(proc.stdout))
-    if verdict is None:
-        return _failed_review(agent, model, backend, "malformed, empty, or invalid verdict JSON")
-    return {"agent": agent, "model": model, "backend": backend, "valid": True, **verdict}
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout).strip()
+            return _failed_review(
+                agent,
+                model,
+                backend,
+                f"exit {proc.returncode}: {detail[:400]}",
+                resolver_label,
+            )
+        if not resolver_ok:
+            return _failed_review(
+                agent,
+                model,
+                backend,
+                f"resolver label mismatch or unverified: observed {resolver_label!r}; expected {model!r}",
+                resolver_label,
+            )
+
+        verdict = validate_verdict_json(_extract_json(proc.stdout))
+        if verdict is None:
+            return _failed_review(agent, model, backend, "malformed, empty, or invalid verdict JSON", resolver_label)
+        result = {"agent": agent, "model": model, "backend": backend, "valid": True, **verdict}
+        if agent == "gemini":
+            result["resolver_label"] = resolver_label
+        return result
+    finally:
+        shutil.rmtree(isolated_cwd, ignore_errors=True)
 
 
 def build_prompt(
@@ -415,6 +487,11 @@ def format_brief(
             "",
             f"- Model: `{result['model']}`",
             f"- Backend: `{result['backend']}`",
+            *(
+                [f"- Resolver-verified model: `{result.get('resolver_label', 'unverified')}`"]
+                if agent == "gemini"
+                else []
+            ),
             f"- Valid schema verdict: `{result['valid']}`",
             f"- Verdict: `{result['verdict']}`",
             f"- Confidence: `{result['confidence']}`",
@@ -500,6 +577,10 @@ def _selftest() -> int:
     check("secret scan Firebase token", secret_scan(firebase_token_fixture) == ["Firebase token"])
     check("secret scan benign text", secret_scan("token count = 3\npasswordless login") == [])
 
+    check("protected path exact file", is_protected_path("firebase.json"))
+    check("protected path directory child", is_protected_path("scripts/ci/verify-ios.sh"))
+    check("protected path boundary rejects ci helpers", not is_protected_path("scripts/ci-helpers/check.sh"))
+
     manifest_entries = _parse_name_status("M\ta.swift\nM\tb.swift\nM\tc.swift\n")
     diff = (
         "diff --git a/a.swift b/a.swift\n" + "a" * 30 + "\n"
@@ -524,6 +605,13 @@ def _selftest() -> int:
     check("GO resolution", resolve_advisory(all_go) == "GO (advisory)")
     check("NO-GO resolution", resolve_advisory(one_no_go) == "NO-GO (advisory)")
     check("DEGRADED resolution", resolve_advisory(degraded) == "DEGRADED")
+
+    mismatch_ok, mismatch_label = gemini_resolver_decision(
+        'Propagating selected model override to backend: label="Gemini 3.1 Pro (High)"\n'
+        'Propagating selected model override to backend: label="Gemini 3.5 Flash (Medium)"',
+        GEMINI_MODEL,
+    )
+    check("Gemini resolver mismatch fails closed", not mismatch_ok and mismatch_label == "Gemini 3.5 Flash (Medium)")
 
     repo = "/tmp/tri-review-selftest-repo"
     allowed = resolve_out_path(repo, "reports/tri-review/test.md", "2026-07-10T00:00:00Z")
@@ -606,15 +694,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         # LANDMINE #8: screen all prompt-bound review evidence before any provider sees a byte of it.
         full_diff = _git(repo, "diff", "--find-renames", merge_base_sha, head_sha)
         commit_log = _git(repo, "log", "--oneline", f"{merge_base_sha}..{head_sha}")
+        diff_stat = _git(repo, "diff", "--stat", "--find-renames", merge_base_sha, head_sha)
         manifest_display = "\n".join(entry["display"] for entry in manifest_entries)
-        secret_hits = secret_scan("\n".join((full_diff, commit_log, manifest_display)))
+        secret_hits = secret_scan("\n".join((full_diff, commit_log, manifest_display, diff_stat)))
         if secret_hits:
             print("BLOCKED: secret-like content in review evidence", file=sys.stderr)
             for label in secret_hits:
                 print(f"  - {label}", file=sys.stderr)
             return 3
 
-        diff_stat = _git(repo, "diff", "--stat", "--find-renames", merge_base_sha, head_sha)
         capped_diff, coverage = cap_diff_with_coverage(full_diff, manifest_entries)
         prompt = build_prompt(
             base_sha,
