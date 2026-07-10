@@ -345,6 +345,31 @@ describe("handleRevenueCatWebhookRequest", () => {
     expect(db.data("revenuecat_events/event-1")).toBeUndefined();
   });
 
+  it("records a user-less TRANSFER payload without selecting or mutating a user", async () => {
+    const db = new InMemoryFirestore();
+    const transfer = {
+      event: {
+        event_timestamp_ms: Date.parse("2026-07-10T10:00:00.000Z"),
+        id: "transfer-1",
+        transferred_from: ["anonymous-old-owner"],
+        transferred_to: ["anonymous-new-owner"],
+        type: "TRANSFER",
+      },
+    };
+
+    const result = await send(db, transfer);
+
+    expect(result.statusCode).toBe(200);
+    expect(db.data("users/anonymous-old-owner")).toBeUndefined();
+    expect(db.data("users/anonymous-new-owner")).toBeUndefined();
+    expect(db.data("revenuecat_events/transfer-1")).toMatchObject({
+      transferredFrom: ["anonymous-old-owner"],
+      transferredTo: ["anonymous-new-owner"],
+      type: "TRANSFER",
+    });
+    expect(db.data("revenuecat_events/transfer-1")).not.toHaveProperty("appUserId");
+  });
+
   it("rejects malformed event bodies before any write", async () => {
     const db = new InMemoryFirestore();
     db.seed("users/owner-1", {});
@@ -355,14 +380,48 @@ describe("handleRevenueCatWebhookRequest", () => {
     expect(db.data("revenuecat_events/event-1")).toBeUndefined();
   });
 
-  it("rejects missing and unknown app user ids", async () => {
+  it("rejects a missing app user id before any write", async () => {
     const db = new InMemoryFirestore();
 
     const missing = await send(db, event({ app_user_id: "" }));
-    const unknown = await send(db, event({ app_user_id: "missing-owner", id: "unknown-owner" }));
 
     expect(missing.statusCode).toBe(400);
-    expect(unknown.statusCode).toBe(400);
-    expect(db.data("revenuecat_events/unknown-owner")).toBeUndefined();
+    expect(db.data("revenuecat_events/event-1")).toBeUndefined();
+  });
+
+  it("upserts a missing user and prevents a later stale event from clobbering it", async () => {
+    const db = new InMemoryFirestore();
+    const createdAt = Date.parse("2026-07-12T10:00:00.000Z");
+
+    const created = await send(db, event({
+      app_user_id: "new-owner",
+      event_timestamp_ms: createdAt,
+      id: "create-missing-owner",
+    }));
+    const stale = await send(db, event({
+      app_user_id: "new-owner",
+      entitlement_ids: ["pro"],
+      event_timestamp_ms: Date.parse("2026-07-11T10:00:00.000Z"),
+      id: "stale-missing-owner-expiration",
+      type: "EXPIRATION",
+    }));
+
+    expect(created.statusCode).toBe(200);
+    expect(stale.statusCode).toBe(200);
+    expect(db.data("users/new-owner")).toMatchObject({
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        updatedAt: "2026-07-12T10:00:00.000Z",
+      },
+    });
+    expect(db.data("revenuecat_events/create-missing-owner")).toMatchObject({
+      appUserId: "new-owner",
+      type: "RENEWAL",
+    });
+    expect(db.data("revenuecat_events/stale-missing-owner-expiration")).toMatchObject({
+      appUserId: "new-owner",
+      type: "EXPIRATION",
+    });
   });
 });

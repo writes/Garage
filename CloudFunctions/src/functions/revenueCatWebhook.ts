@@ -2,13 +2,26 @@ import { timingSafeEqual } from "node:crypto";
 import { getFirestore } from "firebase-admin/firestore";
 import { onRequest } from "firebase-functions/v2/https";
 
-type RevenueCatEvent = {
+type StandardRevenueCatEvent = {
   appUserId: string;
   entitlementIds: string[];
   eventTimestampMs: number;
   id: string;
+  kind: "standard";
   type: string;
 };
+
+type TransferRevenueCatEvent = {
+  appUserId?: string;
+  eventTimestampMs: number;
+  id: string;
+  kind: "transfer";
+  transferredFrom: string[];
+  transferredTo: string[];
+  type: "TRANSFER";
+};
+
+type RevenueCatEvent = StandardRevenueCatEvent | TransferRevenueCatEvent;
 
 type DocumentReferenceLike = object;
 
@@ -46,15 +59,12 @@ export type RevenueCatWebhookDependencies = {
   now?: () => Date;
 };
 
-type TransactionResult = "duplicate" | "processed" | "stale" | "unknown-user";
-
-const grantEventTypes = new Set<RevenueCatEvent["type"]>([
+const grantEventTypes = new Set<StandardRevenueCatEvent["type"]>([
   "INITIAL_PURCHASE",
   "RENEWAL",
   "UNCANCELLATION",
   "PRODUCT_CHANGE",
   "NON_RENEWING_PURCHASE",
-  "TRANSFER",
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -65,20 +75,20 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
 function parseRevenueCatEvent(body: unknown): RevenueCatEvent | undefined {
   if (!isRecord(body) || !isRecord(body.event)) {
     return undefined;
   }
 
   const event = body.event;
-  const entitlementIds = event.entitlement_ids;
 
   if (
-    !isNonEmptyString(event.app_user_id)
-    || !isNonEmptyString(event.id)
+    !isNonEmptyString(event.id)
     || !isNonEmptyString(event.type)
-    || !Array.isArray(entitlementIds)
-    || !entitlementIds.every((id) => typeof id === "string")
     || typeof event.event_timestamp_ms !== "number"
     || !Number.isFinite(event.event_timestamp_ms)
     || !Number.isSafeInteger(event.event_timestamp_ms)
@@ -87,11 +97,33 @@ function parseRevenueCatEvent(body: unknown): RevenueCatEvent | undefined {
     return undefined;
   }
 
+  if (event.type === "TRANSFER") {
+    if (!isStringArray(event.transferred_from) || !isStringArray(event.transferred_to)) {
+      return undefined;
+    }
+
+    return {
+      appUserId: isNonEmptyString(event.app_user_id) ? event.app_user_id : undefined,
+      eventTimestampMs: event.event_timestamp_ms,
+      id: event.id,
+      kind: "transfer",
+      transferredFrom: event.transferred_from,
+      transferredTo: event.transferred_to,
+      type: "TRANSFER",
+    };
+  }
+
+  const entitlementIds = event.entitlement_ids;
+  if (!isNonEmptyString(event.app_user_id) || !isStringArray(entitlementIds)) {
+    return undefined;
+  }
+
   return {
     appUserId: event.app_user_id,
     entitlementIds,
     eventTimestampMs: event.event_timestamp_ms,
     id: event.id,
+    kind: "standard",
     type: event.type,
   };
 }
@@ -148,7 +180,7 @@ function storedSubscriptionUpdatedAt(userData: Record<string, unknown> | undefin
  * valid until RevenueCat sends an EXPIRATION. Unknown events are recorded but
  * intentionally do not change access.
  */
-function entitlementActivityForEvent(event: RevenueCatEvent): boolean | undefined {
+function entitlementActivityForEvent(event: StandardRevenueCatEvent): boolean | undefined {
   if (grantEventTypes.has(event.type)) {
     return event.entitlementIds.includes("pro") ? true : undefined;
   }
@@ -158,6 +190,30 @@ function entitlementActivityForEvent(event: RevenueCatEvent): boolean | undefine
   }
 
   return undefined;
+}
+
+function eventRecord(event: RevenueCatEvent, receivedAt: string, updatedAt: string): Record<string, unknown> {
+  const common = {
+    eventTimestampMs: event.eventTimestampMs,
+    receivedAt,
+    type: event.type,
+    updatedAt,
+  };
+
+  if (event.kind === "transfer") {
+    return {
+      ...common,
+      ...(event.appUserId ? { appUserId: event.appUserId } : {}),
+      transferredFrom: event.transferredFrom,
+      transferredTo: event.transferredTo,
+    };
+  }
+
+  return {
+    ...common,
+    appUserId: event.appUserId,
+    entitlementIds: event.entitlementIds,
+  };
 }
 
 export async function handleRevenueCatWebhookRequest(
@@ -186,31 +242,27 @@ export async function handleRevenueCatWebhookRequest(
   }
 
   const eventRef = dependencies.db.collection("revenuecat_events").doc(event.id);
-  const userRef = dependencies.db.collection("users").doc(event.appUserId);
-  const isActive = entitlementActivityForEvent(event);
   const updatedAt = new Date(event.eventTimestampMs).toISOString();
   const receivedAt = (dependencies.now ?? (() => new Date()))().toISOString();
 
-  const result = await dependencies.db.runTransaction(async (transaction): Promise<TransactionResult> => {
+  await dependencies.db.runTransaction(async (transaction) => {
     const existingEvent = await transaction.get(eventRef);
 
     if (existingEvent.exists) {
       return "duplicate";
     }
 
-    const user = await transaction.get(userRef);
-    if (!user.exists) {
-      return "unknown-user";
+    transaction.set(eventRef, eventRecord(event, receivedAt, updatedAt));
+
+    // A transfer is a relationship change between multiple identities, not a
+    // single-user entitlement verdict. RevenueCat follows with per-user events.
+    if (event.kind === "transfer") {
+      return "processed";
     }
 
-    transaction.set(eventRef, {
-      appUserId: event.appUserId,
-      entitlementIds: event.entitlementIds,
-      eventTimestampMs: event.eventTimestampMs,
-      receivedAt,
-      type: event.type,
-      updatedAt,
-    });
+    const userRef = dependencies.db.collection("users").doc(event.appUserId);
+    const user = await transaction.get(userRef);
+    const isActive = entitlementActivityForEvent(event);
 
     const priorUpdatedAt = storedSubscriptionUpdatedAt(user.data());
     if (
@@ -237,11 +289,6 @@ export async function handleRevenueCatWebhookRequest(
 
     return "processed";
   });
-
-  if (result === "unknown-user") {
-    response.status(400).send("Unknown RevenueCat app user id.");
-    return;
-  }
 
   response.status(200).send("ok");
 }

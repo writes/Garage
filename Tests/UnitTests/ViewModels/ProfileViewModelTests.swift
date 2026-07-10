@@ -59,6 +59,22 @@ struct ProfileViewModelTests {
         #expect(store.profile(uid: "user")?["futureProfileKey"] == "preserve me")
         #expect(store.profile(uid: "user")?["name"] == "Ada Driver")
     }
+
+    @Test func firestoreStore_writesANestedProfileMapInsteadOfLiteralDottedKeys() async throws {
+        let document = LiteralKeyFirestoreProfileDocument(data: [
+            "profile": ["futureProfileKey": "preserve me"]
+        ])
+        let store = FirestoreProfileStore(documentForUser: { _ in document })
+
+        try await store.saveProfile(["name": "Ada Driver"], uid: "user")
+
+        let payload = try #require(document.lastSetData)
+        #expect(payload.keys.sorted() == ["profile"])
+        #expect(payload["profile"] as? [String: String] == ["name": "Ada Driver"])
+        #expect(!document.sawDottedTopLevelKey)
+        #expect(document.profile?["futureProfileKey"] == "preserve me")
+        #expect(document.profile?["name"] == "Ada Driver")
+    }
 }
 
 @MainActor
@@ -82,4 +98,44 @@ private final class InMemoryProfileStore: ProfileStore {
     func profile(uid: String) -> [String: String]? {
         profiles[uid]
     }
+}
+
+@MainActor
+private final class LiteralKeyFirestoreProfileDocument: ProfileDocument {
+    private(set) var lastSetData: [String: Any]?
+    private(set) var sawDottedTopLevelKey = false
+    private var data: [String: Any]
+
+    init(data: [String: Any]) {
+        self.data = data
+    }
+
+    var profile: [String: String]? {
+        data["profile"] as? [String: String]
+    }
+
+    func getData() async throws -> [String: Any]? {
+        data
+    }
+
+    func setData(_ updates: [String: Any], merge: Bool) async throws {
+        lastSetData = updates
+        sawDottedTopLevelKey = updates.keys.contains { $0.contains(".") }
+        guard !sawDottedTopLevelKey else {
+            throw LiteralKeyFirestoreError.dottedTopLevelKey
+        }
+
+        guard merge, let incomingProfile = updates["profile"] as? [String: String] else {
+            data = updates
+            return
+        }
+
+        var mergedProfile = profile ?? [:]
+        mergedProfile.merge(incomingProfile) { _, replacement in replacement }
+        data["profile"] = mergedProfile
+    }
+}
+
+private enum LiteralKeyFirestoreError: Error {
+    case dottedTopLevelKey
 }

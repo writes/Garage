@@ -59,6 +59,13 @@ Sol plan co-review (8 blockers, all dispositioned).
 - Queued follow-up programs: account-deletion/data-lifecycle suite, supply-chain checks,
   observability acceptance criteria, Swift-6 concurrency hazard suite.
 
+### Known limitation / queued
+
+Free-tier vehicle-limit enforcement remains client-side in `PurchaseService.isPro` and
+`VehicleService`. The `subscription` field is now server-protected, but enforcing the vehicle
+count itself in Firestore rules is a larger queued item that needs a dedicated rules/data-model
+design and verification pass.
+
 ## Ritual compliance
 
 Votes TV-A1–A6 + product Q1–Q5 in `DECISION_LEDGER.jsonl`; scope fenced to the manifest

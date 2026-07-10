@@ -1,3 +1,4 @@
+import RevenueCat
 import Testing
 @testable import Garage
 
@@ -14,6 +15,21 @@ struct PurchaseServiceTests {
 
         #expect(probe.calls == 1)
         #expect(service.isPro)
+    }
+
+    @Test func annualDisclosureIncludesLocalizedPriceDurationAndRenewal() {
+        let disclosure = SubscriptionDisclosure.renewalTerms(
+            localizedPrice: "$34.99",
+            period: SubscriptionPeriod(value: 1, unit: .year)
+        )
+
+        #expect(disclosure == "$34.99/year, auto-renews until cancelled.")
+    }
+
+    @Test func nonSubscriptionDisclosureDoesNotClaimAutoRenewal() {
+        let disclosure = SubscriptionDisclosure.renewalTerms(localizedPrice: "$49.99", period: nil)
+
+        #expect(disclosure == "$49.99, not an auto-renewing subscription.")
     }
 }
 

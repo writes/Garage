@@ -7,6 +7,10 @@ enum Constants {
     static let annualPlanIdentifier = "garage_pro_annual"
     static let monthlyPlanIdentifier = "garage_pro_monthly"
     static let appleSignInTimeoutNanoseconds: UInt64 = 15_000_000_000
+    // Operator action required before App Store submission: replace each
+    // clearly-invalid placeholder with the published policy destination.
+    static let privacyPolicyURLString = "https://OPERATOR-REPLACE-PRIVACY-POLICY.invalid"
+    static let termsOfUseURLString = "https://OPERATOR-REPLACE-TERMS-OF-USE.invalid"
 }
 
 enum AppRuntime {

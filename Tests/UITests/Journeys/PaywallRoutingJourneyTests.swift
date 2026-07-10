@@ -54,6 +54,16 @@ final class PaywallRoutingJourneyTests: JourneyTestCase {
         tapWhenHittable(restore)
     }
 
+    func testSubscriptionShowsTermsAndPrivacyLinksBeforePurchase() {
+        let app = launchDemo()
+
+        tapTab("Garage", in: app)
+        routeToSubscription(from: app.buttons["garage.gate.cta"], in: app)
+
+        require(app.links["subscription.terms"])
+        require(app.links["subscription.privacy"])
+    }
+
     private func routeToSubscription(from gate: XCUIElement, in app: XCUIApplication) {
         tapWhenHittable(gate)
         require(app.buttons["subscription.refresh"])

@@ -7,17 +7,48 @@ protocol ProfileStore {
     func saveProfile(_ fields: [String: String], uid: String) async throws
 }
 
+/// The small document seam keeps Firestore's `setData` payload semantics testable.
+@MainActor
+protocol ProfileDocument {
+    func getData() async throws -> [String: Any]?
+    func setData(_ data: [String: Any], merge: Bool) async throws
+}
+
+@MainActor
+private final class FirebaseProfileDocument: ProfileDocument {
+    private let document: DocumentReference
+
+    init(document: DocumentReference) {
+        self.document = document
+    }
+
+    func getData() async throws -> [String: Any]? {
+        try await document.getDocument().data()
+    }
+
+    func setData(_ data: [String: Any], merge: Bool) async throws {
+        try await document.setData(data, merge: merge)
+    }
+}
+
 @MainActor
 final class FirestoreProfileStore: ProfileStore {
-    private let firestore: FirestoreService
+    private let documentForUser: (String) -> any ProfileDocument
 
     init(firestore: FirestoreService = .shared) {
-        self.firestore = firestore
+        documentForUser = { uid in
+            FirebaseProfileDocument(
+                document: firestore.db.collection(FirestorePaths.users).document(uid)
+            )
+        }
+    }
+
+    init(documentForUser: @escaping (String) -> any ProfileDocument) {
+        self.documentForUser = documentForUser
     }
 
     func loadProfile(uid: String) async throws -> [String: String]? {
-        let snapshot = try await firestore.db.collection(FirestorePaths.users).document(uid).getDocument()
-        guard let values = snapshot.data()?["profile"] as? [String: Any] else { return nil }
+        guard let values = try await documentForUser(uid).getData()?["profile"] as? [String: Any] else { return nil }
         return values.reduce(into: [:]) { fields, value in
             if let text = value.value as? String {
                 fields[value.key] = text
@@ -26,12 +57,10 @@ final class FirestoreProfileStore: ProfileStore {
     }
 
     func saveProfile(_ fields: [String: String], uid: String) async throws {
-        // A map write would replace unknown profile keys added by a newer app
-        // version. These fixed field paths update only our five known keys.
-        let updates = Dictionary(uniqueKeysWithValues: fields.map { key, value in
-            ("profile.\(key)", value)
-        })
-        try await firestore.db.collection(FirestorePaths.users).document(uid).setData(updates, merge: true)
+        // `setData(merge: true)` deep-merges this map, preserving unknown keys
+        // added by a newer app version. Dotted keys would be literal top-level
+        // fields here; only Firestore's `updateData` interprets dot paths.
+        try await documentForUser(uid).setData(["profile": fields], merge: true)
     }
 }
 
