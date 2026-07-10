@@ -18,7 +18,7 @@ final class CSVExportService {
                 String($0.isDiy ?? false),
                 Self.safeFreeText($0.shopName ?? ""),
                 Self.safeFreeText($0.notes ?? ""),
-                $0.attachmentPaths.joined(separator: "|"),
+                $0.attachmentPaths.map(Self.safeFreeText).joined(separator: "|"),
                 Self.safeFreeText(Self.detailsText($0.details))
             ].map(Self.escapedField).joined(separator: ",")
         }
@@ -26,8 +26,18 @@ final class CSVExportService {
     }
 
     static func safeFreeText(_ value: String) -> String {
-        guard let first = value.first, "=+-@".contains(first) else { return value }
+        let leadingCharacters = value.prefix(while: Self.isLeadingWhitespaceOrControl)
+        let firstMeaningfulCharacter = value.dropFirst(leadingCharacters.count).first
+        let containsSpreadsheetControlPrefix = leadingCharacters.contains { "\t\r\n".contains($0) }
+
+        guard containsSpreadsheetControlPrefix
+                || (firstMeaningfulCharacter.map { "=+-@".contains($0) } ?? false)
+        else { return value }
         return "'" + value
+    }
+
+    private static func isLeadingWhitespaceOrControl(_ character: Character) -> Bool {
+        character.isWhitespace || character.unicodeScalars.allSatisfy(CharacterSet.controlCharacters.contains)
     }
 
     private static func escapedField(_ value: String) -> String {
