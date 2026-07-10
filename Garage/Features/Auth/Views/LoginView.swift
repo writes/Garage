@@ -28,6 +28,13 @@ struct LoginView: View {
             .frame(height: 54)
             .disabled(viewModel.isLoading)
 
+            if let simulatorHelpText = AuthViewModel.simulatorHelpText {
+                Text(simulatorHelpText)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             Button("Continue with Google") {
                 Task {
                     await viewModel.signInWithGoogle()

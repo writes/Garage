@@ -6,17 +6,23 @@ import Observation
 final class GalleryService {
     static let shared = GalleryService()
 
-    private let firestore = FirestoreService.shared
+    private var firestore: FirestoreService { .shared }
 
     private init() {}
 
     func save(_ photo: GalleryPhoto) async throws {
+        guard !AppRuntime.isLocalDemoMode else { return }
+
         let reference = firestore.db.collection(FirestorePaths.vehicleGallery(vehicleId: photo.vehicleId))
             .document(photo.id)
         try await reference.setData(firestore.encode(photo), merge: true)
     }
 
     func fetchPhotos(vehicleId: String) async throws -> [GalleryPhoto] {
+        if AppRuntime.isLocalDemoMode {
+            return SeedData.galleryPhotos(for: vehicleId)
+        }
+
         let snapshot = try await firestore.db.collection(FirestorePaths.vehicleGallery(vehicleId: vehicleId))
             .order(by: "displayOrder")
             .limit(to: 100)

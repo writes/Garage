@@ -54,10 +54,20 @@ enum AppError: LocalizedError, Equatable, Sendable {
     }
 
     private static func appleAuthorizationMessage(for error: NSError) -> String {
+        if error.code == ASAuthorizationError.Code.canceled.rawValue {
+            return "Sign in with Apple was canceled."
+        }
+
         if error.code == ASAuthorizationError.Code.unknown.rawValue {
+#if targetEnvironment(simulator)
+            return
+                "Sign in with Apple couldn't start on the simulator. Verify the debug app ID is enabled " +
+                "for Sign in with Apple, the capability is present in this build, and the simulator is signed into an Apple ID."
+#else
             return
                 "Sign in with Apple couldn't start for this build. " +
                 "Rebuild and verify the Sign in with Apple capability is enabled."
+#endif
         }
 
         return error.localizedDescription

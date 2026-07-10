@@ -6,17 +6,23 @@ import Observation
 final class DetailingService {
     static let shared = DetailingService()
 
-    private let firestore = FirestoreService.shared
+    private var firestore: FirestoreService { .shared }
 
     private init() {}
 
     func save(_ record: DetailingRecord) async throws {
+        guard !AppRuntime.isLocalDemoMode else { return }
+
         let reference = firestore.db.collection(FirestorePaths.vehicleDetailing(vehicleId: record.vehicleId))
             .document(record.id)
         try await reference.setData(firestore.encode(record), merge: true)
     }
 
     func fetchRecords(vehicleId: String) async throws -> [DetailingRecord] {
+        if AppRuntime.isLocalDemoMode {
+            return SeedData.detailingRecords(for: vehicleId)
+        }
+
         let snapshot = try await firestore.db.collection(FirestorePaths.vehicleDetailing(vehicleId: vehicleId))
             .limit(to: 100)
             .getDocuments()

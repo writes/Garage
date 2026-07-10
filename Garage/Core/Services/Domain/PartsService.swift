@@ -6,17 +6,23 @@ import Observation
 final class PartsService {
     static let shared = PartsService()
 
-    private let firestore = FirestoreService.shared
+    private var firestore: FirestoreService { .shared }
 
     private init() {}
 
     func save(_ part: SparePart) async throws {
+        guard !AppRuntime.isLocalDemoMode else { return }
+
         let reference = firestore.db.collection(FirestorePaths.vehicleParts(vehicleId: part.vehicleId))
             .document(part.id)
         try await reference.setData(firestore.encode(part), merge: true)
     }
 
     func fetchParts(vehicleId: String) async throws -> [SparePart] {
+        if AppRuntime.isLocalDemoMode {
+            return SeedData.spareParts(for: vehicleId)
+        }
+
         let snapshot = try await firestore.db.collection(FirestorePaths.vehicleParts(vehicleId: vehicleId))
             .limit(to: 100)
             .getDocuments()
