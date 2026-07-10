@@ -451,3 +451,28 @@ Round 11 is the operator's decision brief. Note the resolution semantics: unanim
 required for `GO (advisory)`, so even a 2-GO/1-NO-GO split resolves `NO-GO (advisory)` — by
 design. The operator override (ledgered, head-SHA-bound) is the sanctioned path when residual
 dissent rests on the standing limitation and queued new-scope items only.
+
+## 19. DECISION BRIEF — round 11 (2026-07-10, head `1fd314b`) — RECOMMEND OPERATOR OVERRIDE
+
+Brief `reports/tri-review/2026-07-10T17-31-28Z.md` (11 rounds, 12 Terra passes, R1–R56,
+62/62 selftests):
+
+| Reviewer | Verdict | Classification of dissent |
+|---|---|---|
+| **Fable 5** (full evidence visible) | **GO (0.8), zero blocking findings** | — |
+| **Gemini 3.1 Pro (High)** | NO-GO (0.99) | **Infrastructural**: "diff truncated before the core scripts" — the ~450KB accumulated meta-diff exceeds its lane's ingestion; it voted GO (0.85) at round 10 when its parse succeeded, and both of its substantive findings (rounds 8–9) are fixed. Normal-scale feature reviews will not hit this |
+| **GPT-5.6 Sol** | NO-GO (0.99) | (1) forge-proof ledger appends — **QUEUED escalation** (§18) with fair sub-point (ledger also excluded from reviewer diffs); (2) hermeticity — **STANDING LIMITATION**, 7th raise; (3) R54 breadth (goal/plan/metadata preflight) — **QUEUED**; (4) Markdown-injection escaping in artifacts — **QUEUED**; (5) `--allow-env-override` permits substitution — **BY DESIGN** (operator-invoked, recorded, Law-4 intake remains procedural doctrine) |
+
+**Recommendation:** execute the sanctioned operator override bound to head `1fd314b` and merge
+`brain/install-v1` → `main`. Rationale: the routing directive is fully implemented and
+live-verified; 56 remediations were driven by this very review harness; the sole full-evidence
+reviewer returns a clean GO; residual dissent is queued/new-scope/standing-limitation material
+that does not worsen the pre-v3 baseline (which had NONE of these protections). Alternative:
+commission the queue (forge-proof ledger, screening breadth, artifact escaping, OS-level lane
+isolation) and re-review — at normal feature scale all three lanes can then see full evidence.
+
+**Queued follow-ups (commissionable):** Q1 forge-proof schema-bound ledger appends +
+ledger-visible-to-review; Q2 R54 preflight breadth; Q3 artifact Markdown escaping/inerting;
+Q4 OS-level lane isolation (the standing limitation, if ever worth solving at this layer);
+Q5 per-area review mode in tri_review (scripts-only pathspec) so giant meta-diffs stop
+degrading the Gemini lane.

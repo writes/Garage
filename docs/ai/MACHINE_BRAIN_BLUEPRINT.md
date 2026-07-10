@@ -240,6 +240,20 @@ never an auto-edit beyond appending rows the human confirms (Law 5).
 
 ### 5.4 Changelog (append-only; newest first)
 
+- **2026-07-10 (later)** — **Routing v3 hardened through 11 live tri-reviews / 12 Terra passes
+  (R1–R56)**; sync note: R17–R56 shipped across several commits during the review loop, squared
+  here. Highlights: Sol plan co-review stage (fail-closed, governed bypass) + Gemini read-only
+  cross-check (empty-cwd, zero-delta halt) in `dual_agent_loop.py`; resolver-log model
+  verification on every agy call (symlink/inode-bound, flock-serialized — landmine #12);
+  fail-closed secret screening on ALL provider-bound evidence incl. loop stages, with
+  redact-on-write for provider outputs; ROSTER allowlist gating every lane (env overrides are
+  recorded operator acts); DECISION_LEDGER enforcement is append-only (revert+halt otherwise);
+  tri-votes TV1 (3 live voters or `--allow-degraded`+agreement) and TV2 (fallback = dead voter)
+  implemented in `tri_agent_vote.py`; coverage-gated advisory resolution + bounded verdicts in
+  `tri_review.py` (selftest 62/62). Two SessionStart/consensus status truth-ups. Decision brief
+  + full disposition history: `docs/research/2026-07-10_MODEL_ROUTING_V3.md` §7–§19; 11 briefs
+  under `reports/tri-review/`.
+
 - **2026-07-10** — **Model routing v3 (lane-split collective)** per operator directive: strategy
   /planning = Fable 5 + GPT-5.6 Sol; implementation = GPT-5.6 Terra + Gemini 3.1 Pro (High)
   read-only cross-check (new `stage_cross_check` in `dual_agent_loop.py`); pre-main review = all
