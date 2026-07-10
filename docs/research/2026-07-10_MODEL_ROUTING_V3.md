@@ -333,3 +333,29 @@ Convergence rule for round 6: reviewer verdicts that CONFIRM prior fixes and rai
 *new-scope* hardening go to the operator with an override recommendation — the unanimity bar
 is the policy's own escape hatch (operator override tied to head SHA), and the gate has been
 theirs all along.
+
+**§13 ERRATUM (caught by Fable in round 6 — same class as the §10 erratum):** §13 was triaged
+from a truncated grep of the round-5 brief and silently dropped three of Sol's seven blockers.
+Root cause of both errata: triaging from `head`-truncated excerpts instead of full briefs.
+Process rule going forward: **read the complete brief before writing a disposition table.**
+
+## 14. Sixth live tri-review (2026-07-10) — complete triage → convergence pass (R33–R39)
+
+Brief `reports/tri-review/2026-07-10T16-19-19Z.md` on `89d5e1f`: **Fable NO-GO (0.75, triage
+integrity) · Sol NO-GO (0.99) · Gemini lane dead (resolver 'unverified' — R28 didn't handle
+symlink swap)**. Empirical diagnosis: `cli.log` is a symlink repointed to a fresh per-run log
+file each invocation; size-only rotation detection misses the swap. COMPLETE dispositions
+(rounds 5+6, all blockers):
+
+| Finding | Disposition |
+|---|---|
+| R28 misses symlink-swap rotation (self-diagnosed live) | **ACCEPTED → R33**: realpath+inode binding; swap ⇒ parse whole fresh target |
+| Concurrent agy calls can cross-validate labels (Sol r5+r6, dropped from §13) | **ACCEPTED → R34**: cross-process flock serializes resolver-verified agy invocations |
+| Cross-check runs in the worktree — Gemini could write allowed paths (Sol r6) | **ACCEPTED → R35**: agy cross-check moves to an empty evidence-only cwd — second writer structurally impossible; post-stage guard stays |
+| `--allow-degraded` 1-1 split appends one model's confidence pick (Sol r5+r6, dropped from §13) | **ACCEPTED → R36**: degraded pair must canonicalize equal; disagreement ⇒ no append, operator decision |
+| Secret denylist misses `github_pat_`, unquoted dotenv/YAML creds, entropy (Sol r5+r6, dropped from §13) | **ACCEPTED (partial) → R37**: patterns added + the documented guarantee NARROWED to best-effort denylist (Sol's own alternative); full entropy scanning rejected — git SHAs/hashes make diff entropy scans false-positive machines |
+| Loop review sees only first 12KB incl. protocol artifacts; can declare DONE unseen (Sol r6) | **ACCEPTED → R38**: protocol artifacts excluded, coverage-accounted evidence, omissions force done=False |
+| Plan co-review fail-open on dead/malformed Sol (Sol r6) | **ACCEPTED → R39**: fail-closed halt; `--no-plan-review` becomes a recorded operator override |
+| Empty cwd ≠ hermetic boundary (env/HOME inherited; prompt-injected reads) (Sol r5+r6) | **STANDING LIMITATION (re-affirmed)**: hermetic env-scrubbed/network-fenced execution is beyond a CLI-lane harness; compensating controls: tools disabled (claude), read-only sandbox + empty cwd (codex), `--sandbox` + empty cwd (agy), untrusted-data framing, protected-path fail-close, and the Law-5 human gate. Not whack-a-mole-able further at this layer |
+| HANDOFF stale at reviewed HEAD (Sol r5, Fable r5) | **FIXED in `89d5e1f`** (refresh-before-review process rule) — confirmed current at round 6 |
+| §13 dropped three Sol blockers (Fable r6) | **ACCEPTED — this §14 is the remediation**, plus the read-full-briefs process rule above |
