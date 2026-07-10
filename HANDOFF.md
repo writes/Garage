@@ -2,13 +2,13 @@
 
 <!--CURRENT:START-->
 ## CURRENT STATE
-- updated: 2026-07-10T16:52:13Z by **claude-fable-5** on `brain/install-v1` @ `6effec8`
+- updated: 2026-07-10T16:55:36Z by **codex-terra** on `brain/routing-v3` @ `9ad491c`
 - runtime: (unchanged)
-- last session did: Pass 8 (R40-R46) landed - 8 Terra passes total (R1-R46), 58/58 selftests: fail-closed resolver equality (fixed an orchestrator contract bug from R33), coverage-gated review resolution (partial evidence => DEGRADED), redact-on-write for all provider-produced artifacts, zero-delta cross-check with revert+halt, bounded agy lock, --no-plan-review now needs --override-reason + durable ledger row, one JSON-parse retry per reviewer. Round-7 verdicts were Fable GO / Gemini infra-failure (fixed) / Sol NO-GO (all six findings fixed this pass or standing-limitation).
+- last session did: R47: runtime-concatenated the PEM redaction fixture so the fail-closed source scan cannot match its own test literal; all scripts/brain source scans clean, tri_review 58/58, consensus 17/17.
 - in-flight (uncommitted/partial): none
 - BLOCKED / operator-gated: none
 - ⚠ contention / landmines: none
-- ▶ **NEXT ACTION**: Round-8 tri-review on this HEAD is the decision brief per spec section 13/15 convergence rule: OPERATOR merges to main on GO or unanimity-shortfall-with-only-standing-limitation findings (documented override path, ledger row bound to head SHA).
+- ▶ **NEXT ACTION**: Re-run Round-8 tri-review on this candidate; the operator retains the merge gate.
 <!--CURRENT:END-->
 
 ## WHERE THE DEEP STATE LIVES (pointers — do not duplicate content here)
@@ -20,6 +20,7 @@
 
 ## LOG (newest first; keep ~12)
 <!--LOG:START-->
+- 2026-07-10T16:55:36Z **codex-terra** @`9ad491c`: R47: runtime-concatenated the PEM redaction fixture so the fail-closed source scan cannot match its own test literal; all scripts/brain source scans clean, tri_review 58/58, consensus 17/17.  — NEXT: Re-run Round-8 tri-review on this candidate; the operator retains the merge gate.
 - 2026-07-10T16:52:13Z **claude-fable-5** @`6effec8`: Pass 8 (R40-R46) landed - 8 Terra passes total (R1-R46), 58/58 selftests: fail-closed resolver equality (fixed an orchestrator contract bug from R33), coverage-gated review resolution (partial evidence => DEGRADED), redact-on-write for all provider-produced artifacts, zero-delta cross-check with revert+halt, bounded agy lock, --no-plan-review now needs --override-reason + durable ledger row, one JSON-parse retry per reviewer. Round-7 verdicts were Fable GO / Gemini infra-failure (fixed) / Sol NO-GO (all six findings fixed this pass or standing-limitation).  — NEXT: Round-8 tri-review on this HEAD is the decision brief per spec section 13/15 convergence rule: OPERATOR merges to main on GO or unanimity-shortfall-with-only-standing-limitation findings (documented override path, ledger row bound to head SHA).
 - 2026-07-10T16:34:26Z **claude-fable-5** @`265daa0`: Convergence pass R33-R39 landed (7 Terra passes total, R1-R39): symlink-aware+inode-bound agy resolver verification (live-verified model_verified=true), cross-process agy lock, cross-check moved to empty evidence-only cwd (second writer structurally impossible), degraded vote pairs must agree (no confidence tie-break appends), secret denylist broadened + guarantee honestly narrowed, loop review coverage-accounted with forced-CONTINUE on omissions, Sol plan co-review fail-closed with governed override. tri_review selftest 53/53. Spec sections 13-14 carry complete dispositions incl. two triage errata (process rule: read FULL briefs).  — NEXT: Round-7 tri-review on this HEAD is the decision brief: OPERATOR merges brain/install-v1 to main on GO, or applies the documented override (spec section 13 convergence rule) if any reviewer raises only new-scope hardening. Standing limitation on CLI-lane hermeticity is documented in spec section 14.
 - 2026-07-10T16:19:02Z **claude-fable-5** @`fb07e6c`: Routing v3 COMPLETE through 6 Terra passes (R1-R32) + 2 live tri-votes: TV1=C (3 voters required for appends; --allow-degraded escape, 2/3 majority) and TV2=A (fallback=dead voter, UNANIMOUS) both implemented; SessionStart-hook status truth-up (wired since v1 install, note was stale); agy log-rotation handled in resolver verification; Sol plan-rejection now halts the loop; scope guard re-runs post-cross-check (PLAN_REVIEW/CROSS_CHECK registered as protocol artifacts); all lanes sandboxed. tri_review selftest 43/43, consensus 17/17, scope_guard selftest green.  — NEXT: Round-6 tri-review runs on this HEAD; then OPERATOR decides: merge brain/install-v1 to main on GO, or override-with-ledger-entry if Sol alone raises new-scope hardening (per spec section 13 convergence rule). Standing limitation acknowledged: CLI lanes are not hermetic - Law 5 human gate compensates.

@@ -855,10 +855,16 @@ def _selftest() -> int:
         "provider-output redaction replaces matching content with its label",
         redacted_openai == "[REDACTED: OpenAI key]" and redaction_labels == ["OpenAI key"],
     )
+    # Assemble the PEM-shaped fixture at runtime.  The source must not itself
+    # contain a contiguous secret-shaped payload, because this module scans
+    # every changed source file before allowing a review to proceed.
+    pem_header_fixture = "-----BEGIN TEST PRIVATE" + " KEY-----"
+    pem_footer_fixture = "-----END TEST PRIVATE" + " KEY-----"
     pem_fixture = (
-        "-----BEGIN TEST PRIVATE KEY-----\n"
-        "synthetic-private-material\n"
-        "-----END TEST PRIVATE KEY-----"
+        pem_header_fixture
+        + "\n"
+        + "synthetic-private-material\n"
+        + pem_footer_fixture
     )
     redacted_pem, pem_labels = redact_secret_content(pem_fixture)
     check(
