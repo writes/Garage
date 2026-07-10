@@ -256,9 +256,35 @@ the brief to the operator (the merge gate is theirs regardless — Law 5).
 
 Brief `reports/tri-review/2026-07-10T15-27-17Z.md` on `8a09816`: **Fable GO (0.78) · Sol lane
 FAILED (R12's empty-cwd isolation broke codex: "Not inside a trusted directory…") · Gemini
-NO-GO (0.95, model resolver-verified — R13 observed working)**. Gemini's sole blocker:
-resolver verification exists only in `tri_review.py`, not in the vote (`gemini_consult`) and
-loop cross-check lanes. Both findings are bounded follow-through of already-accepted
+NO-GO (0.95, model resolver-verified — R13 observed working)**. Gemini's resolver-coverage
+blocker: verification exists only in `tri_review.py`, not in the vote (`gemini_consult`) and
+loop cross-check lanes. Both handled findings are bounded follow-through of already-accepted
 principles, within the loop-bound → **R17** (codex `--skip-git-repo-check`, isolation kept)
 and **R18** (resolver verification factored into `gemini_consult` and applied to all agy
 lanes; mismatch ⇒ dead voter / unavailable cross-check, fail-closed).
+*Triage erratum (caught by Fable in round 4):* Gemini's round-3 brief contained a SECOND
+blocker — HANDOFF.md absent (session-end contract) — which this §10 table silently dropped.
+Acknowledged; remediated with the session-end HANDOFF update below.
+
+## 11. Fourth live tri-review (2026-07-10) — unanimous NO-GO → STOP per loop-bound
+
+Brief `reports/tri-review/2026-07-10T15-36-55Z.md` on `5a4e5bd` (fully-merged tree, R17/R18
+in): **Fable NO-GO (0.8) · Sol NO-GO (0.98) · Gemini NO-GO (0.98)**. R18 was confirmed
+correctly implemented by reviewers; findings are now new-scope hardening. Loop-bound invoked:
+**stop, hand the gate to the operator.** Triage:
+
+| Finding | Disposition |
+|---|---|
+| §10 triage dropped Gemini's HANDOFF blocker (Fable) | **ACCEPTED — process error acknowledged**; HANDOFF updated in this commit (mandatory ritual regardless) |
+| tri_review.py truncated in review evidence → R17 unverifiable to reviewers (Fable) | **ACCEPTED → backlog R23**: `--diff-limit` flag; meanwhile R17 is verifiable in-repo (`grep skip-git-repo-check scripts/brain/tri_review.py`) and was exercised live in this very run (codex lane returned a valid verdict from the empty cwd) |
+| Resolver check reads last label of a shared log — stale/interleaved label risk (all 3) | **ACCEPTED → backlog R19**: capture pre-call log offset, match only appended region |
+| BRAIN_* env pins are ambient, not policy-enforced (Sol) | **ACCEPTED → backlog R24**: in-repo roster allowlist; env override requires an explicit flag recorded in the brief |
+| `stage_implement` lacks explicit `-s workspace-write` (Sol) | **ACCEPTED → backlog R20** |
+| Secret screen regex list too narrow (Sol) | **ACCEPTED → backlog R22**: add JWT/GitHub/OpenAI/Stripe/JSON-key/dotenv patterns (full entropy scanning deferred) |
+| `vote_gemini backend="auto"` lets the 2.5-pro fallback count as a vote (Sol, re-raised) | **REMAINS DEFERRED TO TRI-VOTE TV2** — changing Law-1 degraded-vote semantics by fiat is exactly what Law 1 forbids; queued since round 1 and recorded in the ledger |
+| `vote_claude` unhardened vs R10/R12 pattern (Gemini, advisory) | **ACCEPTED → backlog R21** |
+
+Backlog R19–R24 + tri-votes TV1 (require 3 live voters for substantive appends) and TV2
+(fallback = dead voter) are queued in HANDOFF. The pre-main review policy stands: this branch
+does NOT merge to main without a GO brief or an explicit operator override tied to head SHA —
+**the operator holds the switch** (Law 5), and this brief hands it to them with full evidence.
