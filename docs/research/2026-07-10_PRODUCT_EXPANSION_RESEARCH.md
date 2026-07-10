@@ -209,3 +209,19 @@ recommended before commitment):**
 
 Collective vote (Law 1) on the recommendation pending; **final selection is an operator
 branding decision** — the collective supplies the screened slate and its verdict.
+
+---
+
+## 12. Governance verdicts (live Law-1 tri-votes, 2026-07-10 — ledger rows appended)
+
+| Fork | Verdict | Rule |
+|---|---|---|
+| Q1 Pricing | **A — Free Logbook + Garage Pro $4.99/mo·$34.99/yr (annual includes 1 Passport credit) + Resale Passport $34.99 one-time + Trust Pledge + Apple SBP day one.** The operator's $1.99 instinct is honored through the FREE tier — the layer users genuinely never think about cancelling — while payers price at the value tier the math supports | majority |
+| Q2 Deep vs broad | **A — Depth-first for the serious 2–4-vehicle owner**; enthusiast features are the acquisition channel; mainstream reach rides the Passport loop | majority |
+| Q3 Expansion scope | **A — Cars only until the kill-test passes; powersports/marine/RV as Stage 1 on triggers; homes/OBD/marketplace graveyarded** | **unanimous** |
+| Q4 Kill-test scope | **A — comps regression + live-listing Passport A/B + buyer interviews**, pre-registered death condition, published as content | majority |
+| Q5 Name (recommendation) | **A — Motorkeep** (screened CLEAR; .com buyable). Final selection is an operator branding decision; Roadfolio is the collective's runner-up | majority |
+
+Growth posture (§8 of this doc, affirmed by Q1–Q3): **profitable-by-default; growth via
+zero-CAC Passport loops; no paid acquisition in year one.** Every verdict remains subordinate
+to the standing VALIDATE-FIRST gate — the kill-test is the next strategic action.
