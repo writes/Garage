@@ -20,11 +20,15 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
+from dataclasses import dataclass
+import fcntl
 import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
 from typing import Dict, Optional, Tuple
 
 VERTEX_MODEL = "gemini-2.5-pro"
@@ -55,17 +59,14 @@ def last_agy_resolver_label(log_text: Optional[str]) -> Optional[str]:
 def gemini_resolver_decision(
     log_bytes: Optional[bytes], start_offset: Optional[int], pinned_model: str
 ) -> Tuple[bool, str]:
-    """Fail closed unless an agy resolver label appended after ``start_offset`` matches.
+    """Fail closed unless a caller-selected resolver byte region matches.
 
-    The byte offset is captured before the particular agy invocation.  Parsing
-    only the later bytes prevents a previous successful run's resolver record
-    from verifying a later run that silently selected a different model (or
-    logged nothing at all). If agy rotates or recreates its resolver log during
-    the invocation, its resulting size is smaller than the captured offset;
-    that new file contains only fresh content, so parsing resumes at offset 0.
-    Every other invalid input remains an unverified mismatch. This helper is
-    pure so each agy caller shares the same matching semantics and can
-    self-test without host I/O.
+    This pure helper knows only bytes and an offset. ``verify_agy_resolver``
+    first decides whether the original real target/inode survived: it passes
+    zero for replacement/truncated targets and the old size only for a growing
+    same-inode target. Parsing only that region prevents an older successful
+    resolver record from verifying a later invocation. Every invalid input
+    remains an unverified mismatch.
     """
     if (
         log_bytes is None
@@ -83,6 +84,19 @@ def gemini_resolver_decision(
     return observed == pinned_model, observed
 
 
+@dataclass(frozen=True)
+class AgyResolverSnapshot:
+    """Identity and length of the real resolver target before one agy call."""
+
+    target_path: str
+    inode: Optional[int]
+    size: int
+
+
+class AgyResolverLockError(RuntimeError):
+    """The resolver-verification lock could not be acquired fail-closed."""
+
+
 def _agy_resolver_log_path() -> str:
     """Return the resolver log path, allowing deterministic deployment overrides."""
     return os.environ.get(
@@ -91,34 +105,102 @@ def _agy_resolver_log_path() -> str:
     )
 
 
-def capture_agy_resolver_offset() -> Optional[int]:
-    """Capture the resolver log byte size immediately before an agy invocation.
+def _agy_lock_paths() -> Tuple[str, ...]:
+    """Return the configured lock path followed by the safe temp fallback."""
+    configured = os.environ.get("BRAIN_AGY_LOCK")
+    # cli.log is itself a symlink; put the default lock in the real per-run
+    # log directory, which remains stable across its cli-*.log rotations.
+    log_dir = os.path.dirname(os.path.realpath(_agy_resolver_log_path()))
+    primary = configured or os.path.join(log_dir, ".brain-agy.lock")
+    fallback = os.path.join(tempfile.gettempdir(), ".brain-agy.lock")
+    return (primary,) if os.path.abspath(primary) == os.path.abspath(fallback) else (primary, fallback)
 
-    A not-yet-created log is treated as an empty log.  Other stat failures stay
-    unverified rather than guessing where a subsequent resolver record began.
+
+@contextmanager
+def agy_resolver_lock():
+    """Serialize every resolver-verified agy call across processes.
+
+    The lock spans the pre-call resolver capture, agy subprocess, resolver
+    verification, and reply parsing. Its default lives alongside the resolver
+    log; when that directory cannot be written, a temp-directory fallback
+    provides the same cross-process advisory lock. Failure to establish either
+    lock is fail-closed rather than allowing one lane to bind another lane's
+    resolver line.
     """
+    fd: Optional[int] = None
+    errors = []
+    for candidate in _agy_lock_paths():
+        try:
+            fd = os.open(candidate, os.O_CREAT | os.O_RDWR, 0o600)
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            break
+        except OSError as exc:
+            errors.append(f"{candidate}: {exc}")
+            if fd is not None:
+                os.close(fd)
+                fd = None
+    if fd is None:
+        raise AgyResolverLockError("unable to acquire agy resolver lock; " + "; ".join(errors))
     try:
-        return os.path.getsize(_agy_resolver_log_path())
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+
+def capture_agy_resolver_offset() -> Optional[AgyResolverSnapshot]:
+    """Capture the real resolver target identity immediately before an agy call.
+
+    ``cli.log`` is a symlink that agy may repoint to a fresh per-run file. The
+    target pathname, inode, and byte size are all required to distinguish a
+    larger replacement target from appended bytes on the original target. A
+    not-yet-created target is represented by a zero-length, no-inode snapshot;
+    other stat failures stay unverified rather than guessing.
+    """
+    target_path = os.path.realpath(_agy_resolver_log_path())
+    try:
+        stat = os.stat(target_path)
+        return AgyResolverSnapshot(target_path, stat.st_ino, stat.st_size)
     except FileNotFoundError:
-        return 0
+        return AgyResolverSnapshot(target_path, None, 0)
     except OSError:
         return None
 
 
-def verify_agy_resolver(pinned_model: str, start_offset: Optional[int]) -> Tuple[bool, str]:
-    """Verify only resolver entries appended after the associated agy call began.
+def verify_agy_resolver(
+    pinned_model: str, start_snapshot: Optional[AgyResolverSnapshot]
+) -> Tuple[bool, str]:
+    """Verify resolver evidence bound to one agy invocation, fail-closed.
 
-    ``BRAIN_AGY_RESOLVER_LOG`` supports deterministic test and deployment
-    overrides. An unreadable log, an invalid offset, or no fresh resolver
-    record is intentionally an ``unverified`` mismatch: agy can silently
-    downgrade unknown model labels.
+    After agy returns we resolve ``cli.log`` again. A replacement target path
+    or inode is parsed in full even if it is larger than the prior offset;
+    otherwise only a growing file's appended region is parsed. A same-inode
+    file that did not grow is parsed in full, covering truncation/overwrite.
+    Unreadable or malformed evidence remains an ``unverified`` mismatch.
     """
+    if not isinstance(start_snapshot, AgyResolverSnapshot):
+        return False, "unverified"
+    target_path = os.path.realpath(_agy_resolver_log_path())
     try:
-        with open(_agy_resolver_log_path(), "rb") as handle:
+        stat = os.stat(target_path)
+        with open(target_path, "rb") as handle:
             log_bytes = handle.read()
     except OSError:
-        log_bytes = None
-    return gemini_resolver_decision(log_bytes, start_offset, pinned_model)
+        return False, "unverified"
+
+    replaced = (
+        target_path != start_snapshot.target_path
+        or stat.st_ino != start_snapshot.inode
+    )
+    if replaced:
+        offset = 0
+    elif stat.st_size > start_snapshot.size:
+        offset = start_snapshot.size
+    else:
+        offset = 0
+    return gemini_resolver_decision(log_bytes, offset, pinned_model)
 
 
 def _extract_json(text: str) -> Optional[Dict]:
@@ -166,13 +248,13 @@ def _normalize(obj: Dict, backend: str, agy_model: str = AGY_MODEL) -> Dict:
 
 def try_agy(
     prompt: str, timeout: int, model: Optional[str] = None
-) -> Tuple[Optional[str], str, Optional[int]]:
+) -> Tuple[Optional[str], str]:
     """Preferred backend. NEVER `agy models`. Always -p + --print-timeout + stdin /dev/null.
 
-    The resolver log offset is captured before launching agy; ``consult`` then
-    verifies only the record appended by this particular invocation.
+    The caller must hold ``agy_resolver_lock`` and capture resolver identity
+    before launching this subprocess, then verify and parse before releasing
+    that lock.
     """
-    resolver_offset = capture_agy_resolver_offset()
     cmd = ["agy", "--sandbox"]
     if model:
         cmd.extend(["--model", model])
@@ -186,10 +268,10 @@ def try_agy(
             timeout=timeout + 15,
         )
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-        return None, f"agy unavailable/timeout: {e}", resolver_offset
+        return None, f"agy unavailable/timeout: {e}"
     if proc.returncode != 0:
-        return None, f"agy rc={proc.returncode}: {proc.stderr.strip()[:200]}", resolver_offset
-    return proc.stdout, "agy", resolver_offset
+        return None, f"agy rc={proc.returncode}: {proc.stderr.strip()[:200]}"
+    return proc.stdout, "agy"
 
 
 def try_vertex(prompt: str, timeout: int) -> Tuple[Optional[str], str, Optional[int]]:
@@ -268,48 +350,76 @@ def consult(
     """
     full = VOTER_INSTRUCTION + "\n\n=== DECISION ===\n" + prompt
     agy_model = AGY_MODEL if model is None else model
-    ladder = {
-        "auto": [lambda p, t: try_agy(p, t, model=agy_model), try_vertex, try_api],
-        "agy": [lambda p, t: try_agy(p, t, model=agy_model)],
-        "vertex": [try_vertex],
-        "api": [try_api],
-    }[backend]
-
     notes = []
+
+    if backend in ("auto", "agy"):
+        try:
+            # Do not release this cross-process lock until the reply has also
+            # been parsed. Otherwise a second agy lane could rotate the
+            # symlink and make this lane validate the wrong resolver line.
+            with agy_resolver_lock():
+                resolver_snapshot = capture_agy_resolver_offset()
+                text, used = try_agy(full, timeout, model=agy_model)
+                if text is None:
+                    notes.append(used)
+                else:
+                    model_verified, resolver_label = verify_agy_resolver(
+                        agy_model or AGY_MODEL, resolver_snapshot
+                    )
+                    if not model_verified:
+                        return {
+                            "agent": "gemini",
+                            "decision": "",
+                            "reasoning": "",
+                            "confidence": 0.0,
+                            "backend": "agy",
+                            "model": agy_model or AGY_MODEL,
+                            "model_verified": False,
+                            "resolver_label": resolver_label,
+                            "error": f"agy model downgrade detected (observed: {resolver_label})",
+                            "backend_notes": notes,
+                        }
+                    obj = _extract_json(text)
+                    if obj is None:
+                        notes.append("agy: no JSON in reply")
+                    else:
+                        result = _normalize(obj, "agy", agy_model or AGY_MODEL)
+                        result["model_verified"] = True
+                        result["resolver_label"] = resolver_label
+                        result["backend_notes"] = notes
+                        return result
+        except AgyResolverLockError as exc:
+            notes.append(f"agy resolver lock unavailable: {exc}")
+
+        if backend == "agy":
+            return {
+                "agent": "gemini",
+                "decision": "",
+                "reasoning": "",
+                "confidence": 0.0,
+                "backend": "none",
+                "model": "",
+                "model_verified": False,
+                "error": "all backends failed",
+                "backend_notes": notes,
+            }
+
+    ladder = {"vertex": [try_vertex], "api": [try_api]}.get(
+        backend, [try_vertex, try_api]
+    )
     for fn in ladder:
-        text, used, resolver_offset = fn(full, timeout)
+        text, used, _ = fn(full, timeout)
         if text is None:
             notes.append(used)
             continue
-        if used == "agy":
-            model_verified, resolver_label = verify_agy_resolver(
-                agy_model or AGY_MODEL, resolver_offset
-            )
-            if not model_verified:
-                return {
-                    "agent": "gemini",
-                    "decision": "",
-                    "reasoning": "",
-                    "confidence": 0.0,
-                    "backend": "agy",
-                    "model": agy_model or AGY_MODEL,
-                    "model_verified": False,
-                    "resolver_label": resolver_label,
-                    "error": f"agy model downgrade detected (observed: {resolver_label})",
-                    "backend_notes": notes,
-                }
         obj = _extract_json(text)
         if obj is None:
             notes.append(f"{used}: no JSON in reply")
             continue
         result = _normalize(obj, used, agy_model or AGY_MODEL)
-        if used == "agy":
-            result["model_verified"] = True
-            result["resolver_label"] = resolver_label
-        else:
-            # Vertex/API name the model in their request URL, so no separate
-            # local resolver is involved in verifying those fallback lanes.
-            result["model_verified"] = True
+        # Vertex/API name the model in their request URL, so no separate local
+        # resolver is involved in verifying those fallback lanes.
+        result["model_verified"] = True
         result["backend_notes"] = notes
         return result
 

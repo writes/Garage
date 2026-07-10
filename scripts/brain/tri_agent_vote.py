@@ -193,6 +193,21 @@ def is_live_pinned_voter(position: Dict) -> bool:
     return agent != "gemini" or position.get("model_verified") is True
 
 
+def degraded_pair_agrees(positions: List[Dict]) -> bool:
+    """Require exactly two live decisions to share consensus canonical form.
+
+    A degraded 1-1 split cannot use the normal resolver's confidence fallback:
+    that would append a single-model choice to the Law-1 ledger. Reusing the
+    consensus canonical key preserves its whitespace/case normalization and
+    structural collision resistance.
+    """
+    return (
+        len(positions) == 2
+        and consensus.canonical_key(positions[0].get("decision"))
+        == consensus.canonical_key(positions[1].get("decision"))
+    )
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Live tri-agent consensus vote + ledger append.")
     ap.add_argument("--question", required=True)
@@ -205,7 +220,7 @@ def main(argv=None) -> int:
     ap.add_argument(
         "--allow-degraded",
         action="store_true",
-        help="Permit a documented 2-voter ledger append when a pinned voter is dead; otherwise non-dry-run appends require all three.",
+        help="Permit a documented canonical-agreement 2-voter ledger append when a pinned voter is dead; otherwise non-dry-run appends require all three.",
     )
     args = ap.parse_args(argv)
 
@@ -246,6 +261,19 @@ def main(argv=None) -> int:
     if degraded:
         extra["degradation_note"] = (
             f"only {len(live)}/{len(PINNED_VOTERS)} pinned voters were live and schema-valid; resolved with documented caveat")
+
+    # A degraded pair cannot use consensus.py's normal confidence fallback:
+    # without canonical agreement it would elevate one model in a 1-1 split.
+    # Enforce this before dry-run too, so no mode presents that split as a
+    # valid degraded resolution.
+    if degraded and not degraded_pair_agrees(live):
+        print(json.dumps({
+            "error": "degraded pair disagrees - operator decision required",
+            "positions": live,
+            "extra": extra,
+        }, indent=2, ensure_ascii=False))
+        sys.stderr.write("# degraded pair disagrees - operator decision required\n")
+        return 1
 
     if args.dry_run:
         resolution = consensus.resolve_majority(live)

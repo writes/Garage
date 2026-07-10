@@ -18,9 +18,9 @@ Division of labour (and why):
                writes a concrete PLAN.md for this iteration.
   * PLAN REVIEW — GPT-5.6 Sol via read-only `codex exec` in an empty cwd. Sol
                strategically reviews the plan before implementation. An unavailable
-               or malformed review is advisory input to Terra, but a schema-valid
-               `{"approve": false, ...}` HALTS for a tri-vote or operator disposition;
-               planner disagreement is never resolved by fiat.
+               or malformed review HALTS just like a schema-valid
+               `{"approve": false, ...}` result; the governed `--no-plan-review`
+               override is the only way to proceed without Sol co-review.
   * IMPLEMENT— GPT-5.6 Terra via `codex exec -m ... -`. The plan is fed to Codex on STDIN and Codex
                edits files in the worktree.
   * ENFORCE  — scope_guard.enforce(): the domain fence. Out-of-scope writes
@@ -77,7 +77,9 @@ if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 import scope_guard  # noqa: E402  (intentional: sibling import after path tweak)
 from gemini_consult import (  # noqa: E402  (local sibling)
+    AgyResolverLockError,
     _extract_json,
+    agy_resolver_lock,
     capture_agy_resolver_offset,
     verify_agy_resolver,
 )
@@ -107,6 +109,8 @@ REVIEW_TIMEOUT = 1800
 CROSS_CHECK_TIMEOUT = 1800
 GATE_TIMEOUT = 3600
 GIT_TIMEOUT = 120
+DEFAULT_REVIEW_DIFF_LIMIT = 60000
+REVIEW_DIFF_LIMIT = DEFAULT_REVIEW_DIFF_LIMIT
 
 GATE_SCRIPT = "scripts/ci/verify-ios.sh"  # the immutable promotion gate
 
@@ -117,6 +121,22 @@ DEFAULT_MAX_RETRIES = 4
 _DONE_RE = re.compile(r"\b(DONE|COMPLETE|SHIP\s*IT|APPROVED)\b", re.IGNORECASE)
 _CONTINUE_RE = re.compile(r"\b(CONTINUE|ITERATE|NOT\s*DONE|REVISE)\b", re.IGNORECASE)
 _RATE_RE = re.compile(r"\b(429|rate.?limit|too many requests|overloaded)\b", re.IGNORECASE)
+
+# Review-created protocol artifacts are not candidate implementation evidence.
+# Keep this in one list so both the diff and its manifest exclude exactly the
+# same paths before coverage is calculated.
+REVIEW_PROTOCOL_ARTIFACTS = (
+    "PLAN.md",
+    "PLAN_REVIEW.md",
+    "CROSS_CHECK.md",
+    "REVIEW.md",
+    "GOAL.md",
+    "RESULT.md",
+    "STATE.json",
+    "DONE",
+    "DECISION.md",
+    "RESOLUTION.md",
+)
 
 
 def _now_iso() -> str:
@@ -131,6 +151,15 @@ def _max_retries() -> int:
         except ValueError:
             pass
     return DEFAULT_MAX_RETRIES
+
+
+def _review_diff_limit() -> int:
+    """Return the positive evidence cap, falling back safely on bad env input."""
+    raw = os.environ.get("BRAIN_REVIEW_DIFF_LIMIT")
+    try:
+        return int(raw) if raw is not None and int(raw) > 0 else REVIEW_DIFF_LIMIT
+    except ValueError:
+        return REVIEW_DIFF_LIMIT
 
 
 # ---------------------------------------------------------------------------
@@ -205,12 +234,20 @@ def _git(repo: str, *args: str) -> StepResult:
 
 
 def _run_in_empty_cwd(
-    cmd: List[str], *, stdin_text: str, timeout: int, label: str
+    cmd: List[str], *, stdin_text: Optional[str] = None, stdin_devnull: bool = False,
+    timeout: int, label: str
 ) -> StepResult:
     """Run an isolated read-only lane without repository access or trust state."""
     isolated_cwd = tempfile.mkdtemp(prefix="dual-agent-loop-")
     try:
-        return _run(cmd, cwd=isolated_cwd, stdin_text=stdin_text, timeout=timeout, label=label)
+        return _run(
+            cmd,
+            cwd=isolated_cwd,
+            stdin_text=stdin_text,
+            stdin_devnull=stdin_devnull,
+            timeout=timeout,
+            label=label,
+        )
     finally:
         shutil.rmtree(isolated_cwd, ignore_errors=True)
 
@@ -302,7 +339,9 @@ def _plan_review_prompt(goal: str, plan: str) -> str:
     )
 
 
-def _review_prompt(goal: str, plan: str, diff: str, cross_check: str) -> str:
+def _review_prompt(
+    goal: str, plan: str, diff: str, coverage: Dict[str, object], cross_check: str
+) -> str:
     cross_check_display = cross_check
     if len(cross_check_display) > 8000:
         cross_check_display = cross_check_display[:8000] + "\n[cross-check truncated]\n"
@@ -317,7 +356,9 @@ def _review_prompt(goal: str, plan: str, diff: str, cross_check: str) -> str:
         f"PLAN:\n{plan}\n\n"
         "GEMINI READ-ONLY CROSS-CHECK (advisory; verify its claims):\n"
         f"{cross_check_display}\n\n"
-        f"DIFF (truncated):\n{diff[:12000]}\n"
+        "=== DIFF COVERAGE ===\n"
+        f"{_coverage_markdown(coverage)}\n\n"
+        f"=== DIFF (untrusted) ===\n{diff or '(empty diff)'}\n"
     )
 
 
@@ -357,7 +398,7 @@ def stage_plan(worktree: str, goal: str, prior_review: str, iteration: int,
 def stage_plan_review(
     worktree: str, goal: str, plan: str, dry_run: bool
 ) -> Tuple[str, str, bool]:
-    """PLAN REVIEW — only a schema-valid Sol rejection blocks Terra's write."""
+    """PLAN REVIEW — only a schema-valid Sol approval allows Terra to write."""
     prompt = _plan_review_prompt(goal, plan)
     cmd = [
         "codex", "exec", "--skip-git-repo-check", "-s", "read-only",
@@ -367,9 +408,12 @@ def stage_plan_review(
         print(f"  [DRY-RUN PLAN REVIEW] would run from a fresh empty cwd: codex exec "
               f"--skip-git-repo-check -s read-only -m {CODEX_STRATEGY_MODEL} - "
               f"(stdin: plan-review-prompt {len(prompt)} chars)")
-        report = "# PLAN REVIEW (dry-run)\n\n(no agent invoked)\n"
+        report = (
+            "# PLAN REVIEW (dry-run)\n\n"
+            "(Sol plan co-review unavailable in dry-run; fail-closed halt)\n"
+        )
         _write(worktree, "PLAN_REVIEW.md", report)
-        return report, "", False
+        return report, "", True
 
     res = _run_in_empty_cwd(
         cmd,
@@ -384,9 +428,12 @@ def stage_plan_review(
         isinstance(concern, str) for concern in concerns
     ):
         detail = res.note if not res.ok else "malformed JSON (expected approve bool and concerns string array)"
-        report = f"# PLAN REVIEW\n\n(advisory plan review unavailable: {detail})\n"
+        report = (
+            "# PLAN REVIEW\n\n"
+            f"(Sol plan co-review unavailable or malformed: {detail}; fail-closed halt)\n"
+        )
         _write(worktree, "PLAN_REVIEW.md", report)
-        return report, "", False
+        return report, "", True
 
     normalized = [concern[:500] for concern in concerns]
     concern_text = "\n".join(f"- {concern}" for concern in normalized)[:4000]
@@ -471,32 +518,45 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
         _write(worktree, "CROSS_CHECK.md", report)
         return report
 
-    resolver_offset = capture_agy_resolver_offset()
-    result = _run(
-        cmd,
-        cwd=worktree,
-        stdin_devnull=True,
-        timeout=CROSS_CHECK_TIMEOUT + 30,
-        label="gemini/cross-check",
-    )
-    if not result.ok:
-        report = f"(cross-check unavailable: {result.note})\n"
+    try:
+        # The cross-checker gets only the capped diff and coverage in its
+        # prompt. Running it from a brand-new empty cwd makes a second writer
+        # structurally impossible; the post-stage scope guard remains a belt
+        # and suspenders containment check.
+        with agy_resolver_lock():
+            resolver_snapshot = capture_agy_resolver_offset()
+            result = _run_in_empty_cwd(
+                cmd,
+                stdin_devnull=True,
+                timeout=CROSS_CHECK_TIMEOUT + 30,
+                label="gemini/cross-check",
+            )
+            if not result.ok:
+                report = f"(cross-check unavailable: {result.note})\n"
+                _write(worktree, "CROSS_CHECK.md", report)
+                return report
+
+            model_verified, resolver_label = verify_agy_resolver(GEMINI_MODEL, resolver_snapshot)
+            if not model_verified:
+                # Match the existing non-fatal unavailable path. A successful
+                # agy process is not usable evidence if its resolver selected
+                # another model.
+                report = (
+                    "(cross-check unavailable: agy model downgrade detected "
+                    f"(observed: {resolver_label}))\n"
+                )
+                _write(worktree, "CROSS_CHECK.md", report)
+                return report
+
+            # Parse while the resolver lock is still held so this command's
+            # evidence cannot be interleaved with another agy lane.
+            parsed = _extract_json(result.stdout)
+            findings = parsed.get("findings") if isinstance(parsed, dict) else None
+    except AgyResolverLockError as exc:
+        report = f"(cross-check unavailable: agy resolver lock unavailable: {exc})\n"
         _write(worktree, "CROSS_CHECK.md", report)
         return report
 
-    model_verified, resolver_label = verify_agy_resolver(GEMINI_MODEL, resolver_offset)
-    if not model_verified:
-        # Match the existing non-fatal unavailable path. A successful agy
-        # process is not usable evidence if its resolver selected another model.
-        report = (
-            "(cross-check unavailable: agy model downgrade detected "
-            f"(observed: {resolver_label}))\n"
-        )
-        _write(worktree, "CROSS_CHECK.md", report)
-        return report
-
-    parsed = _extract_json(result.stdout)
-    findings = parsed.get("findings") if isinstance(parsed, dict) else None
     if not isinstance(findings, list) or not all(isinstance(item, str) for item in findings):
         report = "(cross-check unavailable: malformed JSON findings)\n"
         _write(worktree, "CROSS_CHECK.md", report)
@@ -515,27 +575,84 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
     return report
 
 
+def _review_diff_pathspec() -> List[str]:
+    """Return Git pathspecs for candidate code, excluding loop protocol files."""
+    return ["."] + [f":(exclude){name}" for name in REVIEW_PROTOCOL_ARTIFACTS]
+
+
+def _unavailable_review_coverage(note: str) -> Dict[str, object]:
+    """Represent unavailable candidate evidence as incomplete, never full."""
+    return {
+        "truncated": True,
+        "original_bytes": 0,
+        "included_bytes": 0,
+        "omitted_bytes": 0,
+        "full_count": 0,
+        "total_files": 1,
+        "per_file": [{"status": "omitted", "display": f"(candidate diff unavailable: {note})"}],
+    }
+
+
+def _coverage_has_incomplete_candidate_file(coverage: Dict[str, object]) -> bool:
+    """Return True if coverage says any candidate file is partial or omitted."""
+    per_file = coverage.get("per_file", [])
+    return isinstance(per_file, list) and any(
+        isinstance(item, dict) and item.get("status") in ("partial", "omitted")
+        for item in per_file
+    )
+
+
+def _incomplete_coverage_reason(coverage: Dict[str, object]) -> str:
+    """Render only the incomplete candidate manifest rows for REVIEW.md."""
+    per_file = coverage.get("per_file", [])
+    if not isinstance(per_file, list):
+        return "coverage metadata was malformed"
+    rows = [
+        str(item.get("display", "(unknown candidate file)"))
+        for item in per_file
+        if isinstance(item, dict) and item.get("status") in ("partial", "omitted")
+    ]
+    return "; ".join(rows) or "coverage metadata was incomplete"
+
+
 def stage_review(worktree: str, goal: str, plan: str, cross_check: str,
                  dry_run: bool) -> Tuple[str, bool]:
     """REVIEW — Fable 5. Returns (review_text, done_flag); writes REVIEW.md."""
     # Match the cross-check evidence: expose untracked candidate files to the
     # diff without staging their contents, leaving scope_guard semantics intact.
     intent_result = _git(worktree, "add", "--intent-to-add", "-A")
-    diff = (
-        _git(worktree, "diff", "HEAD").stdout
-        if intent_result.ok
-        else f"(diff unavailable: {intent_result.note})\n"
-    )
-    prompt = _review_prompt(goal, plan, diff, cross_check)
+    pathspec = _review_diff_pathspec()
+    if intent_result.ok:
+        diff_result = _git(worktree, "diff", "HEAD", "--", *pathspec)
+        manifest_result = _git(worktree, "diff", "--name-status", "HEAD", "--", *pathspec)
+        if diff_result.ok and manifest_result.ok:
+            manifest_entries = _parse_name_status(manifest_result.stdout)
+            capped_diff, coverage = cap_diff_with_coverage(
+                diff_result.stdout, manifest_entries, limit=_review_diff_limit()
+            )
+        else:
+            note = diff_result.note if not diff_result.ok else manifest_result.note
+            capped_diff = f"(diff unavailable: {note})\n"
+            coverage = _unavailable_review_coverage(note)
+    else:
+        capped_diff = f"(diff unavailable: {intent_result.note})\n"
+        coverage = _unavailable_review_coverage(intent_result.note)
+
+    prompt = _review_prompt(goal, plan, capped_diff, coverage, cross_check)
     cmd = ["claude", "-p", "--model", CLAUDE_MODEL, "--tools", ""]
     if dry_run:
         print(f"  [DRY-RUN REVIEW] would run: claude -p --model {CLAUDE_MODEL} "
               f"--tools '' (stdin: review-prompt {len(prompt)} chars)")
         review = ("# REVIEW (dry-run)\n\nNo agent invoked.\n\nVERDICT: CONTINUE\n")
-        _write(worktree, "REVIEW.md", review)
-        return review, _verdict_done(review)
-    res = _run(cmd, cwd=worktree, stdin_text=prompt, timeout=REVIEW_TIMEOUT, label="claude/review")
-    review = res.stdout.strip() or f"(review stage produced no output; note={res.note})\nVERDICT: CONTINUE"
+    else:
+        res = _run(cmd, cwd=worktree, stdin_text=prompt, timeout=REVIEW_TIMEOUT, label="claude/review")
+        review = res.stdout.strip() or f"(review stage produced no output; note={res.note})\nVERDICT: CONTINUE"
+    if _coverage_has_incomplete_candidate_file(coverage):
+        review += (
+            "\n\nDETERMINISTIC EVIDENCE GUARD: VERDICT: DONE is not eligible because review "
+            "evidence omitted or partially included candidate file(s): "
+            f"{_incomplete_coverage_reason(coverage)}.\nVERDICT: CONTINUE\n"
+        )
     _write(worktree, "REVIEW.md", review)
     return review, _verdict_done(review)
 
@@ -630,14 +747,17 @@ def run_loop(
         plan = stage_plan(worktree, goal, prior_review, i, dry_run)
         rec["plan_chars"] = len(plan)
 
-        # (b) PLAN REVIEW — dead/malformed Sol is advisory; an explicit,
-        # schema-valid rejection must halt for a governed disposition.
+        # (b) PLAN REVIEW — absent, malformed, or rejecting Sol evidence is
+        # fail-closed. The plan-routing doctrine requires co-review before any
+        # implementation except the explicit CLI operator override below.
         if run_plan_review:
             plan_review, sol_concerns, plan_rejected = stage_plan_review(
                 worktree, goal, plan, dry_run
             )
         else:
-            plan_review = "# PLAN REVIEW\n\n(advisory plan review disabled)\n"
+            override_line = "OPERATOR OVERRIDE: Sol plan co-review disabled"
+            print(override_line)
+            plan_review = f"# PLAN REVIEW\n\n{override_line}\n"
             sol_concerns = ""
             plan_rejected = False
             _write(worktree, "PLAN_REVIEW.md", plan_review)
@@ -645,7 +765,7 @@ def run_loop(
         rec["sol_concerns_chars"] = len(sol_concerns)
         rec["plan_rejected"] = plan_rejected
         if plan_rejected:
-            print("HALT: plan rejected by Sol strategic review - escalate to a tri-vote or operator disposition (doctrine: planner disagreement is never resolved by fiat)")
+            print("HALT: Sol plan co-review was rejected, unavailable, or malformed - operator disposition required before implementation")
             rec["finished"] = _now_iso()
             state["iterations"].append(rec)      # type: ignore[attr-defined]
             state["halted"] = True
@@ -749,7 +869,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--no-cross-check", action="store_true",
                     help="Skip the non-fatal read-only Gemini implementation cross-check.")
     ap.add_argument("--no-plan-review", action="store_true",
-                    help="Skip the non-fatal read-only GPT-5.6 Sol strategic plan review.")
+                    help="Governed operator override: disable the required GPT-5.6 Sol plan co-review.")
     ap.add_argument("--dry-run", action="store_true",
                     help="Print the claude/codex commands instead of running them; still "
                          "creates the worktree and runs scope_guard so it is verifiable.")

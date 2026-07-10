@@ -10,9 +10,11 @@ GO, reports NO-GO when any lane is NO-GO, is intentionally STRICTER than Law-1's
 2/3 no-veto resolution, is not a consensus vote, and keeps merges human-gated.
 
 The review is deliberately fail-closed before any provider sees a diff:
-protected surfaces and secret-like content block the review outright. Evidence
-is SHA-bound, the worktree must start clean, and the exact prompt hash plus
-explicit 120,000-byte truncation coverage are written to the advisory brief.
+protected surfaces and a best-effort secret-like-content denylist block the
+review outright. This screen is not a guarantee; the primary boundaries are
+the protected-path fail-close and the human merge gate. Evidence is SHA-bound,
+the worktree must start clean, and the exact prompt hash plus explicit
+120,000-byte truncation coverage are written to the advisory brief.
 
 LANDMINES honored:
   * #2  `codex exec` is always passed '-' and fed its prompt on STDIN.
@@ -45,12 +47,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 from gemini_consult import (  # noqa: E402  (local sibling)
+    AgyResolverLockError,
     _extract_json,
+    agy_resolver_lock,
     capture_agy_resolver_offset,
     gemini_resolver_decision,
     verify_agy_resolver,
 )
 import scope_guard  # noqa: E402  (single source of truth for protected paths)
+from tri_agent_vote import degraded_pair_agrees  # noqa: E402  (shared degraded-vote rule)
 
 
 CLAUDE_MODEL = os.environ.get("BRAIN_CLAUDE_MODEL", "claude-fable-5")
@@ -76,7 +81,9 @@ SECRET_PATTERNS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
     ("Google API key", re.compile(r"AIza[0-9A-Za-z_-]{35}")),
     ("JWT", re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.")),
     ("GitHub token", re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}")),
-    ("OpenAI key", re.compile(r"sk-[A-Za-z0-9_-]{20,}")),
+    ("GitHub fine-grained PAT", re.compile(r"github_pat_[A-Za-z0-9_]{20,}")),
+    ("OpenAI key", re.compile(r"sk-(?!ant-)[A-Za-z0-9_-]{20,}")),
+    ("Anthropic key", re.compile(r"sk-ant-[A-Za-z0-9-]{20,}")),
     ("Stripe secret key", re.compile(r"[rs]k_(?:live|test)_[A-Za-z0-9]{16,}")),
     ("Slack token", re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}")),
     (
@@ -88,6 +95,12 @@ SECRET_PATTERNS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
         re.compile(
             r"(?m)^(?:\+)?(?:API_?KEY|SECRET|TOKEN|PASSWORD)\s*=\s*(?!['\"])\S{12,}\s*$",
             re.IGNORECASE,
+        ),
+    ),
+    (
+        "unquoted dotenv/YAML credential assignment",
+        re.compile(
+            r"(?im)^[A-Z0-9_]*(PASSWORD|SECRET|TOKEN|API_?KEY|PRIVATE_KEY)\s*[:=]\s*\S{8,}$"
         ),
     ),
     (
@@ -398,9 +411,55 @@ def run_reviewer(agent: str, prompt: str, timeout: int, repo: str) -> Dict[str, 
     # model cannot browse repository or protected-file contents during review.
     isolated_cwd = tempfile.mkdtemp(prefix="tri-review-reviewer-")
     try:
-        # Bind Gemini's resolver evidence to this invocation before launching it.
-        resolver_offset = capture_agy_resolver_offset() if agent == "gemini" else None
         try:
+            if agent == "gemini":
+                # Capture -> subprocess -> resolver verification -> JSON parse
+                # stays in one advisory flock. That prevents concurrent agy
+                # lanes from rotating cli.log between any of these operations.
+                with agy_resolver_lock():
+                    resolver_snapshot = capture_agy_resolver_offset()
+                    try:
+                        proc = subprocess.run(
+                            cmd,
+                            cwd=isolated_cwd,
+                            input=stdin_text,
+                            stdin=stdin,
+                            capture_output=True,
+                            text=True,
+                            timeout=timeout + 30,
+                        )
+                    except subprocess.TimeoutExpired:
+                        return _failed_review(
+                            agent, model, backend, f"timeout after {timeout + 30}s"
+                        )
+                    if proc.returncode != 0:
+                        detail = (proc.stderr or proc.stdout).strip()
+                        return _failed_review(
+                            agent, model, backend, f"exit {proc.returncode}: {detail[:400]}"
+                        )
+                    resolver_ok, resolver_label = verify_agy_resolver(model, resolver_snapshot)
+                    if not resolver_ok:
+                        return _failed_review(
+                            agent,
+                            model,
+                            backend,
+                            f"resolver label mismatch or unverified: observed {resolver_label!r}; expected {model!r}",
+                            resolver_label,
+                        )
+                    verdict = validate_verdict_json(_extract_json(proc.stdout))
+                    if verdict is None:
+                        return _failed_review(
+                            agent, model, backend, "malformed, empty, or invalid verdict JSON", resolver_label
+                        )
+                    return {
+                        "agent": agent,
+                        "model": model,
+                        "backend": backend,
+                        "valid": True,
+                        **verdict,
+                        "resolver_label": resolver_label,
+                    }
+
             proc = subprocess.run(
                 cmd,
                 cwd=isolated_cwd,
@@ -408,42 +467,22 @@ def run_reviewer(agent: str, prompt: str, timeout: int, repo: str) -> Dict[str, 
                 stdin=stdin,
                 capture_output=True,
                 text=True,
-                timeout=timeout + 30 if agent == "gemini" else timeout,
+                timeout=timeout,
             )
         except subprocess.TimeoutExpired:
-            outer_timeout = timeout + 30 if agent == "gemini" else timeout
-            return _failed_review(agent, model, backend, f"timeout after {outer_timeout}s")
+            return _failed_review(agent, model, backend, f"timeout after {timeout}s")
         except FileNotFoundError as exc:
             return _failed_review(agent, model, backend, f"command unavailable: {exc}")
-        resolver_label: Optional[str] = None
+        except AgyResolverLockError as exc:
+            return _failed_review(agent, model, backend, f"resolver lock unavailable: {exc}")
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout).strip()
-            return _failed_review(
-                agent,
-                model,
-                backend,
-                f"exit {proc.returncode}: {detail[:400]}",
-                resolver_label,
-            )
-
-        resolver_ok = True
-        if agent == "gemini":
-            resolver_ok, resolver_label = verify_agy_resolver(model, resolver_offset)
-        if not resolver_ok:
-            return _failed_review(
-                agent,
-                model,
-                backend,
-                f"resolver label mismatch or unverified: observed {resolver_label!r}; expected {model!r}",
-                resolver_label,
-            )
+            return _failed_review(agent, model, backend, f"exit {proc.returncode}: {detail[:400]}")
 
         verdict = validate_verdict_json(_extract_json(proc.stdout))
         if verdict is None:
-            return _failed_review(agent, model, backend, "malformed, empty, or invalid verdict JSON", resolver_label)
+            return _failed_review(agent, model, backend, "malformed, empty, or invalid verdict JSON")
         result = {"agent": agent, "model": model, "backend": backend, "valid": True, **verdict}
-        if agent == "gemini":
-            result["resolver_label"] = resolver_label
         return result
     finally:
         shutil.rmtree(isolated_cwd, ignore_errors=True)
@@ -630,27 +669,42 @@ def _selftest() -> int:
     check("secret scan private key", secret_scan(private_key_fixture) == ["private key block"])
     check("secret scan AWS key", secret_scan(aws_key_fixture) == ["AWS access key"])
     check("secret scan Google key", secret_scan("AIza" + "a" * 35) == ["Google API key"])
-    check("secret scan generic credential", secret_scan(generic_credential_fixture) == ["generic credential assignment"])
+    check(
+        "secret scan generic credential",
+        "generic credential assignment" in secret_scan(generic_credential_fixture),
+    )
     check("secret scan Firebase token", secret_scan(firebase_token_fixture) == ["Firebase token"])
     check("secret scan benign text", secret_scan("token count = 3\npasswordless login") == [])
     jwt_fixture = "eyJ" + "a" * 10 + "." + "b" * 10 + ".signature"
     github_fixture = "ghp_" + "a" * 20
+    github_pat_fixture = "github_pat_" + "a" * 20
     openai_fixture = "sk-" + "a" * 20
+    anthropic_fixture = "sk-ant-" + "a" * 20
     stripe_fixture = "sk_live_" + "a" * 16
     slack_fixture = "xoxb-" + "a" * 10
     json_credential_fixture = '"api_key": "' + "a" * 12 + '"'
     dotenv_credential_fixture = "+TOKEN=" + "a" * 12
+    unquoted_yaml_credential_fixture = "private_key: " + "a" * 8
     check("secret scan JWT", "JWT" in secret_scan(jwt_fixture))
     check("secret scan GitHub token", "GitHub token" in secret_scan(github_fixture))
+    check("secret scan GitHub fine-grained PAT", "GitHub fine-grained PAT" in secret_scan(github_pat_fixture))
     check("secret scan OpenAI key", "OpenAI key" in secret_scan(openai_fixture))
+    check("secret scan Anthropic key", "Anthropic key" in secret_scan(anthropic_fixture))
     check("secret scan Stripe key", "Stripe secret key" in secret_scan(stripe_fixture))
     check("secret scan Slack token", "Slack token" in secret_scan(slack_fixture))
     check("secret scan quoted JSON credential", "quoted JSON credential" in secret_scan(json_credential_fixture))
     check("secret scan dotenv credential", "dotenv credential" in secret_scan(dotenv_credential_fixture))
+    check(
+        "secret scan unquoted dotenv/YAML credential",
+        "unquoted dotenv/YAML credential assignment" in secret_scan(unquoted_yaml_credential_fixture),
+    )
     check("secret scan OpenAI prose prefix stays benign", secret_scan("The prefix sk- identifies a key family.") == [])
+    check("secret scan Anthropic prose stays benign", secret_scan("A sk-ant mention is not a credential.") == [])
+    check("secret scan masked password stays benign", secret_scan("PASSWORD=***") == [])
+    check("secret scan git SHA stays benign", secret_scan("commit 0123456789abcdef0123456789abcdef01234567") == [])
     check(
         "secret scan short values stay benign",
-        secret_scan('"token": "' + "a" * 11 + '"\nAPI_KEY=' + "a" * 11) == [],
+        secret_scan('"token": "' + "a" * 7 + '"\nAPI_KEY=' + "a" * 7) == [],
     )
 
     check("protected path exact file", is_protected_path("firebase.json"))
@@ -720,6 +774,66 @@ def _selftest() -> int:
         GEMINI_MODEL,
     )
     check("Gemini resolver accepts fresh rotated log", rotation_ok and rotation_label == GEMINI_MODEL)
+
+    with tempfile.TemporaryDirectory(prefix="tri-review-resolver-swap-") as temp_dir:
+        old_target = os.path.join(temp_dir, "cli-old.log")
+        new_target = os.path.join(temp_dir, "cli-new.log")
+        link_path = os.path.join(temp_dir, "cli.log")
+        with open(old_target, "wb") as handle:
+            handle.write(b"old resolver content\n" + b"x" * 2048)
+        with open(new_target, "wb") as handle:
+            handle.write(
+                (
+                    'Propagating selected model override to backend: label="'
+                    + GEMINI_MODEL
+                    + '"\n'
+                ).encode()
+                + b"y" * 4096
+            )
+        os.symlink(old_target, link_path)
+        prior_resolver_override = os.environ.get("BRAIN_AGY_RESOLVER_LOG")
+        try:
+            os.environ["BRAIN_AGY_RESOLVER_LOG"] = link_path
+            resolver_snapshot = capture_agy_resolver_offset()
+            os.unlink(link_path)
+            os.symlink(new_target, link_path)
+            swap_ok, swap_label = verify_agy_resolver(GEMINI_MODEL, resolver_snapshot)
+        finally:
+            if prior_resolver_override is None:
+                os.environ.pop("BRAIN_AGY_RESOLVER_LOG", None)
+            else:
+                os.environ["BRAIN_AGY_RESOLVER_LOG"] = prior_resolver_override
+    check(
+        "Gemini resolver parses whole larger symlink-swap target",
+        swap_ok and swap_label == GEMINI_MODEL,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="tri-review-agy-lock-") as temp_dir:
+        lock_path = os.path.join(temp_dir, "resolver.lock")
+        prior_lock_override = os.environ.get("BRAIN_AGY_LOCK")
+        try:
+            os.environ["BRAIN_AGY_LOCK"] = lock_path
+            with agy_resolver_lock():
+                lock_created = os.path.exists(lock_path)
+        finally:
+            if prior_lock_override is None:
+                os.environ.pop("BRAIN_AGY_LOCK", None)
+            else:
+                os.environ["BRAIN_AGY_LOCK"] = prior_lock_override
+    check("Gemini resolver lock honors env path", lock_created)
+
+    check(
+        "degraded pair accepts canonical-equal decisions",
+        degraded_pair_agrees([
+            {"decision": "Option A"}, {"decision": "option   a"},
+        ]),
+    )
+    check(
+        "degraded pair rejects canonical disagreement",
+        not degraded_pair_agrees([
+            {"decision": "Option A"}, {"decision": "Option B"},
+        ]),
+    )
 
     check("roster accepts exact pins", roster_deviations(dict(ROSTER)) == {})
     overridden_models = dict(ROSTER)
