@@ -162,9 +162,10 @@ on any unrecognized value — pin the exact roster label and verify via the reso
   pre-main review = all 3 providers via `scripts/brain/tri_review.py` · votes pinned. Enablers:
   codex 0.144.1 (5.6 was 400-ing on 0.143.0), agy 1.1.1. "Gemini Pro Preview" absent from
   roster (watch armed). Spec: `docs/research/2026-07-10_MODEL_ROUTING_V3.md`.
-- **⚖️ SessionStart hook PENDING operator approval** — `.claude/hooks/session-handoff-inject.sh`
-  exists; wiring it in `.claude/settings.json` was blocked by the self-modification guard and
-  needs the operator's explicit OK (see HANDOFF NEXT ACTION).
+- **🟢 SessionStart hook LIVE (status truth-up 2026-07-10)** — `.claude/settings.json` has
+  carried the wiring since the v1 install commit (`5679a11`); verified working (it injects
+  HANDOFF at session start). The "pending operator approval" note was stale from day one —
+  landmine #9 in the wild.
 - **🟢 Intake graveyard live** — `docs/research-assay/audit/` seeded; first verdict recorded:
   "React/PWA/Supabase rewrite" → **Tier D** (doctrine fail: native iOS is locked).
 - **🟢 App baseline** — Garage iOS app builds via XcodeGen; CI gate = `scripts/ci/*`; this brain

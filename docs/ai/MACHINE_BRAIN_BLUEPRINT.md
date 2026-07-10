@@ -159,7 +159,7 @@ secrets, data-loss, App Check, privacy manifest).
 | II | `scripts/ci/{policy,security,verify-ios}-checks.sh` | ✗ domain | Immutable promotion gate (build+tests+policy) — pre-existing |
 | III | `HANDOFF.md` + `scripts/brain/session_handoff.py` | ✅ copy | Thin cross-agent state + `--status`/`--init`/`update` CLI |
 | III | `~/.claude/projects/-Users-jt-Code-AppDev/memory/*.md` + `MEMORY.md` | ✅ schema | Cross-session fact base, frontmatter + wikilinks + index |
-| III | `.claude/hooks/session-handoff-inject.sh` (+ settings wiring) | ✅ copy | SessionStart HANDOFF injection (**wiring pending operator OK**) |
+| III | `.claude/hooks/session-handoff-inject.sh` (+ settings wiring) | ✅ copy | SessionStart HANDOFF injection (LIVE — wired in `.claude/settings.json` since v1 install) |
 | IV | `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` | ◐ adapt | Doctrine + ≤10 compact state bullets (budgeted, mirrored) |
 | IV | `docs/research/YYYY-MM-DD_*.md` | ◐ adapt | Pre-reg (with death condition) + verdict per trial |
 | IV | `docs/ARCHIVE.md` | ✅ copy | One-in-one-out doctrine overflow, append-only |
@@ -223,7 +223,7 @@ never an auto-edit beyond appending rows the human confirms (Law 5).
 | 3 | Live tri-agent vote runner (concurrent pools) | I | `scripts/brain/tri_agent_vote.py` | §2.I,§4 | LIVE | 2026-06-29 |
 | 4 | Decision ledger (append-only) | I | `DECISION_LEDGER.jsonl` | §2.I,§8 | LIVE | 2026-06-29 |
 | 5 | Cross-agent handoff + CLI | III | `HANDOFF.md`, `scripts/brain/session_handoff.py` | §2.III,§8 | LIVE | 2026-06-29 |
-| 6 | SessionStart HANDOFF injection | III | `.claude/hooks/session-handoff-inject.sh` (+ settings) | §2.III,§9 | **PENDING WIRING** | 2026-06-29 |
+| 6 | SessionStart HANDOFF injection | III | `.claude/hooks/session-handoff-inject.sh` (+ settings) | §2.III,§9 | LIVE (wired since `5679a11`; status truth-up 2026-07-10) | 2026-06-29 |
 | 7 | Cross-session file memory + index | III | `~/.claude/projects/-Users-jt-Code-AppDev/memory/`, `MEMORY.md` | §2.III,§8 | LIVE | 2026-06-29 |
 | 8 | Doctrine (mirrored) + compact state + budget | IV | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `docs/ARCHIVE.md` | §2.IV,§9 | LIVE | 2026-06-29 |
 | 9 | Pre-reg + verdict trial docs | IV | `docs/research/` | §2.IV,§8 | LIVE | 2026-06-29 |

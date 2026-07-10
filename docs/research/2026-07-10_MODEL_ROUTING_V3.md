@@ -288,3 +288,27 @@ Backlog R19–R24 + tri-votes TV1 (require 3 live voters for substantive appends
 (fallback = dead voter) are queued in HANDOFF. The pre-main review policy stands: this branch
 does NOT merge to main without a GO brief or an explicit operator override tied to head SHA —
 **the operator holds the switch** (Law 5), and this brief hands it to them with full evidence.
+
+## 12. Operator continuation (2026-07-10, "full power") — votes resolved, backlog executed
+
+Operator authorized continuation. Both queued Law-1 tri-votes ran LIVE with the pinned roster
+(all three voters live, ledger rows appended):
+
+- **TV1 — 3-voter requirement: option C, 2/3 majority** (Fable 0.78 + Gemini 0.95 vs Sol's
+  stricter A at 0.97). Non-dry-run ledger appends require all three pinned voters; a 2-voter
+  degraded append needs an explicit `--allow-degraded` flag recorded in the row. → R26.
+- **TV2 — fallback as Gemini vote: option A, UNANIMOUS** (0.72/0.94/0.90 — Gemini voted to
+  disqualify its own fallback). A Vertex/API `gemini-2.5-pro` result is a dead voter for
+  votes; combined with TV1, a dead Gemini lane blocks substantive appends unless
+  `--allow-degraded` is explicit. → R27.
+
+Also: **SessionStart-hook status truth-up** — the hook has been wired in
+`.claude/settings.json` since the v1 install commit (`5679a11`) and demonstrably injects
+HANDOFF (this session's own startup is the evidence). The month-old "pending operator
+approval" bullet was stale — landmine #9 in the wild. Doctrine/blueprint/HANDOFF corrected.
+
+Terra pass 5 (R19–R27): offset-bound resolver verification, implement-stage
+`-s workspace-write`, voter-lane hardening (tools-off/STDIN/empty-cwd), broader secret
+patterns, `--diff-limit`, in-code ROSTER allowlist (`--allow-env-override` escape, recorded),
+manifest↔header matching by path, TV1/TV2 implementations. Round-5 tri-review with full diff
+coverage follows.
