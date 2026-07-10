@@ -82,6 +82,9 @@ PROTOCOL_FILES: Tuple[str, ...] = (
     "STATE.json",
     "DONE",
     "DECISION.md",
+    # A governed override is durable candidate evidence. The loop appends it
+    # only inside its worktree; it must survive enforcement to reach review.
+    "DECISION_LEDGER.jsonl",
     "RESOLUTION.md",
 )
 PROTOCOL_GLOB_SUFFIXES: Tuple[str, ...] = (
@@ -343,6 +346,7 @@ def _selftest() -> int:
         ("GOAL.md", "protocol"),
         ("STATE.json", "protocol"),
         ("CROSS_CHECK.md", "protocol"),
+        ("DECISION_LEDGER.jsonl", "protocol"),
         ("DONE", "protocol"),
         ("RESOLUTION.md", "protocol"),
         ("./REVIEW.md", "protocol"),

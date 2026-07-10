@@ -141,7 +141,10 @@ REVIEW_PROTOCOL_ARTIFACTS = (
     "DECISION.md",
     "RESOLUTION.md",
 )
-CROSS_CHECK_VIOLATION = "CROSS-CHECK VIOLATION: unexpected worktree delta (reverted)"
+CROSS_CHECK_VIOLATION = (
+    "CROSS-CHECK VIOLATION: unexpected worktree delta "
+    "(preserved; no cleanup performed)"
+)
 
 
 def _now_iso() -> str:
@@ -295,9 +298,9 @@ def cleanup_hint(repo: str, worktree: str, branch: str) -> str:
 
 
 def append_plan_review_bypass_override(
-    repo: str, worktree: str, timestamp: str, reason: str, branch: str
+    worktree: str, timestamp: str, reason: str, branch: str, dry_run: bool
 ) -> Dict[str, str]:
-    """Durably record the governed Sol-plan-review bypass before implementation."""
+    """Record a governed Sol-plan-review bypass in the candidate's ledger only."""
     head = _git(worktree, "rev-parse", "HEAD")
     if not head.ok or not head.stdout.strip():
         raise RuntimeError(f"unable to resolve candidate HEAD for operator override: {head.note}")
@@ -313,10 +316,17 @@ def append_plan_review_bypass_override(
     }
     if labels:
         row["redactions"] = ", ".join(labels)
-    ledger_path = os.path.join(repo, "DECISION_LEDGER.jsonl")
+    ledger_path = os.path.join(worktree, "DECISION_LEDGER.jsonl")
+    serialized_row = json.dumps(row, ensure_ascii=False)
+    if dry_run:
+        print(
+            "  [DRY-RUN PLAN-REVIEW OVERRIDE] would append to candidate ledger "
+            f"{ledger_path}: {serialized_row}"
+        )
+        return row
     try:
         with open(ledger_path, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+            handle.write(serialized_row + "\n")
             handle.flush()
             os.fsync(handle.fileno())
     except OSError as exc:
@@ -442,26 +452,37 @@ def _cross_check_delta_snapshot(worktree: str) -> Tuple[str, str]:
     return status.stdout, hashlib.sha256(diff.stdout.encode("utf-8")).hexdigest()
 
 
-def _cross_check_delta_changed(worktree: str, before: Tuple[str, str]) -> bool:
-    """Return True when either required zero-delta structural snapshot changed."""
-    return _cross_check_delta_snapshot(worktree) != before
+def _cross_check_violation_report(
+    worktree: str, before: Tuple[str, str], after: Tuple[str, str]
+) -> str:
+    """Record a cross-check write violation without altering observed evidence.
 
-
-def _revert_cross_check_delta(worktree: str) -> Tuple[StepResult, StepResult]:
-    """Apply the mandated hard reset of a writing cross-checker's worktree delta."""
-    checkout = _git(worktree, "checkout", "--", ".")
-    clean = _git(worktree, "clean", "-fd")
-    return checkout, clean
-
-
-def _cross_check_violation_report(worktree: str) -> str:
-    """Record and contain the protocol breach after an unexpected agy delta."""
-    checkout, clean = _revert_cross_check_delta(worktree)
-    restoration_note = ""
-    if not checkout.ok or not clean.ok:
-        details = [res.note for res in (checkout, clean) if not res.ok]
-        restoration_note = "\n- Restoration command failure: " + "; ".join(details)
-    report = "# CROSS_CHECK\n\n" + CROSS_CHECK_VIOLATION + restoration_note + "\n"
+    The report is the sole intentional write after detection. In particular,
+    do not run checkout, clean, reset, or scope_guard here: all candidate
+    changes and the unexpected delta must remain available for human review.
+    """
+    before_porcelain, before_diff_hash = before
+    after_porcelain, after_diff_hash = after
+    report = (
+        "# CROSS_CHECK\n\n"
+        f"{CROSS_CHECK_VIOLATION}\n\n"
+        "## HALT — human inspection required\n\n"
+        "The loop stopped immediately. No automatic checkout, clean, reset, or "
+        "scope-guard cleanup was run; the candidate and observed delta are preserved.\n\n"
+        "## Delta observation\n\n"
+        f"- Diff hash before Gemini: `{before_diff_hash}`\n"
+        f"- Diff hash after Gemini: `{after_diff_hash}`\n"
+        f"- Diff-hash mismatch: `{'yes' if before_diff_hash != after_diff_hash else 'no'}`\n"
+        f"- Porcelain mismatch: `{'yes' if before_porcelain != after_porcelain else 'no'}`\n\n"
+        "### `git status --porcelain` before Gemini\n\n"
+        "```text\n"
+        f"{before_porcelain or '(clean)'}"
+        "```\n\n"
+        "### `git status --porcelain` after Gemini\n\n"
+        "```text\n"
+        f"{after_porcelain or '(clean)'}"
+        "```\n"
+    )
     return _write_sanitized_provider_artifact(worktree, "CROSS_CHECK.md", report)
 
 
@@ -620,8 +641,11 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
                 label="gemini/cross-check",
             )
             raw_stdout = result.stdout or ""
-            if _cross_check_delta_changed(worktree, pre_agy_snapshot):
-                return _cross_check_violation_report(worktree)
+            post_agy_snapshot = _cross_check_delta_snapshot(worktree)
+            if post_agy_snapshot != pre_agy_snapshot:
+                return _cross_check_violation_report(
+                    worktree, pre_agy_snapshot, post_agy_snapshot
+                )
             if not result.ok:
                 report = f"(cross-check unavailable: {result.note})\n"
                 return _write_sanitized_provider_artifact(
@@ -822,7 +846,7 @@ def run_loop(
         if not override_reason or not timestamp:
             raise RuntimeError("--no-plan-review requires --override-reason and --timestamp")
         override_row = append_plan_review_bypass_override(
-            repo, worktree, timestamp, override_reason, branch
+            worktree, timestamp, override_reason, branch, dry_run
         )
 
     state: Dict[str, object] = {
@@ -910,7 +934,7 @@ def run_loop(
             cross_check = stage_cross_check(worktree, dry_run)
         rec["cross_check"] = cross_check.strip()
         if CROSS_CHECK_VIOLATION in cross_check:
-            print("HALT: Gemini cross-check produced an unexpected worktree delta (reverted).")
+            print("HALT: Gemini cross-check produced an unexpected worktree delta; evidence preserved for human inspection.")
             rec["cross_check_violation"] = True
             rec["finished"] = _now_iso()
             state["iterations"].append(rec)      # type: ignore[attr-defined]

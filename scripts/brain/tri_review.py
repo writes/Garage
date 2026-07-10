@@ -648,6 +648,7 @@ def build_prompt(
         f"{_coverage_markdown(coverage)}\n\n"
         "=== DIFF (untrusted) ===\n"
         f"{capped_diff or '(empty diff)'}\n\n"
+        "Keep blocking and advisory lists to the 5 most material items each, every item <= 300 characters.\n"
         "FINAL RESPONSE FORMAT: reply ONLY with one JSON object, no prose or code fences:\n"
         '{"verdict":"GO"|"NO-GO","blocking":["..."],"advisory":["..."],"confidence":0.0}'
     )
@@ -912,6 +913,29 @@ def _selftest() -> int:
     check(
         "JSON retry reminder is terminal",
         _retry_prompt("review evidence").endswith(JSON_RETRY_REMINDER),
+    )
+    bounded_output_prompt = build_prompt(
+        "base",
+        "head",
+        "merge-base",
+        "",
+        "",
+        "",
+        "",
+        {
+            "truncated": False,
+            "original_bytes": 0,
+            "included_bytes": 0,
+            "omitted_bytes": 0,
+            "full_count": 0,
+            "total_files": 0,
+            "per_file": [],
+        },
+    )
+    check(
+        "review prompt bounds blocking and advisory output",
+        "Keep blocking and advisory lists to the 5 most material items each, every item <= 300 characters."
+        in bounded_output_prompt,
     )
 
     prior_log = (
