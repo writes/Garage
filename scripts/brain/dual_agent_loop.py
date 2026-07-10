@@ -25,8 +25,11 @@ Division of labour (and why):
                edits files in the worktree.
   * ENFORCE  — scope_guard.enforce(): the domain fence. Out-of-scope writes
                are reverted; protected writes halt the loop.
-  * CROSS-CHECK — Gemini 3.1 Pro (High) reads a capped diff only, writes
-               CROSS_CHECK.md, and can never edit or block the loop.
+  * CROSS-CHECK — Gemini 3.1 Pro (High) reads a capped diff only and writes
+               CROSS_CHECK.md. Its unavailability remains non-fatal by design
+               (spec section 4.3); an explicit bypass is operator-governed.
+               The separate evidence-secret boundary is fail-closed and may
+               halt before any cross-check or review provider is invoked.
   * REVIEW   — Fable 5 via `claude -p --model`. Claude inspects the diff and writes REVIEW.md
                with a verdict line. "DONE" stops the loop early.
   * GATE     — optionally run scripts/ci/verify-ios.sh (the *sole promoter*,
@@ -79,9 +82,11 @@ if _SCRIPT_DIR not in sys.path:
 import scope_guard  # noqa: E402  (intentional: sibling import after path tweak)
 from gemini_consult import (  # noqa: E402  (local sibling)
     AgyResolverLockError,
+    ROSTER,
     _extract_json,
     agy_resolver_lock,
     capture_agy_resolver_offset,
+    roster_deviations as _shared_roster_deviations,
     verify_agy_resolver,
 )
 from tri_review import (  # noqa: E402  (same cap mechanics)
@@ -100,10 +105,11 @@ DEFAULT_ITERATIONS = 3
 DEFAULT_BRANCH_PREFIX = "brain/loop"
 SCRATCH_ROOT = os.path.join(_SCRIPT_DIR, "..", "..", ".brain-worktrees")
 
-CLAUDE_MODEL = os.environ.get("BRAIN_CLAUDE_MODEL", "claude-fable-5")
-CODEX_IMPLEMENT_MODEL = os.environ.get("BRAIN_CODEX_IMPLEMENT_MODEL", "gpt-5.6-terra")
-CODEX_STRATEGY_MODEL = os.environ.get("BRAIN_CODEX_STRATEGY_MODEL", "gpt-5.6-sol")
-GEMINI_MODEL = os.environ.get("BRAIN_GEMINI_MODEL", "Gemini 3.1 Pro (High)")
+CLAUDE_MODEL = os.environ.get("BRAIN_CLAUDE_MODEL", ROSTER["claude"])
+CODEX_IMPLEMENT_MODEL = os.environ.get("BRAIN_CODEX_IMPLEMENT_MODEL", ROSTER["codex-implement"])
+CODEX_STRATEGY_MODEL = os.environ.get("BRAIN_CODEX_STRATEGY_MODEL", ROSTER["codex-strategy"])
+GEMINI_MODEL = os.environ.get("BRAIN_GEMINI_MODEL", ROSTER["gemini"])
+LOOP_ROSTER_LANES = ("claude", "codex-strategy", "codex-implement", "gemini")
 
 # Per-call timeouts (seconds). Agent calls get a generous bound; git is fast.
 PLAN_TIMEOUT = 1800
@@ -148,6 +154,7 @@ CROSS_CHECK_VIOLATION = (
     "CROSS-CHECK VIOLATION: unexpected worktree delta "
     "(preserved; no cleanup performed)"
 )
+EVIDENCE_SECRET_BLOCKED = "stage blocked: secret-like content in evidence"
 
 
 def _now_iso() -> str:
@@ -300,10 +307,15 @@ def cleanup_hint(repo: str, worktree: str, branch: str) -> str:
     )
 
 
-def append_plan_review_bypass_override(
-    worktree: str, timestamp: str, reason: str, branch: str, dry_run: bool
+def append_operator_override(
+    worktree: str,
+    timestamp: str,
+    reason: str,
+    branch: str,
+    action: str,
+    dry_run: bool,
 ) -> Dict[str, str]:
-    """Record a governed Sol-plan-review bypass in the candidate's ledger only."""
+    """Record a governed operator bypass in the candidate's ledger only."""
     head = _git(worktree, "rev-parse", "HEAD")
     if not head.ok or not head.stdout.strip():
         raise RuntimeError(f"unable to resolve candidate HEAD for operator override: {head.note}")
@@ -312,7 +324,7 @@ def append_plan_review_bypass_override(
         "timestamp": timestamp,
         "type": "operator_override",
         "protocol": "operator_override",
-        "action": "plan-review-bypass",
+        "action": action,
         "reason": safe_reason,
         "branch": branch,
         "head_sha": head.stdout.strip(),
@@ -323,7 +335,7 @@ def append_plan_review_bypass_override(
     serialized_row = json.dumps(row, ensure_ascii=False)
     if dry_run:
         print(
-            "  [DRY-RUN PLAN-REVIEW OVERRIDE] would append to candidate ledger "
+            "  [DRY-RUN OPERATOR OVERRIDE] would append to candidate ledger "
             f"{ledger_path}: {serialized_row}"
         )
         return row
@@ -335,6 +347,64 @@ def append_plan_review_bypass_override(
     except OSError as exc:
         raise RuntimeError(f"unable to append operator override ledger row: {exc}") from exc
     return row
+
+
+def append_plan_review_bypass_override(
+    worktree: str, timestamp: str, reason: str, branch: str, dry_run: bool
+) -> Dict[str, str]:
+    """Compatibility wrapper for the original governed plan-review bypass."""
+    return append_operator_override(
+        worktree, timestamp, reason, branch, "plan-review-bypass", dry_run
+    )
+
+
+def _model_override_markdown(model_deviations: Dict[str, Dict[str, str]]) -> str:
+    """Render a safe durable record for an explicitly allowed roster exception."""
+    if not model_deviations:
+        return ""
+    rows = [
+        "## Model roster override\n\n",
+        "- Operator passed `--allow-env-override`; effective BRAIN_* model labels differ from the canonical roster.\n",
+    ]
+    rows.extend(
+        f"- {lane}: expected `{details['expected']}`; effective `{details['effective']}`\n"
+        for lane, details in model_deviations.items()
+    )
+    return "".join(rows)
+
+
+def _blocked_evidence_report(labels: List[str]) -> str:
+    """Render the label-only R54 fail-closed artifact without echoing a secret."""
+    return f"({EVIDENCE_SECRET_BLOCKED} [{', '.join(labels)}])\n"
+
+
+def effective_models() -> Dict[str, str]:
+    """Return all effective loop lanes using the shared canonical lane names."""
+    return {
+        "claude": CLAUDE_MODEL,
+        "codex-strategy": CODEX_STRATEGY_MODEL,
+        "codex-implement": CODEX_IMPLEMENT_MODEL,
+        "gemini": GEMINI_MODEL,
+    }
+
+
+def roster_deviations() -> Dict[str, Dict[str, str]]:
+    """Validate every loop lane against the shared canonical allowlist."""
+    return _shared_roster_deviations(effective_models(), lanes=LOOP_ROSTER_LANES)
+
+
+def _report_roster_deviations(deviations: Dict[str, Dict[str, str]]) -> None:
+    print(
+        "error: effective model differs from the pinned dual-agent-loop roster; "
+        "use --allow-env-override to record an explicit exception",
+        file=sys.stderr,
+    )
+    for lane, details in deviations.items():
+        print(
+            f"  - {lane}: expected {details['expected']!r}; "
+            f"effective {details['effective']!r}",
+            file=sys.stderr,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -507,7 +577,11 @@ def stage_plan(worktree: str, goal: str, prior_review: str, iteration: int,
 
 
 def stage_plan_review(
-    worktree: str, goal: str, plan: str, dry_run: bool
+    worktree: str,
+    goal: str,
+    plan: str,
+    model_deviations: Dict[str, Dict[str, str]],
+    dry_run: bool,
 ) -> Tuple[str, str, bool]:
     """PLAN REVIEW — only a schema-valid Sol approval allows Terra to write."""
     prompt = _plan_review_prompt(goal, plan)
@@ -523,6 +597,7 @@ def stage_plan_review(
             "# PLAN REVIEW (dry-run)\n\n"
             "(Sol plan co-review unavailable in dry-run; fail-closed halt)\n"
         )
+        report += _model_override_markdown(model_deviations)
         report = _write_sanitized_provider_artifact(worktree, "PLAN_REVIEW.md", report)
         return report, "", True
 
@@ -543,6 +618,7 @@ def stage_plan_review(
             "# PLAN REVIEW\n\n"
             f"(Sol plan co-review unavailable or malformed: {detail}; fail-closed halt)\n"
         )
+        report += _model_override_markdown(model_deviations)
         report = _write_sanitized_provider_artifact(
             worktree, "PLAN_REVIEW.md", report, res.stdout
         )
@@ -558,6 +634,7 @@ def stage_plan_review(
         + (concern_text if concern_text else "- (none)")
         + "\n"
     )
+    report += _model_override_markdown(model_deviations)
     report = _write_sanitized_provider_artifact(worktree, "PLAN_REVIEW.md", report, res.stdout)
     return report, concern_text, not approve
 
@@ -591,8 +668,11 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
 
     This stage is deliberately advisory and non-fatal: an unavailable Gemini
     lane is recorded in the review context, then the single-writer loop keeps
-    moving. agy is passed an exact pinned label and DEVNULL stdin; never call
-    `agy models` (landmines #1 and #12).
+    moving. Cross-check unavailability remains non-fatal by design (spec
+    section 4.3); only an explicit bypass needs governance. The R54 evidence
+    secret screen is a separate fail-closed boundary. agy is passed an exact
+    pinned label and DEVNULL stdin; never call `agy models` (landmines #1 and
+    #12).
     """
     # `git diff HEAD` ignores ordinary untracked files. Mark them intent-to-add
     # first so routine new-file implementations are reviewable; -N stages no
@@ -609,6 +689,15 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
         note = diff_result.note if not diff_result.ok else manifest_result.note
         report = f"(cross-check unavailable: {note})\n"
         return _write_sanitized_provider_artifact(worktree, "CROSS_CHECK.md", report)
+
+    # R54 / landmine #8: no provider may see candidate-diff evidence that
+    # looks secret-like. Scan the complete evidence before capping or building
+    # the prompt so a match beyond the cap cannot evade the fail-closed gate.
+    secret_hits = secret_scan(diff_result.stdout)
+    if secret_hits:
+        return _write_sanitized_provider_artifact(
+            worktree, "CROSS_CHECK.md", _blocked_evidence_report(secret_hits)
+        )
 
     manifest_entries = _parse_name_status(manifest_result.stdout)
     capped_diff, coverage = cap_diff_with_coverage(diff_result.stdout, manifest_entries)
@@ -747,17 +836,30 @@ def stage_review(worktree: str, goal: str, plan: str, cross_check: str,
         diff_result = _git(worktree, "diff", "HEAD", "--", *pathspec)
         manifest_result = _git(worktree, "diff", "--name-status", "HEAD", "--", *pathspec)
         if diff_result.ok and manifest_result.ok:
+            evidence_diff = diff_result.stdout
             manifest_entries = _parse_name_status(manifest_result.stdout)
             capped_diff, coverage = cap_diff_with_coverage(
                 diff_result.stdout, manifest_entries, limit=_review_diff_limit()
             )
         else:
+            evidence_diff = ""
             note = diff_result.note if not diff_result.ok else manifest_result.note
             capped_diff = f"(diff unavailable: {note})\n"
             coverage = _unavailable_review_coverage(note)
     else:
+        evidence_diff = ""
         capped_diff = f"(diff unavailable: {intent_result.note})\n"
         coverage = _unavailable_review_coverage(intent_result.note)
+
+    # R54 / landmine #8: scan the whole diff before prompt construction.  A
+    # secret-like match blocks Fable as well as Gemini, including when the
+    # optional cross-check was bypassed or unavailable.
+    secret_hits = secret_scan(evidence_diff)
+    if secret_hits:
+        review = _write_sanitized_provider_artifact(
+            worktree, "REVIEW.md", _blocked_evidence_report(secret_hits)
+        )
+        return review, False
 
     prompt = _review_prompt(goal, plan, capped_diff, coverage, cross_check)
     cmd = ["claude", "-p", "--model", CLAUDE_MODEL, "--tools", ""]
@@ -836,6 +938,7 @@ def run_loop(
     run_plan_review: bool,
     override_reason: Optional[str],
     timestamp: Optional[str],
+    model_deviations: Dict[str, Dict[str, str]],
     dry_run: bool,
 ) -> Dict[str, object]:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -845,12 +948,24 @@ def run_loop(
     print(f"  branch:   {branch}  (base: {base})")
 
     _write(worktree, "GOAL.md", f"# GOAL\n\n{goal}\n")
-    override_row: Optional[Dict[str, str]] = None
+    plan_review_override: Optional[Dict[str, str]] = None
+    cross_check_override: Optional[Dict[str, str]] = None
     if not run_plan_review:
         if not override_reason or not timestamp:
             raise RuntimeError("--no-plan-review requires --override-reason and --timestamp")
-        override_row = append_plan_review_bypass_override(
-            worktree, timestamp, override_reason, branch, dry_run
+        plan_review_override = append_operator_override(
+            worktree, timestamp, override_reason, branch, "plan-review-bypass", dry_run
+        )
+    if not run_cross_check:
+        if not override_reason:
+            raise RuntimeError("--no-cross-check requires --override-reason")
+        cross_check_override = append_operator_override(
+            worktree,
+            timestamp or _now_iso(),
+            override_reason,
+            branch,
+            "cross-check-bypass",
+            dry_run,
         )
 
     state: Dict[str, object] = {
@@ -863,7 +978,9 @@ def run_loop(
         "dry_run": dry_run,
         "cross_check_enabled": run_cross_check,
         "plan_review_enabled": run_plan_review,
-        "plan_review_override": override_row,
+        "plan_review_override": plan_review_override,
+        "cross_check_override": cross_check_override,
+        "model_roster_deviations": model_deviations,
         "iterations": [],
         "halted": False,
         "done": False,
@@ -883,7 +1000,7 @@ def run_loop(
         # implementation except the explicit CLI operator override below.
         if run_plan_review:
             plan_review, sol_concerns, plan_rejected = stage_plan_review(
-                worktree, goal, plan, dry_run
+                worktree, goal, plan, model_deviations, dry_run
             )
         else:
             safe_reason, _ = redact_secret_content(override_reason or "")
@@ -894,6 +1011,7 @@ def run_loop(
                 f"- Reason: {safe_reason}\n"
                 f"- Ledger timestamp: `{timestamp}`\n"
             )
+            plan_review += _model_override_markdown(model_deviations)
             sol_concerns = ""
             plan_rejected = False
             plan_review = _write_sanitized_provider_artifact(
@@ -935,10 +1053,23 @@ def run_loop(
         if not impl.ok:
             cross_check = "(cross-check unavailable: implementation stage failed)\n"
         elif not run_cross_check:
-            cross_check = "(cross-check disabled)\n"
+            safe_reason, _ = redact_secret_content(override_reason or "")
+            cross_check = (
+                "(cross-check bypassed by governed operator override; "
+                f"reason: {safe_reason}; ledger timestamp: "
+                f"{cross_check_override.get('timestamp') if cross_check_override else 'unavailable'})\n"
+            )
         else:
             cross_check = stage_cross_check(worktree, dry_run)
         rec["cross_check"] = cross_check.strip()
+        if EVIDENCE_SECRET_BLOCKED in cross_check:
+            print("HALT: secret-like candidate evidence blocked cross-check and review before provider invocation.")
+            rec["evidence_secret_blocked"] = True
+            rec["finished"] = _now_iso()
+            state["iterations"].append(rec)      # type: ignore[attr-defined]
+            state["halted"] = True
+            _write_state(worktree, state)
+            break
         if CROSS_CHECK_VIOLATION in cross_check:
             print("HALT: Gemini cross-check produced an unexpected worktree delta; evidence preserved for human inspection.")
             rec["cross_check_violation"] = True
@@ -969,6 +1100,14 @@ def run_loop(
         review, done = stage_review(worktree, goal, plan, cross_check, dry_run)
         prior_review = review
         rec["review_done"] = done
+        if EVIDENCE_SECRET_BLOCKED in review:
+            print("HALT: secret-like candidate evidence blocked review before provider invocation.")
+            rec["evidence_secret_blocked"] = True
+            rec["finished"] = _now_iso()
+            state["iterations"].append(rec)      # type: ignore[attr-defined]
+            state["halted"] = True
+            _write_state(worktree, state)
+            break
 
         # (g) GATE (optional; sole promoter, only recorded here)
         if run_gate_each:
@@ -1017,13 +1156,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--gate", action="store_true",
                     help="Run scripts/ci/verify-ios.sh after each review and record pass/fail.")
     ap.add_argument("--no-cross-check", action="store_true",
-                    help="Skip the non-fatal read-only Gemini implementation cross-check.")
+                    help="Governed operator override: disable the advisory Gemini cross-check; ordinary lane unavailability remains non-fatal by design.")
     ap.add_argument("--no-plan-review", action="store_true",
                     help="Governed operator override: disable the required GPT-5.6 Sol plan co-review.")
     ap.add_argument("--override-reason",
-                    help="Required durable operator reason when --no-plan-review is used.")
+                    help="Required durable operator reason when --no-plan-review or --no-cross-check is used.")
     ap.add_argument("--timestamp",
-                    help="Required ISO8601 UTC timestamp for a --no-plan-review operator override.")
+                    help="ISO8601 UTC timestamp; required for --no-plan-review and optional for --no-cross-check.")
+    ap.add_argument("--allow-env-override", action="store_true",
+                    help="Allow effective BRAIN_* model overrides that differ from the pinned roster; record them in PLAN_REVIEW.md.")
     ap.add_argument("--dry-run", action="store_true",
                     help="Print the claude/codex commands instead of running them; still "
                          "creates the worktree and runs scope_guard so it is verifiable.")
@@ -1033,15 +1174,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     goal = _load_goal(args)
     if not goal:
         ap.error("a goal is required: pass --goal \"...\" or --goal-file PATH")
-    if args.no_plan_review:
+    if args.no_plan_review or args.no_cross_check:
         if not args.override_reason or not args.override_reason.strip():
-            ap.error("--no-plan-review requires --override-reason \"<text>\"")
-        if not args.timestamp or not valid_timestamp(args.timestamp):
-            ap.error("--no-plan-review requires --timestamp YYYY-MM-DDTHH:MM:SSZ")
-    elif args.override_reason:
-        ap.error("--override-reason is valid only with --no-plan-review")
-    elif args.timestamp and not valid_timestamp(args.timestamp):
+            ap.error("--no-plan-review and --no-cross-check require --override-reason \"<text>\"")
+    if args.timestamp and not valid_timestamp(args.timestamp):
         ap.error("--timestamp must be YYYY-MM-DDTHH:MM:SSZ")
+    if args.no_plan_review:
+        if not args.timestamp:
+            ap.error("--no-plan-review requires --timestamp YYYY-MM-DDTHH:MM:SSZ")
+    elif args.override_reason and not args.no_cross_check:
+        ap.error("--override-reason is valid only with --no-plan-review or --no-cross-check")
+
+    model_deviations = roster_deviations()
+    if model_deviations and not args.allow_env_override:
+        _report_roster_deviations(model_deviations)
+        return 2
 
     repo = os.path.abspath(args.repo)
     base = args.base or _current_branch(repo)
@@ -1065,6 +1212,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             run_plan_review=not args.no_plan_review,
             override_reason=args.override_reason,
             timestamp=args.timestamp,
+            model_deviations=model_deviations,
             dry_run=args.dry_run,
         )
     except RuntimeError as exc:

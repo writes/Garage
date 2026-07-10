@@ -48,24 +48,29 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 from gemini_consult import (  # noqa: E402  (local sibling)
     AgyResolverLockError,
+    ROSTER,
     _extract_json,
     agy_resolver_lock,
     capture_agy_resolver_offset,
     gemini_resolver_decision,
+    roster_deviations as _shared_roster_deviations,
     verify_agy_resolver,
 )
 import scope_guard  # noqa: E402  (single source of truth for protected paths)
 from tri_agent_vote import degraded_pair_agrees  # noqa: E402  (shared degraded-vote rule)
 
 
-CLAUDE_MODEL = os.environ.get("BRAIN_CLAUDE_MODEL", "claude-fable-5")
-CODEX_STRATEGY_MODEL = os.environ.get("BRAIN_CODEX_STRATEGY_MODEL", "gpt-5.6-sol")
-GEMINI_MODEL = os.environ.get("BRAIN_GEMINI_MODEL", "Gemini 3.1 Pro (High)")
+CLAUDE_MODEL = os.environ.get("BRAIN_CLAUDE_MODEL", ROSTER["claude"])
+CODEX_STRATEGY_MODEL = os.environ.get("BRAIN_CODEX_STRATEGY_MODEL", ROSTER["codex-strategy"])
+GEMINI_MODEL = os.environ.get("BRAIN_GEMINI_MODEL", ROSTER["gemini"])
 
-ROSTER = {
-    "claude": "claude-fable-5",
-    "codex": "gpt-5.6-sol",
-    "gemini": "Gemini 3.1 Pro (High)",
+# tri_review's user-facing reviewer label has historically been "codex".
+# Keep that artifact/rendering behavior stable while its validation delegates
+# to the shared canonical lane names.
+REVIEWER_ROSTER_LANES = {
+    "claude": "claude",
+    "codex": "codex-strategy",
+    "gemini": "gemini",
 }
 MAX_DIFF_BYTES = 120000
 MAX_VERDICT_FINDINGS = 5
@@ -241,17 +246,20 @@ def effective_models() -> Dict[str, str]:
     """Return the model labels effective after the supported env overrides."""
     return {
         "claude": CLAUDE_MODEL,
-        "codex": CODEX_STRATEGY_MODEL,
+        "codex-strategy": CODEX_STRATEGY_MODEL,
         "gemini": GEMINI_MODEL,
     }
 
 
 def roster_deviations(models: Dict[str, str]) -> Dict[str, Dict[str, str]]:
-    """Return every effective model that differs from the pinned review roster."""
+    """Compare review lanes with the shared roster, preserving brief labels."""
+    deviations = _shared_roster_deviations(
+        models, lanes=REVIEWER_ROSTER_LANES.values()
+    )
     return {
-        agent: {"expected": pinned, "effective": models.get(agent, "")}
-        for agent, pinned in ROSTER.items()
-        if models.get(agent) != pinned
+        reviewer: deviations[lane]
+        for reviewer, lane in REVIEWER_ROSTER_LANES.items()
+        if lane in deviations
     }
 
 
@@ -1103,13 +1111,17 @@ def _selftest() -> int:
         ]),
     )
 
-    check("roster accepts exact pins", roster_deviations(dict(ROSTER)) == {})
+    check(
+        "shared roster comparison accepts all canonical pins",
+        _shared_roster_deviations(dict(ROSTER)) == {},
+    )
+    check("roster accepts exact review pins", roster_deviations(dict(ROSTER)) == {})
     overridden_models = dict(ROSTER)
-    overridden_models["codex"] = "another-model"
+    overridden_models["codex-strategy"] = "another-model"
     check(
         "roster flags an effective-model deviation",
         roster_deviations(overridden_models) == {
-            "codex": {"expected": ROSTER["codex"], "effective": "another-model"}
+            "codex": {"expected": ROSTER["codex-strategy"], "effective": "another-model"}
         },
     )
 

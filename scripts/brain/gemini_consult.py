@@ -30,11 +30,21 @@ import subprocess
 import sys
 import tempfile
 import time
-from typing import Dict, Optional, Tuple
+from typing import Dict, Iterable, Optional, Tuple
+
+# The one canonical model allowlist for every v3 lane.  Callers may read
+# BRAIN_* environment variables, but they must compare their effective
+# selections against this mapping before invoking a provider.
+ROSTER: Dict[str, str] = {
+    "claude": "claude-fable-5",
+    "codex-strategy": "gpt-5.6-sol",
+    "codex-implement": "gpt-5.6-terra",
+    "gemini": "Gemini 3.1 Pro (High)",
+}
 
 VERTEX_MODEL = "gemini-2.5-pro"
 VERTEX_LOCATION = os.environ.get("VERTEX_LOCATION", "us-central1")
-AGY_MODEL = os.environ.get("BRAIN_GEMINI_MODEL", "Gemini 3.1 Pro (High)")
+AGY_MODEL = os.environ.get("BRAIN_GEMINI_MODEL", ROSTER["gemini"])
 AGY_RESOLVER_LABEL_RE = re.compile(
     r'Propagating selected model override to backend:\s*label="([^"]+)"'
 )
@@ -47,6 +57,27 @@ VOTER_INSTRUCTION = (
     '"confidence": <float 0..1 calibrated to evidence strength>}\n'
     "Calibrate confidence to EVIDENCE (real verification > docs > intuition). Do not inflate."
 )
+
+
+def roster_deviations(
+    effective_models: Dict[str, str], lanes: Optional[Iterable[str]] = None
+) -> Dict[str, Dict[str, str]]:
+    """Return effective model labels that differ from canonical lane pins.
+
+    Consumers name only the lanes they operate.  Unknown requested lanes are a
+    programming error rather than an implicit policy exception; an omitted
+    effective lane is reported as an empty effective value and therefore fails
+    closed like any other deviation.
+    """
+    selected_lanes = tuple(ROSTER) if lanes is None else tuple(lanes)
+    unknown = [lane for lane in selected_lanes if lane not in ROSTER]
+    if unknown:
+        raise ValueError(f"unknown roster lane(s): {', '.join(unknown)}")
+    return {
+        lane: {"expected": ROSTER[lane], "effective": effective_models.get(lane, "")}
+        for lane in selected_lanes
+        if effective_models.get(lane) != ROSTER[lane]
+    }
 
 
 def last_agy_resolver_label(log_text: Optional[str]) -> Optional[str]:

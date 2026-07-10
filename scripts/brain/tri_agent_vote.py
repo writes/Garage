@@ -33,11 +33,17 @@ from typing import Dict, List, Optional
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import consensus  # noqa: E402  (local sibling)
-from gemini_consult import _extract_json, consult as gemini_consult  # noqa: E402
+from gemini_consult import (  # noqa: E402
+    ROSTER,
+    _extract_json,
+    consult as gemini_consult,
+    roster_deviations as _shared_roster_deviations,
+)
 
-CLAUDE_MODEL = os.environ.get("BRAIN_CLAUDE_MODEL", "claude-fable-5")
-CODEX_STRATEGY_MODEL = os.environ.get("BRAIN_CODEX_STRATEGY_MODEL", "gpt-5.6-sol")
-GEMINI_MODEL = os.environ.get("BRAIN_GEMINI_MODEL", "Gemini 3.1 Pro (High)")
+CLAUDE_MODEL = os.environ.get("BRAIN_CLAUDE_MODEL", ROSTER["claude"])
+CODEX_STRATEGY_MODEL = os.environ.get("BRAIN_CODEX_STRATEGY_MODEL", ROSTER["codex-strategy"])
+GEMINI_MODEL = os.environ.get("BRAIN_GEMINI_MODEL", ROSTER["gemini"])
+VOTER_ROSTER_LANES = ("claude", "codex-strategy", "gemini")
 PINNED_VOTERS = {
     "claude": {"model": CLAUDE_MODEL, "backend": "claude"},
     "codex": {"model": CODEX_STRATEGY_MODEL, "backend": "codex"},
@@ -208,6 +214,36 @@ def degraded_pair_agrees(positions: List[Dict]) -> bool:
     )
 
 
+def effective_models() -> Dict[str, str]:
+    """Return the effective tri-vote model labels using canonical lane names."""
+    return {
+        "claude": CLAUDE_MODEL,
+        "codex-strategy": CODEX_STRATEGY_MODEL,
+        "gemini": GEMINI_MODEL,
+    }
+
+
+def roster_deviations() -> Dict[str, Dict[str, str]]:
+    """Validate each tri-vote lane against the shared canonical allowlist."""
+    return _shared_roster_deviations(effective_models(), lanes=VOTER_ROSTER_LANES)
+
+
+def _report_roster_deviations(
+    deviations: Dict[str, Dict[str, str]], context: str
+) -> None:
+    print(
+        f"error: effective model differs from the pinned {context} roster; "
+        "use --allow-env-override to record an explicit exception",
+        file=sys.stderr,
+    )
+    for lane, details in deviations.items():
+        print(
+            f"  - {lane}: expected {details['expected']!r}; "
+            f"effective {details['effective']!r}",
+            file=sys.stderr,
+        )
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Live tri-agent consensus vote + ledger append.")
     ap.add_argument("--question", required=True)
@@ -218,11 +254,21 @@ def main(argv=None) -> int:
     ap.add_argument("--ledger", default="DECISION_LEDGER.jsonl")
     ap.add_argument("--dry-run", action="store_true", help="Resolve + print; do NOT append the ledger.")
     ap.add_argument(
+        "--allow-env-override",
+        action="store_true",
+        help="Allow effective BRAIN_* model overrides that differ from the pinned roster; record them in the ledger extra.",
+    )
+    ap.add_argument(
         "--allow-degraded",
         action="store_true",
         help="Permit a documented canonical-agreement 2-voter ledger append when a pinned voter is dead; otherwise non-dry-run appends require all three.",
     )
     args = ap.parse_args(argv)
+
+    model_deviations = roster_deviations()
+    if model_deviations and not args.allow_env_override:
+        _report_roster_deviations(model_deviations, "tri-agent-vote")
+        return 2
 
     prompt = build_prompt(args.question, args.options)
     chosen = [v.strip() for v in args.voters.split(",") if v.strip() in VOTERS]
@@ -258,6 +304,9 @@ def main(argv=None) -> int:
         "voters_polled": chosen,
         "voters_live": [p["agent"] for p in live],
     }
+    if model_deviations:
+        extra["allow_env_override"] = True
+        extra["model_roster_deviations"] = model_deviations
     if degraded:
         extra["degradation_note"] = (
             f"only {len(live)}/{len(PINNED_VOTERS)} pinned voters were live and schema-valid; resolved with documented caveat")
