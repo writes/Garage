@@ -225,3 +225,42 @@ branding decision** — the collective supplies the screened slate and its verdi
 Growth posture (§8 of this doc, affirmed by Q1–Q3): **profitable-by-default; growth via
 zero-CAC Passport loops; no paid acquisition in year one.** Every verdict remains subordinate
 to the standing VALIDATE-FIRST gate — the kill-test is the next strategic action.
+
+---
+
+## 13. Sol co-review disposition — EPISTEMIC CORRECTIONS (read this section as governing)
+
+Sol (0.97) found the document's rhetoric outrunning its evidence. **These corrections govern
+wherever earlier sections overstate:**
+
+1. **Bounded claims replace absolutes.** What is *evidenced*: competitor whitespace, the
+   pricing math **within its stated churn/benchmark assumptions**, one-time transaction-moment
+   WTP **for third-party history products**. What remains a **hypothesis under test**: that
+   buyers assign value to owner-authored records at all (the exact gap the kill-test isolates).
+   "The wedge is confirmed" → *the whitespace is confirmed; the wedge is the leading
+   hypothesis.* "Deep beats broad, decisively" → *within current evidence.* "The money is at
+   the sale event" → *the leading monetization hypothesis, Carfax-anchored but not yet
+   validated for self-attested records.*
+2. **Integrity ≠ truth.** Hashing/chain-of-custody proves records were not altered after
+   entry — it cannot prove the service occurred. Any Passport must carry an explicit
+   verification taxonomy: self-attested / receipt-supported / shop-attested / third-party.
+   Marketing language must never say "verified" for self-attested layers.
+3. **Naming verdicts downgraded:** "CLEAR" → **"knockout-screen passed."** Professional
+   trademark counsel (USPTO class 9/42 + common-law + international) required before
+   committing to Motorkeep; MotorK phonetic adjacency unresolved.
+4. **Kill-test requires a pre-registered protocol document** (covariates, model spec, MDE,
+   power, selection-bias treatment, decision thresholds beyond price-delta incl. buyer-trust
+   uplift and WTP; the 10-listing A/B is a signal generator, not decisive evidence). That
+   protocol is the NEXT deliverable before any Stage-0 build beyond a disposable A/B mockup.
+5. **"Permanently graveyarded" → evidence-dated exclusions** with reconsideration triggers
+   (consistent with the assay system): homes (Centriq death, 2026-01), OBD hardware
+   (Automatic Labs death, 2020) — re-assay only on material new evidence.
+6. **"No paid acquisition in year one" is a reversible operating hypothesis** with a
+   CAC/LTV/payback trigger, not doctrine.
+7. **Follow-up program (queued, not silently dropped):** unit economics of the Passport
+   credit liability + servicing costs; RRV metric formal definition; trust/privacy/abuse
+   governance for hosted Passports (transfer consent, dispute handling, revocation); per-voter
+   dissent recording in vote rows.
+
+The Q1–Q5 verdicts stand **as conditional strategy** — every one subordinate to the
+VALIDATE-FIRST gate, which this section re-arms explicitly.
