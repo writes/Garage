@@ -73,8 +73,16 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 import scope_guard  # noqa: E402  (intentional: sibling import after path tweak)
-from gemini_consult import _extract_json, verify_agy_resolver  # noqa: E402  (local sibling)
-from tri_review import _coverage_markdown, cap_diff_with_coverage  # noqa: E402  (same cap mechanics)
+from gemini_consult import (  # noqa: E402  (local sibling)
+    _extract_json,
+    capture_agy_resolver_offset,
+    verify_agy_resolver,
+)
+from tri_review import (  # noqa: E402  (same cap mechanics)
+    _coverage_markdown,
+    _parse_name_status,
+    cap_diff_with_coverage,
+)
 
 # ---------------------------------------------------------------------------
 # Tunables / defaults
@@ -384,9 +392,9 @@ def stage_implement(worktree: str, goal: str, plan: str, sol_concerns: str,
     Serial only — exactly one codex track at a time.
     """
     prompt = _implement_prompt(goal, plan, sol_concerns)
-    cmd = ["codex", "exec", "-m", CODEX_IMPLEMENT_MODEL, "-"]
+    cmd = ["codex", "exec", "-s", "workspace-write", "-m", CODEX_IMPLEMENT_MODEL, "-"]
     if dry_run:
-        print(f"  [DRY-RUN IMPLEMENT] would run: codex exec -m {CODEX_IMPLEMENT_MODEL} -  "
+        print(f"  [DRY-RUN IMPLEMENT] would run: codex exec -s workspace-write -m {CODEX_IMPLEMENT_MODEL} -  "
               f"(stdin: implement-prompt {len(prompt)} chars)")
         # Simulate a candidate write inside an allowed path so enforce() has
         # something real (and in-scope) to observe.
@@ -424,11 +432,7 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
         _write(worktree, "CROSS_CHECK.md", report)
         return report
 
-    manifest_entries = [
-        {"display": line, "paths": []}
-        for line in manifest_result.stdout.splitlines()
-        if line.strip()
-    ]
+    manifest_entries = _parse_name_status(manifest_result.stdout)
     capped_diff, coverage = cap_diff_with_coverage(diff_result.stdout, manifest_entries)
     prompt = (
         "You are a read-only implementation cross-checker. Inspect this candidate diff and "
@@ -448,6 +452,7 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
         _write(worktree, "CROSS_CHECK.md", report)
         return report
 
+    resolver_offset = capture_agy_resolver_offset()
     result = _run(
         cmd,
         cwd=worktree,
@@ -460,7 +465,7 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
         _write(worktree, "CROSS_CHECK.md", report)
         return report
 
-    model_verified, resolver_label = verify_agy_resolver(GEMINI_MODEL)
+    model_verified, resolver_label = verify_agy_resolver(GEMINI_MODEL, resolver_offset)
     if not model_verified:
         # Match the existing non-fatal unavailable path. A successful agy
         # process is not usable evidence if its resolver selected another model.

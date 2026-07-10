@@ -12,7 +12,7 @@ GO, reports NO-GO when any lane is NO-GO, is intentionally STRICTER than Law-1's
 The review is deliberately fail-closed before any provider sees a diff:
 protected surfaces and secret-like content block the review outright. Evidence
 is SHA-bound, the worktree must start clean, and the exact prompt hash plus
-explicit 120KB truncation coverage are written to the advisory brief.
+explicit 120,000-byte truncation coverage are written to the advisory brief.
 
 LANDMINES honored:
   * #2  `codex exec` is always passed '-' and fed its prompt on STDIN.
@@ -46,6 +46,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 from gemini_consult import (  # noqa: E402  (local sibling)
     _extract_json,
+    capture_agy_resolver_offset,
     gemini_resolver_decision,
     verify_agy_resolver,
 )
@@ -56,7 +57,12 @@ CLAUDE_MODEL = os.environ.get("BRAIN_CLAUDE_MODEL", "claude-fable-5")
 CODEX_STRATEGY_MODEL = os.environ.get("BRAIN_CODEX_STRATEGY_MODEL", "gpt-5.6-sol")
 GEMINI_MODEL = os.environ.get("BRAIN_GEMINI_MODEL", "Gemini 3.1 Pro (High)")
 
-MAX_DIFF_BYTES = 120 * 1024
+ROSTER = {
+    "claude": "claude-fable-5",
+    "codex": "gpt-5.6-sol",
+    "gemini": "Gemini 3.1 Pro (High)",
+}
+MAX_DIFF_BYTES = 120000
 REVIEWER_ORDER = ("claude", "codex", "gemini")
 ISO8601_Z_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\Z")
 # Import, rather than copy, the protected list: scope_guard remains the sole
@@ -68,6 +74,22 @@ SECRET_PATTERNS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
     ("private key block", re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", re.IGNORECASE)),
     ("AWS access key", re.compile(r"AKIA[0-9A-Z]{16}")),
     ("Google API key", re.compile(r"AIza[0-9A-Za-z_-]{35}")),
+    ("JWT", re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.")),
+    ("GitHub token", re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}")),
+    ("OpenAI key", re.compile(r"sk-[A-Za-z0-9_-]{20,}")),
+    ("Stripe secret key", re.compile(r"[rs]k_(?:live|test)_[A-Za-z0-9]{16,}")),
+    ("Slack token", re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}")),
+    (
+        "quoted JSON credential",
+        re.compile(r'"(?:api_?key|secret|token|password)"\s*:\s*"[^"]{12,}"', re.IGNORECASE),
+    ),
+    (
+        "dotenv credential",
+        re.compile(
+            r"(?m)^(?:\+)?(?:API_?KEY|SECRET|TOKEN|PASSWORD)\s*=\s*(?!['\"])\S{12,}\s*$",
+            re.IGNORECASE,
+        ),
+    ),
     (
         "generic credential assignment",
         re.compile(
@@ -143,6 +165,24 @@ def secret_scan(diff_text: str) -> List[str]:
     return [label for label, pattern in SECRET_PATTERNS if pattern.search(diff_text)]
 
 
+def effective_models() -> Dict[str, str]:
+    """Return the model labels effective after the supported env overrides."""
+    return {
+        "claude": CLAUDE_MODEL,
+        "codex": CODEX_STRATEGY_MODEL,
+        "gemini": GEMINI_MODEL,
+    }
+
+
+def roster_deviations(models: Dict[str, str]) -> Dict[str, Dict[str, str]]:
+    """Return every effective model that differs from the pinned review roster."""
+    return {
+        agent: {"expected": pinned, "effective": models.get(agent, "")}
+        for agent, pinned in ROSTER.items()
+        if models.get(agent) != pinned
+    }
+
+
 def is_protected_path(path: str) -> bool:
     """Apply scope_guard's prefix rule to a path from Git's name-status manifest."""
     normalized = path.replace("\\", "/")
@@ -161,6 +201,47 @@ def _header_offsets(diff_bytes: bytes) -> List[int]:
     return [match.start() for match in re.finditer(br"(?m)^diff --git ", diff_bytes)]
 
 
+def _diff_file_segments(diff_bytes: bytes) -> List[Dict[str, Any]]:
+    """Return parseable ``diff --git a/<path> b/<path>`` segments with byte bounds."""
+    starts = _header_offsets(diff_bytes)
+    segments: List[Dict[str, Any]] = []
+    for index, start in enumerate(starts):
+        end = starts[index + 1] if index + 1 < len(starts) else len(diff_bytes)
+        header_end = diff_bytes.find(b"\n", start, end)
+        if header_end == -1:
+            header_end = end
+        header = diff_bytes[start:header_end].rstrip(b"\r")
+        match = re.fullmatch(br"diff --git a/([^\s]+) b/([^\s]+)", header)
+        if match is None:
+            continue
+        segments.append({
+            "start": start,
+            "end": end,
+            "paths": {
+                match.group(1).decode("utf-8", errors="replace"),
+                match.group(2).decode("utf-8", errors="replace"),
+            },
+        })
+    return segments
+
+
+def _entry_coverage(
+    entry: Dict[str, Any], segments: Sequence[Dict[str, Any]], limit: int
+) -> str:
+    """Classify one manifest entry by matching its Git paths to diff headers."""
+    paths = set(entry.get("paths", []))
+    matched = [segment for segment in segments if paths & segment["paths"]]
+    if not matched:
+        # Git can omit a patch for a changed path. Do not call it full merely
+        # because another manifest row happened to have a nearby header.
+        return "omitted"
+    if all(segment["end"] <= limit for segment in matched):
+        return "full"
+    if any(segment["start"] < limit for segment in matched):
+        return "partial"
+    return "omitted"
+
+
 def cap_diff_with_coverage(
     diff_text: str,
     manifest_entries: Sequence[Dict[str, Any]],
@@ -173,36 +254,24 @@ def cap_diff_with_coverage(
     entry is classified full, partial, or omitted. The classifier is purposely
     conservative if Git's patch contains fewer file headers than the manifest.
     """
+    if limit <= 0:
+        raise ValueError("diff limit must be positive")
     data = diff_text.encode("utf-8")
     total_files = len(manifest_entries)
     truncated = len(data) > limit
+    segments = _diff_file_segments(data)
+    coverage = [_entry_coverage(entry, segments, limit) for entry in manifest_entries]
 
     if not truncated:
-        coverage = ["full"] * total_files
         visible = diff_text
         omitted = 0
     else:
         prefix = data[:limit]
         visible = prefix.decode("utf-8", errors="replace")
         omitted = len(data) - limit
-        starts = _header_offsets(data)
-        coverage = []
-        for index in range(total_files):
-            if index >= len(starts):
-                coverage.append("omitted")
-                continue
-            start = starts[index]
-            end = starts[index + 1] if index + 1 < len(starts) else len(data)
-            if end <= limit:
-                coverage.append("full")
-            elif start < limit:
-                coverage.append("partial")
-            else:
-                coverage.append("omitted")
-
         full_count = coverage.count("full")
         visible += (
-            f"\n\n[diff truncated at {limit // 1024}KB — {omitted} bytes omitted; "
+            f"\n\n[diff truncated at {limit} bytes — {omitted} bytes omitted; "
             f"files fully included: {full_count}/{total_files}]\n"
         )
 
@@ -329,6 +398,8 @@ def run_reviewer(agent: str, prompt: str, timeout: int, repo: str) -> Dict[str, 
     # model cannot browse repository or protected-file contents during review.
     isolated_cwd = tempfile.mkdtemp(prefix="tri-review-reviewer-")
     try:
+        # Bind Gemini's resolver evidence to this invocation before launching it.
+        resolver_offset = capture_agy_resolver_offset() if agent == "gemini" else None
         try:
             proc = subprocess.run(
                 cmd,
@@ -344,7 +415,6 @@ def run_reviewer(agent: str, prompt: str, timeout: int, repo: str) -> Dict[str, 
             return _failed_review(agent, model, backend, f"timeout after {outer_timeout}s")
         except FileNotFoundError as exc:
             return _failed_review(agent, model, backend, f"command unavailable: {exc}")
-
         resolver_label: Optional[str] = None
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout).strip()
@@ -358,7 +428,7 @@ def run_reviewer(agent: str, prompt: str, timeout: int, repo: str) -> Dict[str, 
 
         resolver_ok = True
         if agent == "gemini":
-            resolver_ok, resolver_label = verify_agy_resolver(model)
+            resolver_ok, resolver_label = verify_agy_resolver(model, resolver_offset)
         if not resolver_ok:
             return _failed_review(
                 agent,
@@ -428,10 +498,22 @@ def format_brief(
     coverage: Dict[str, Any],
     results: Sequence[Dict[str, Any]],
     resolution: str,
+    model_deviations: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> str:
     """Render an advisory brief; rendering never changes resolution semantics."""
     lines = [
         "# Tri-provider pre-main review (advisory)",
+    ]
+    if model_deviations:
+        lines.extend([
+            "",
+            "**PIN POLICY OVERRIDE ACTIVE — `--allow-env-override` accepted these effective-model deviations:**",
+            *(
+                f"- {agent}: expected `{details['expected']}`; effective `{details['effective']}`"
+                for agent, details in model_deviations.items()
+            ),
+        ])
+    lines.extend([
         "",
         f"- Timestamp: `{timestamp}`",
         f"- Base SHA: `{base_sha}`",
@@ -450,7 +532,7 @@ def format_brief(
         "## Diff truncation and file coverage",
         "",
         _coverage_markdown(coverage),
-    ]
+    ])
     by_agent = {result["agent"]: result for result in results}
     for agent in REVIEWER_ORDER:
         result = by_agent.get(agent)
@@ -551,22 +633,45 @@ def _selftest() -> int:
     check("secret scan generic credential", secret_scan(generic_credential_fixture) == ["generic credential assignment"])
     check("secret scan Firebase token", secret_scan(firebase_token_fixture) == ["Firebase token"])
     check("secret scan benign text", secret_scan("token count = 3\npasswordless login") == [])
+    jwt_fixture = "eyJ" + "a" * 10 + "." + "b" * 10 + ".signature"
+    github_fixture = "ghp_" + "a" * 20
+    openai_fixture = "sk-" + "a" * 20
+    stripe_fixture = "sk_live_" + "a" * 16
+    slack_fixture = "xoxb-" + "a" * 10
+    json_credential_fixture = '"api_key": "' + "a" * 12 + '"'
+    dotenv_credential_fixture = "+TOKEN=" + "a" * 12
+    check("secret scan JWT", "JWT" in secret_scan(jwt_fixture))
+    check("secret scan GitHub token", "GitHub token" in secret_scan(github_fixture))
+    check("secret scan OpenAI key", "OpenAI key" in secret_scan(openai_fixture))
+    check("secret scan Stripe key", "Stripe secret key" in secret_scan(stripe_fixture))
+    check("secret scan Slack token", "Slack token" in secret_scan(slack_fixture))
+    check("secret scan quoted JSON credential", "quoted JSON credential" in secret_scan(json_credential_fixture))
+    check("secret scan dotenv credential", "dotenv credential" in secret_scan(dotenv_credential_fixture))
+    check("secret scan OpenAI prose prefix stays benign", secret_scan("The prefix sk- identifies a key family.") == [])
+    check(
+        "secret scan short values stay benign",
+        secret_scan('"token": "' + "a" * 11 + '"\nAPI_KEY=' + "a" * 11) == [],
+    )
 
     check("protected path exact file", is_protected_path("firebase.json"))
     check("protected path directory child", is_protected_path("scripts/ci/verify-ios.sh"))
     check("protected path boundary rejects ci helpers", not is_protected_path("scripts/ci-helpers/check.sh"))
 
     manifest_entries = _parse_name_status("M\ta.swift\nM\tb.swift\nM\tc.swift\n")
+    c_segment = "diff --git a/c.swift b/c.swift\n" + "c" * 30 + "\n"
     diff = (
-        "diff --git a/a.swift b/a.swift\n" + "a" * 30 + "\n"
+        c_segment
+        + "diff --git a/a.swift b/a.swift\n" + "a" * 30 + "\n"
         "diff --git a/b.swift b/b.swift\n" + "b" * 30 + "\n"
-        "diff --git a/c.swift b/c.swift\n" + "c" * 30 + "\n"
     )
-    capped, coverage = cap_diff_with_coverage(diff, manifest_entries, limit=70)
+    capped, coverage = cap_diff_with_coverage(diff, manifest_entries, limit=len(c_segment.encode()) + 10)
     check("truncation records omitted bytes", coverage["truncated"] and coverage["omitted_bytes"] > 0)
-    check("truncation marker reflects requested limit", "[diff truncated at 0KB" in capped)
+    check("truncation marker reflects requested limit", "[diff truncated at " + str(len(c_segment.encode()) + 10) + " bytes" in capped)
     check("truncation accounts every file", len(coverage["per_file"]) == 3)
-    check("truncation has a fully included file", coverage["full_count"] >= 1)
+    check("coverage matches headers by path", [item["status"] for item in coverage["per_file"]] == ["partial", "omitted", "full"])
+    missing_manifest = _parse_name_status("M\tmissing.swift\n")
+    _, missing_coverage = cap_diff_with_coverage(diff, missing_manifest, limit=len(diff.encode()))
+    check("coverage omits manifest path without a diff header", missing_coverage["per_file"][0]["status"] == "omitted")
 
     good = validate_verdict_json({"verdict": "GO", "blocking": [], "advisory": ["note"], "confidence": 0.5})
     check("valid verdict JSON", good is not None and good["confidence"] == 0.5)
@@ -581,19 +686,43 @@ def _selftest() -> int:
     check("NO-GO resolution", resolve_advisory(one_no_go) == "NO-GO (advisory)")
     check("DEGRADED resolution", resolve_advisory(degraded) == "DEGRADED")
 
-    mismatch_ok, mismatch_label = gemini_resolver_decision(
+    prior_log = (
         'Propagating selected model override to backend: label="Gemini 3.1 Pro (High)"\n'
-        'Propagating selected model override to backend: label="Gemini 3.5 Flash (Medium)"',
+    ).encode()
+    no_fresh_ok, no_fresh_label = gemini_resolver_decision(prior_log, len(prior_log), GEMINI_MODEL)
+    check("Gemini resolver requires a fresh appended label", not no_fresh_ok and no_fresh_label == "unverified")
+    mismatch_ok, mismatch_label = gemini_resolver_decision(
+        prior_log + 'Propagating selected model override to backend: label="Gemini 3.5 Flash (Medium)"'.encode(),
+        len(prior_log),
         GEMINI_MODEL,
     )
     check("Gemini resolver mismatch fails closed", not mismatch_ok and mismatch_label == "Gemini 3.5 Flash (Medium)")
     match_ok, match_label = gemini_resolver_decision(
-        'Propagating selected model override to backend: label="Gemini 3.1 Pro (High)"',
+        prior_log + 'Propagating selected model override to backend: label="'.encode() + GEMINI_MODEL.encode() + b'"',
+        len(prior_log),
         GEMINI_MODEL,
     )
     check("Gemini resolver exact pin succeeds", match_ok and match_label == GEMINI_MODEL)
-    unreadable_ok, unreadable_label = gemini_resolver_decision(None, GEMINI_MODEL)
+    last_fresh_ok, last_fresh_label = gemini_resolver_decision(
+        prior_log
+        + ('Propagating selected model override to backend: label="' + GEMINI_MODEL + '"\n').encode()
+        + b'Propagating selected model override to backend: label="Gemini 3.5 Flash (Medium)"',
+        len(prior_log),
+        GEMINI_MODEL,
+    )
+    check("Gemini resolver uses last label inside appended region", not last_fresh_ok and last_fresh_label == "Gemini 3.5 Flash (Medium)")
+    unreadable_ok, unreadable_label = gemini_resolver_decision(None, 0, GEMINI_MODEL)
     check("Gemini resolver unreadable log fails closed", not unreadable_ok and unreadable_label == "unverified")
+
+    check("roster accepts exact pins", roster_deviations(dict(ROSTER)) == {})
+    overridden_models = dict(ROSTER)
+    overridden_models["codex"] = "another-model"
+    check(
+        "roster flags an effective-model deviation",
+        roster_deviations(overridden_models) == {
+            "codex": {"expected": ROSTER["codex"], "effective": "another-model"}
+        },
+    )
 
     repo = "/tmp/tri-review-selftest-repo"
     allowed = resolve_out_path(repo, "reports/tri-review/test.md", "2026-07-10T00:00:00Z")
@@ -620,6 +749,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--base", default="main", help="Base ref for the merge comparison.")
     ap.add_argument("--branch", default="HEAD", help="Candidate branch/ref for the comparison.")
     ap.add_argument("--timeout", type=int, default=600, help="Per-reviewer timeout in seconds.")
+    ap.add_argument(
+        "--diff-limit",
+        type=int,
+        default=MAX_DIFF_BYTES,
+        metavar="BYTES",
+        help="Maximum diff evidence bytes; raise it when coverage reports PARTIAL files so reviewers see full evidence.",
+    )
     ap.add_argument("--timestamp", help="Required ISO8601 UTC timestamp: YYYY-MM-DDTHH:MM:SSZ.")
     ap.add_argument("--out", help="New markdown brief under reports/tri-review/.")
     ap.add_argument(
@@ -627,16 +763,33 @@ def main(argv: Optional[List[str]] = None) -> int:
         default="claude,codex,gemini",
         help="Comma-separated reviewer subset; any subset smaller than all three resolves DEGRADED / exit 1 (fail-closed).",
     )
+    ap.add_argument(
+        "--allow-env-override",
+        action="store_true",
+        help="Allow effective BRAIN_* model overrides that differ from the pinned roster; record them prominently in the brief.",
+    )
     ap.add_argument("--selftest", action="store_true", help="Run pure deterministic tests; no subprocesses.")
     args = ap.parse_args(argv)
 
     if args.selftest:
         return _selftest()
+    model_deviations = roster_deviations(effective_models())
+    if model_deviations and not args.allow_env_override:
+        print("error: effective model differs from the pinned tri-review roster; use --allow-env-override to record an explicit exception", file=sys.stderr)
+        for agent, details in model_deviations.items():
+            print(
+                f"  - {agent}: expected {details['expected']!r}; effective {details['effective']!r}",
+                file=sys.stderr,
+            )
+        return 2
     if not args.timestamp or not valid_timestamp(args.timestamp):
         print("error: --timestamp must be YYYY-MM-DDTHH:MM:SSZ (landmine #6)", file=sys.stderr)
         return 2
     if args.timeout <= 0:
         print("error: --timeout must be positive", file=sys.stderr)
+        return 2
+    if args.diff_limit <= 0:
+        print("error: --diff-limit must be positive", file=sys.stderr)
         return 2
 
     reviewers = [item.strip() for item in args.reviewers.split(",") if item.strip()]
@@ -685,7 +838,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print(f"  - {label}", file=sys.stderr)
             return 3
 
-        capped_diff, coverage = cap_diff_with_coverage(full_diff, manifest_entries)
+        capped_diff, coverage = cap_diff_with_coverage(
+            full_diff, manifest_entries, limit=args.diff_limit
+        )
         prompt = build_prompt(
             base_sha,
             head_sha,
@@ -741,6 +896,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             coverage,
             results,
             resolution,
+            model_deviations,
         )
         write_brief_atomic(out_path, brief)
     except (FileExistsError, RuntimeError, ValueError) as exc:

@@ -52,34 +52,60 @@ def last_agy_resolver_label(log_text: Optional[str]) -> Optional[str]:
     return labels[-1] if labels else None
 
 
-def gemini_resolver_decision(log_text: Optional[str], pinned_model: str) -> Tuple[bool, str]:
-    """Fail closed unless agy's final resolver label exactly matches its pin.
+def gemini_resolver_decision(
+    log_bytes: Optional[bytes], start_offset: Optional[int], pinned_model: str
+) -> Tuple[bool, str]:
+    """Fail closed unless an agy resolver label appended after ``start_offset`` matches.
 
-    This pure helper deliberately accepts the log content rather than a path so
-    every agy caller shares the same deterministic matching semantics and can
-    self-test it without reading host state.
+    The byte offset is captured before the particular agy invocation.  Parsing
+    only the later bytes prevents a previous successful run's resolver record
+    from verifying a later run that silently selected a different model (or
+    logged nothing at all).  This helper is pure so each agy caller shares the
+    same offset-bound matching semantics and can self-test without host I/O.
     """
-    observed = last_agy_resolver_label(log_text) or "unverified"
+    if log_bytes is None or start_offset is None or start_offset < 0 or start_offset > len(log_bytes):
+        return False, "unverified"
+    appended_text = log_bytes[start_offset:].decode("utf-8", errors="replace")
+    observed = last_agy_resolver_label(appended_text) or "unverified"
     return observed == pinned_model, observed
 
 
-def verify_agy_resolver(pinned_model: str) -> Tuple[bool, str]:
-    """Read agy's resolver log and compare its final label to ``pinned_model``.
-
-    ``BRAIN_AGY_RESOLVER_LOG`` supports deterministic test and deployment
-    overrides. An unreadable log or absent resolver record is intentionally an
-    ``unverified`` mismatch: agy can silently downgrade unknown model labels.
-    """
-    log_path = os.environ.get(
+def _agy_resolver_log_path() -> str:
+    """Return the resolver log path, allowing deterministic deployment overrides."""
+    return os.environ.get(
         "BRAIN_AGY_RESOLVER_LOG",
         os.path.expanduser("~/.gemini/antigravity-cli/cli.log"),
     )
+
+
+def capture_agy_resolver_offset() -> Optional[int]:
+    """Capture the resolver log byte size immediately before an agy invocation.
+
+    A not-yet-created log is treated as an empty log.  Other stat failures stay
+    unverified rather than guessing where a subsequent resolver record began.
+    """
     try:
-        with open(log_path, encoding="utf-8", errors="replace") as handle:
-            log_text = handle.read()
+        return os.path.getsize(_agy_resolver_log_path())
+    except FileNotFoundError:
+        return 0
     except OSError:
-        log_text = None
-    return gemini_resolver_decision(log_text, pinned_model)
+        return None
+
+
+def verify_agy_resolver(pinned_model: str, start_offset: Optional[int]) -> Tuple[bool, str]:
+    """Verify only resolver entries appended after the associated agy call began.
+
+    ``BRAIN_AGY_RESOLVER_LOG`` supports deterministic test and deployment
+    overrides. An unreadable log, an invalid offset, or no fresh resolver
+    record is intentionally an ``unverified`` mismatch: agy can silently
+    downgrade unknown model labels.
+    """
+    try:
+        with open(_agy_resolver_log_path(), "rb") as handle:
+            log_bytes = handle.read()
+    except OSError:
+        log_bytes = None
+    return gemini_resolver_decision(log_bytes, start_offset, pinned_model)
 
 
 def _extract_json(text: str) -> Optional[Dict]:
@@ -125,12 +151,15 @@ def _normalize(obj: Dict, backend: str, agy_model: str = AGY_MODEL) -> Dict:
     }
 
 
-def try_agy(prompt: str, timeout: int, model: Optional[str] = None) -> Tuple[Optional[str], str]:
+def try_agy(
+    prompt: str, timeout: int, model: Optional[str] = None
+) -> Tuple[Optional[str], str, Optional[int]]:
     """Preferred backend. NEVER `agy models`. Always -p + --print-timeout + stdin /dev/null.
 
-    ``consult`` verifies the resolver log immediately after a successful call,
-    while it still knows the exact requested pin and can fail the voter closed.
+    The resolver log offset is captured before launching agy; ``consult`` then
+    verifies only the record appended by this particular invocation.
     """
+    resolver_offset = capture_agy_resolver_offset()
     cmd = ["agy"]
     if model:
         cmd.extend(["--model", model])
@@ -144,13 +173,13 @@ def try_agy(prompt: str, timeout: int, model: Optional[str] = None) -> Tuple[Opt
             timeout=timeout + 15,
         )
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-        return None, f"agy unavailable/timeout: {e}"
+        return None, f"agy unavailable/timeout: {e}", resolver_offset
     if proc.returncode != 0:
-        return None, f"agy rc={proc.returncode}: {proc.stderr.strip()[:200]}"
-    return proc.stdout, "agy"
+        return None, f"agy rc={proc.returncode}: {proc.stderr.strip()[:200]}", resolver_offset
+    return proc.stdout, "agy", resolver_offset
 
 
-def try_vertex(prompt: str, timeout: int) -> Tuple[Optional[str], str]:
+def try_vertex(prompt: str, timeout: int) -> Tuple[Optional[str], str, Optional[int]]:
     project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCLOUD_PROJECT")
     if not project:
         try:
@@ -161,16 +190,16 @@ def try_vertex(prompt: str, timeout: int) -> Tuple[Optional[str], str]:
         except Exception:
             project = ""
     if not project:
-        return None, "vertex: no GCP project configured"
+        return None, "vertex: no GCP project configured", None
     try:
         token = subprocess.run(
             ["gcloud", "auth", "print-access-token"],
             capture_output=True, text=True, timeout=20,
         ).stdout.strip()
     except Exception as e:
-        return None, f"vertex: no ADC token ({e})"
+        return None, f"vertex: no ADC token ({e})", None
     if not token:
-        return None, "vertex: empty access token"
+        return None, "vertex: empty access token", None
     import urllib.request
 
     url = (
@@ -185,15 +214,15 @@ def try_vertex(prompt: str, timeout: int) -> Tuple[Optional[str], str]:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode())
         text = data["candidates"][0]["content"]["parts"][0]["text"]
-        return text, "vertex"
+        return text, "vertex", None
     except Exception as e:
-        return None, f"vertex error: {e}"
+        return None, f"vertex error: {e}", None
 
 
-def try_api(prompt: str, timeout: int) -> Tuple[Optional[str], str]:
+def try_api(prompt: str, timeout: int) -> Tuple[Optional[str], str, Optional[int]]:
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
-        return None, "api: no GEMINI_API_KEY"
+        return None, "api: no GEMINI_API_KEY", None
     import urllib.request
 
     url = (
@@ -207,9 +236,9 @@ def try_api(prompt: str, timeout: int) -> Tuple[Optional[str], str]:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode())
         text = data["candidates"][0]["content"]["parts"][0]["text"]
-        return text, "api"
+        return text, "api", None
     except Exception as e:
-        return None, f"api error: {e}"
+        return None, f"api error: {e}", None
 
 
 def consult(
@@ -235,12 +264,14 @@ def consult(
 
     notes = []
     for fn in ladder:
-        text, used = fn(full, timeout)
+        text, used, resolver_offset = fn(full, timeout)
         if text is None:
             notes.append(used)
             continue
         if used == "agy":
-            model_verified, resolver_label = verify_agy_resolver(agy_model or AGY_MODEL)
+            model_verified, resolver_label = verify_agy_resolver(
+                agy_model or AGY_MODEL, resolver_offset
+            )
             if not model_verified:
                 return {
                     "agent": "gemini",
