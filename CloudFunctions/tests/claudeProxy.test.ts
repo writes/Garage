@@ -122,10 +122,10 @@ describe("parseOilAnalysisRequest", () => {
     expect(db.data("usage_quotas/owner-1_2026-07-10")).toMatchObject({ count: 0 });
   });
 
-  it("drops unknown and incorrectly typed values while clamping finite numeric output", () => {
+  it("turns invalid present numeric output into null rather than fabricating a clamped value", () => {
     const sanitized = sanitizeOilAnalysisResponse({
-      labName: 123,
-      iron: Number.POSITIVE_INFINITY,
+      labName: "Lab",
+      iron: Number.NaN,
       copper: -15,
       insolubles: 150,
       milesOnOil: 3_000_000,
@@ -135,15 +135,41 @@ describe("parseOilAnalysisRequest", () => {
     });
 
     expect(sanitized).toMatchObject({
-      labName: "Unknown lab",
-      copper: 0,
-      insolubles: 100,
-      milesOnOil: 2_000_000,
+      labName: "Lab",
+      iron: null,
+      copper: null,
+      insolubles: null,
+      milesOnOil: null,
     });
-    expect(sanitized).not.toHaveProperty("iron");
     expect(sanitized).not.toHaveProperty("viscosity");
     expect(sanitized).not.toHaveProperty("unexpected");
     expect(sanitized.labRecommendation).toHaveLength(4_000);
+  });
+
+  it("rejects empty, array, and unrelated model JSON instead of returning a hollow analysis", async () => {
+    for (const modelText of ["{}", "[]", '{"unrelated":"payload"}']) {
+      const db = new InMemoryFirestore();
+
+      await expect(parseOilAnalysisRequest({
+        auth: { uid: "owner-1" },
+        data: { pdfBase64: "cGRm" },
+      }, dependencies(db, modelText))).rejects.toMatchObject({
+        code: "internal",
+        message: "unrecognized analysis response",
+      });
+      expect(db.data("usage_quotas/owner-1_2026-07-10")).toMatchObject({ count: 0 });
+    }
+  });
+
+  it("returns null for an out-of-range model number when the report otherwise has a lab signal", async () => {
+    const db = new InMemoryFirestore();
+
+    const result = await parseOilAnalysisRequest({
+      auth: { uid: "owner-1" },
+      data: { pdfBase64: "cGRm" },
+    }, dependencies(db, '{"labName":"Lab","copper":-15}'));
+
+    expect(result).toEqual({ labName: "Lab", copper: null });
   });
 
   it("rejects unauthenticated callers", async () => {

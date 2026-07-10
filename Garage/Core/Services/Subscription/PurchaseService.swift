@@ -15,15 +15,21 @@ final class PurchaseService {
     private(set) var isPro = false
     private(set) var offerings: Offerings?
     private let mode: Mode
+    private let restorePurchasesOverride: (@MainActor () async throws -> Bool)?
 
     private init(mode: Mode = .live, isPro: Bool = false) {
         self.mode = mode
         self.isPro = isPro
+        restorePurchasesOverride = nil
     }
 
-    init(testIsPro: Bool) {
+    init(
+        testIsPro: Bool,
+        restorePurchasesOverride: (@MainActor () async throws -> Bool)? = nil
+    ) {
         mode = .uiTest
         isPro = testIsPro
+        self.restorePurchasesOverride = restorePurchasesOverride
     }
 
     func checkSubscriptionStatus() async {
@@ -57,6 +63,11 @@ final class PurchaseService {
     }
 
     func restorePurchases() async throws {
+        if let restorePurchasesOverride {
+            isPro = try await restorePurchasesOverride()
+            return
+        }
+
         guard mode == .live else {
             throw AppError.subscriptionRequired("Purchases unavailable in UI tests")
         }

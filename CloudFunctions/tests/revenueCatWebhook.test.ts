@@ -229,7 +229,7 @@ describe("handleRevenueCatWebhookRequest", () => {
     });
   });
 
-  it("records a stale event but does not downgrade a newer subscription", async () => {
+  it("records a stale pro expiration without downgrading a newer subscription, but applies a newer one", async () => {
     const db = new InMemoryFirestore();
     db.seed("users/owner-1", {
       subscription: {
@@ -239,14 +239,29 @@ describe("handleRevenueCatWebhookRequest", () => {
       },
     });
 
-    const result = await send(db, event({ entitlement_ids: [], id: "stale-revoke", type: "EXPIRATION" }));
+    const result = await send(db, event({
+      entitlement_ids: ["pro"],
+      id: "stale-revoke",
+      type: "EXPIRATION",
+    }));
 
     expect(result.statusCode).toBe(200);
     expect(db.data("users/owner-1")).toMatchObject({
       subscription: { isActive: true, updatedAt: "2026-07-12T10:00:00.000Z" },
     });
     expect(db.data("revenuecat_events/stale-revoke")).toMatchObject({
-      entitlementIds: [],
+      entitlementIds: ["pro"],
+    });
+
+    await send(db, event({
+      entitlement_ids: ["pro"],
+      event_timestamp_ms: Date.parse("2026-07-13T10:00:00.000Z"),
+      id: "newer-revoke",
+      type: "EXPIRATION",
+    }));
+
+    expect(db.data("users/owner-1")).toMatchObject({
+      subscription: { isActive: false, updatedAt: "2026-07-13T10:00:00.000Z" },
     });
   });
 
@@ -260,7 +275,7 @@ describe("handleRevenueCatWebhookRequest", () => {
     }));
     await send(db, event({
       id: "old-revoke",
-      entitlement_ids: [],
+      entitlement_ids: ["pro"],
       event_timestamp_ms: Date.parse("2026-07-11T10:00:00.000Z"),
       type: "EXPIRATION",
     }));

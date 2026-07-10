@@ -15,6 +15,10 @@ struct SubscriptionView: View {
                 Task { await appState.purchaseService.fetchOfferings() }
             }
             .accessibilityIdentifier("subscription.refresh")
+            Button("Restore Purchases") {
+                Task { try? await appState.purchaseService.restorePurchases() }
+            }
+            .accessibilityIdentifier("subscription.restore")
             if let packages = appState.purchaseService.offerings?.current?.availablePackages {
                 ForEach(Array(packages.enumerated()), id: \.element.identifier) { package in
                     Button(package.element.storeProduct.localizedTitle) {

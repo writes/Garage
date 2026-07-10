@@ -7,7 +7,7 @@ import {
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
 import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
-import { afterAll, afterEach, beforeAll, describe, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 let testEnvironment: RulesTestEnvironment | undefined;
 
@@ -61,22 +61,40 @@ describe("Firestore authorization", () => {
     await assertFails(getDocs(collection(anonymousDb, "users")));
   });
 
-  it("[RULES-EXPECTED-FAILURE] records that current rules still allow an owner client write to subscription", async () => {
-    await seedUser("owner-1");
-    const ownerDb = testEnvironment.authenticatedContext("owner-1").firestore();
-
-    // This proves the protected rules finding without mutating firebase.firestore.rules.
-    await assertSucceeds(setDoc(doc(ownerDb, "users", "owner-1"), {
-      subscription: { entitlement: "pro", isActive: true },
-    }, { merge: true }));
-  });
-
-  it.skip("[RULES-EXPECTED-FAILURE] desired invariant: client-side subscription writes are denied", async () => {
+  it("[RULES-ENFORCED] denies an owner client write to subscription while allowing other profile fields", async () => {
     await seedUser("owner-1");
     const ownerDb = testEnvironment.authenticatedContext("owner-1").firestore();
 
     await assertFails(setDoc(doc(ownerDb, "users", "owner-1"), {
       subscription: { entitlement: "pro", isActive: true },
     }, { merge: true }));
+
+    await assertSucceeds(setDoc(doc(ownerDb, "users", "owner-1"), {
+      profile: { displayName: "Owner update remains allowed" },
+    }, { merge: true }));
+  });
+
+  it("[RULES-ENFORCED] denies an owner client self-grant when creating their user document", async () => {
+    const ownerDb = testEnvironment.authenticatedContext("owner-1").firestore();
+
+    await assertFails(setDoc(doc(ownerDb, "users", "owner-1"), {
+      profile: { displayName: "Owner" },
+      subscription: { entitlement: "pro", isActive: true },
+    }));
+
+    await assertSucceeds(setDoc(doc(ownerDb, "users", "owner-1"), {
+      profile: { displayName: "Owner" },
+    }));
+  });
+
+  it("[RULES-ENFORCED] leaves Admin SDK subscription writes unaffected", async () => {
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", "owner-1"), {
+        subscription: { entitlement: "pro", isActive: true },
+      });
+
+      const snapshot = await getDoc(doc(context.firestore(), "users", "owner-1"));
+      expect(snapshot.data()?.subscription).toEqual({ entitlement: "pro", isActive: true });
+    });
   });
 });

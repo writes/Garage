@@ -79,6 +79,25 @@ const numericFields: ReadonlyArray<NumericField> = [
   "milesOnOil",
 ];
 
+/**
+ * A metal value or a named lab is the minimum signal needed to recognize an
+ * oil-analysis report. Supplemental fields alone must not turn arbitrary JSON
+ * into a successful report.
+ */
+const coreMetalFields: ReadonlyArray<NumericField> = [
+  "aluminum",
+  "chromium",
+  "iron",
+  "copper",
+  "lead",
+  "tin",
+  "molybdenum",
+  "nickel",
+  "manganese",
+  "silver",
+  "titanium",
+];
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -154,7 +173,7 @@ function sanitizeNumber(value: unknown, minimum: number, maximum: number): numbe
     return undefined;
   }
 
-  return Math.min(Math.max(value, minimum), maximum);
+  return value >= minimum && value <= maximum ? value : undefined;
 }
 
 function numericRange(field: NumericField): { minimum: number; maximum: number } {
@@ -180,6 +199,10 @@ export function sanitizeOilAnalysisResponse(value: unknown): OilAnalysisResponse
   };
 
   for (const field of numericFields) {
+    if (!(field in input)) {
+      continue;
+    }
+
     const rawValue = input[field];
     if (rawValue === null) {
       result[field] = null;
@@ -188,9 +211,9 @@ export function sanitizeOilAnalysisResponse(value: unknown): OilAnalysisResponse
 
     const range = numericRange(field);
     const sanitized = sanitizeNumber(rawValue, range.minimum, range.maximum);
-    if (sanitized !== undefined) {
-      result[field] = sanitized;
-    }
+    // Model output is untrusted. An invalid present value is absence of
+    // evidence, not permission to manufacture a nearby plausible value.
+    result[field] = sanitized ?? null;
   }
 
   const stringFields: ReadonlyArray<[keyof Pick<OilAnalysisResponse, "pdfPath" | "viscosity" | "labRecommendation">, number]> = [
@@ -213,6 +236,19 @@ export function sanitizeOilAnalysisResponse(value: unknown): OilAnalysisResponse
   }
 
   return result as OilAnalysisResponse;
+}
+
+function hasLabNameSignal(value: Record<string, unknown>): boolean {
+  return typeof value.labName === "string" && value.labName.trim().length > 0;
+}
+
+function isRecognizableOilAnalysis(value: unknown, sanitized: OilAnalysisResponse): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return hasLabNameSignal(value)
+    || coreMetalFields.some((field) => typeof sanitized[field] === "number");
 }
 
 function pdfBase64FromData(data: unknown): string | undefined {
@@ -307,8 +343,16 @@ export async function parseOilAnalysisRequest(
     }
 
     try {
-      return sanitizeOilAnalysisResponse(JSON.parse(text.replace(/```json|```/g, "").trim()) as unknown);
-    } catch {
+      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim()) as unknown;
+      const sanitized = sanitizeOilAnalysisResponse(parsed);
+      if (!isRecognizableOilAnalysis(parsed, sanitized)) {
+        throw new HttpsError("internal", "unrecognized analysis response");
+      }
+      return sanitized;
+    } catch (error) {
+      if (error instanceof HttpsError) {
+        throw error;
+      }
       throw new HttpsError("internal", "Claude returned malformed JSON.");
     }
   } catch (error) {

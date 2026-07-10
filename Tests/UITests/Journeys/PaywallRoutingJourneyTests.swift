@@ -43,6 +43,17 @@ final class PaywallRoutingJourneyTests: JourneyTestCase {
         XCTAssertFalse(app.buttons["export.gate.cta"].exists)
     }
 
+    func testSubscriptionOffersRestorePurchasesControl() {
+        let app = launchDemo()
+
+        tapTab("Garage", in: app)
+        routeToSubscription(from: app.buttons["garage.gate.cta"], in: app)
+
+        let restore = app.buttons["subscription.restore"]
+        require(restore)
+        tapWhenHittable(restore)
+    }
+
     private func routeToSubscription(from gate: XCUIElement, in app: XCUIApplication) {
         tapWhenHittable(gate)
         require(app.buttons["subscription.refresh"])

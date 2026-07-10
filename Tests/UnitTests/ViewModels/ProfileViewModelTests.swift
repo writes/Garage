@@ -46,19 +46,40 @@ struct ProfileViewModelTests {
         #expect(viewModel.address == "123 Service Lane")
         #expect(store.savedUIDs.isEmpty)
     }
+
+    @Test func save_preservesAnUnknownExistingProfileKey() async {
+        let store = InMemoryProfileStore(profiles: ["user": ["futureProfileKey": "preserve me"]])
+        let viewModel = ProfileViewModel(store: store, userID: { "user" }, isDemoMode: false)
+        await viewModel.load()
+        viewModel.name = "Ada Driver"
+
+        let didSave = await viewModel.save()
+
+        #expect(didSave)
+        #expect(store.profile(uid: "user")?["futureProfileKey"] == "preserve me")
+        #expect(store.profile(uid: "user")?["name"] == "Ada Driver")
+    }
 }
 
 @MainActor
 private final class InMemoryProfileStore: ProfileStore {
-    private var profiles: [String: [String: String]] = [:]
+    private var profiles: [String: [String: String]]
     private(set) var savedUIDs: [String] = []
+
+    init(profiles: [String: [String: String]] = [:]) {
+        self.profiles = profiles
+    }
 
     func loadProfile(uid: String) async throws -> [String: String]? {
         profiles[uid]
     }
 
     func saveProfile(_ fields: [String: String], uid: String) async throws {
-        profiles[uid] = fields
+        profiles[uid, default: [:]].merge(fields) { _, replacement in replacement }
         savedUIDs.append(uid)
+    }
+
+    func profile(uid: String) -> [String: String]? {
+        profiles[uid]
     }
 }

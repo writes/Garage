@@ -26,10 +26,12 @@ final class FirestoreProfileStore: ProfileStore {
     }
 
     func saveProfile(_ fields: [String: String], uid: String) async throws {
-        try await firestore.db.collection(FirestorePaths.users).document(uid).setData(
-            ["profile": fields],
-            merge: true
-        )
+        // A map write would replace unknown profile keys added by a newer app
+        // version. These fixed field paths update only our five known keys.
+        let updates = Dictionary(uniqueKeysWithValues: fields.map { key, value in
+            ("profile.\(key)", value)
+        })
+        try await firestore.db.collection(FirestorePaths.users).document(uid).setData(updates, merge: true)
     }
 }
 

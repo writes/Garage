@@ -7,8 +7,16 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth.uid == userId;
-      allow update: if request.auth.uid == userId;
+      // Entitlements are written exclusively by trusted server code (the
+      // RevenueCat webhook through the Admin SDK). Clients may own the rest
+      // of their user document, but can never create, modify, or remove the
+      // server-authoritative subscription map.
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && !("subscription" in request.resource.data);
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["subscription"]);
       allow delete: if false;
     }
 
@@ -27,4 +35,3 @@ service cloud.firestore {
     }
   }
 }
-
