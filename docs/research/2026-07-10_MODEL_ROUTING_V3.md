@@ -312,3 +312,24 @@ Terra pass 5 (R19–R27): offset-bound resolver verification, implement-stage
 patterns, `--diff-limit`, in-code ROSTER allowlist (`--allow-env-override` escape, recorded),
 manifest↔header matching by path, TV1/TV2 implementations. Round-5 tri-review with full diff
 coverage follows.
+
+## 13. Fifth live tri-review (2026-07-10) — DEGRADED; R19 rotation bug + final gaps
+
+Brief `reports/tri-review/2026-07-10T16-05-21Z.md` on `4c6a0e5` (full coverage, 300KB limit):
+**Fable NO-GO (0.78) · Sol NO-GO (0.99) · Gemini lane DEAD — killed by its own new R19 check**
+(agy rotates/truncates its log per session ⇒ pre-call offset > new file size ⇒ appended region
+empty ⇒ 'unverified', fail-closed as designed). Triage → Terra pass 6:
+
+| Finding | Disposition |
+|---|---|
+| R19 offset-binding breaks on log rotation (self-inflicted) | **ACCEPTED → R28**: size < offset ⇒ rotated ⇒ parse whole (fresh) file |
+| HANDOFF at HEAD stale vs HEAD's own content (Fable, re-raised) | **ACCEPTED — process fix**: refresh HANDOFF *before* the review run, since the brief binds to HEAD |
+| `stage_plan_review` approve:false is advisory-only, contradicting the escalation doctrine (Sol) | **ACCEPTED → R29**: explicit Sol rejection halts the loop for tri-vote/operator disposition; dead/unparseable lane stays advisory |
+| No scope-guard re-run after cross-check (Sol) | **ACCEPTED → R30** |
+| Sandbox/cwd consistency: gemini vote lane, plan-review lane (Sol) | **ACCEPTED → R31**: `--sandbox` unconditional in `try_agy`; plan-review in empty cwd + `--skip-git-repo-check` |
+| "Empty cwd is not a hermetic boundary — env/HOME/filesystem still readable" (Sol) | **ACKNOWLEDGED, OUT OF SCOPE**: full hermetic isolation (env scrubbing, network policy, chroot) is beyond a CLI-lane harness; Law 5 compensates by making every model output advisory behind a human gate. Recorded as a standing limitation, not a defect to whack-a-mole |
+
+Convergence rule for round 6: reviewer verdicts that CONFIRM prior fixes and raise only
+*new-scope* hardening go to the operator with an override recommendation — the unanimity bar
+is the policy's own escape hatch (operator override tied to head SHA), and the gate has been
+theirs all along.
