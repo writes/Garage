@@ -27,7 +27,7 @@ in `~/.gemini/antigravity-cli/cli.log` is a *trigger for intake* (Law 4: graveya
 exact-label resolver verification → capability probe → assay record → operator confirmation),
 never an automatic routing swap.
 
-**NEW LANDMINE #10:** agy `--model` with an unrecognized value does **not** error — it silently
+**NEW LANDMINE #12:** agy `--model` with an unrecognized value does **not** error — it silently
 downgrades to `Gemini 3.5 Flash (Medium)`. Only exact display labels from the server roster
 resolve. Verify via the resolver line in `~/.gemini/antigravity-cli/cli.log`
 (`Propagating selected model override to backend: label=…`), never via model self-report.
@@ -85,7 +85,7 @@ edit. Every result row/brief records the **effective model and backend** actuall
   forwarded to `try_agy` only (Vertex/API fallbacks keep `gemini-2.5-pro` — different namespace;
   do NOT blind-bump). `_normalize` result gains a `"model"` field: the pinned label when
   backend == "agy", else `VERTEX_MODEL`.
-- Document landmine #10 in the module docstring.
+- Document landmine #12 in the module docstring.
 
 ### 4.3 `scripts/brain/dual_agent_loop.py`
 - Add constants: `CLAUDE_MODEL` (default `claude-fable-5`), `CODEX_IMPLEMENT_MODEL`
@@ -206,3 +206,28 @@ Improvements adopted: SHA/evidence binding, strict JSON validation, out-path con
 atomic write, untrusted-data framing, selftest, observation-only preview watch, rollback
 narrowed to git revert. Deferred: per-file diff budgeting/chunking; allow-listed routing-config
 object; full deterministic test suite beyond selftest (queued as follow-ups).
+
+## 8. First live tri-review + remediation disposition (2026-07-10)
+
+Terra's implementation (worktree commits `5912900`+`c0ebfb9`) was tri-reviewed live by all
+three pinned providers — brief `reports/tri-review/2026-07-10T14-56-24Z.md` (SHA-bound, 4/4
+files fully covered, 3 schema-valid verdicts): **unanimous NO-GO (advisory)**. Orchestrator
+triage:
+
+| Finding (reviewer) | Disposition |
+|---|---|
+| Blueprint/doctrine sync absent from the reviewed range (all 3) | **EXPECTED** — doctrine surfaces were staged in the main checkout by design (Terra was fenced to `scripts/brain/`); remediated by landing scripts + doctrine in one commit, then re-running the review |
+| Reviewer lanes uncontained — codex inherits `danger-full-access`; claude/agy could act (Sol) | **ACCEPTED → R1/R2**: codex `-s read-only`, claude `--tools ""` + prompt on STDIN, agy `--sandbox`; cross-check hardened identically |
+| 120KB prompts via argv → process-table exposure + ARG_MAX risk (Gemini) | **ACCEPTED (partial) → R1**: claude moved to STDIN (codex already STDIN); agy has no stdin prompt mode — argv retained, exposure documented as accepted on a single-operator machine |
+| `write_brief_atomic` TOCTOU overwrite race (Gemini) | **ACCEPTED → R3**: `os.link` O_EXCL-style creation |
+| Commit log/manifest reach providers unscreened (Fable) | **ACCEPTED → R4**: secret screening extended to log + manifest |
+| Truncation marker hardcodes "120KB" regardless of limit (Fable) | **ACCEPTED → R7** |
+| Cross-check block unbounded in review prompt (Fable) | **ACCEPTED → R6** (8000-char cap) |
+| agy outer timeout races `--print-timeout` (Fable) | **ACCEPTED → R1/R2** (+30s headroom) |
+| Single-reviewer veto conflicts with 2/3-no-veto doctrine (Sol) | **REJECTED — BY DESIGN**: Law-5 verification is advisory + fail-closed (unanimous GO), deliberately stricter than Law-1 vote resolution; it gates nothing — the human holds the merge switch. Documented in the module docstring (R9) |
+| gemini_consult lambda records backend as `<lambda>`/mis-attributes the fallback (Sol, conf 0.99) | **REFUTED by code read**: backend attribution comes from `try_agy`'s *return value* (`text, used = fn(...)`), which the lambda passes through unchanged. High-confidence ≠ correct — verify before acting (landmine #5 energy) |
+| Loop cross-check/review diffs (`git diff HEAD`) omit untracked files (Sol) | **DEFERRED — pre-existing**: the v1 review stage had identical semantics; documented as a known limitation (R9), queued as follow-up |
+| `--reviewers` subset can never resolve better than DEGRADED (Fable) | **BY DESIGN, now documented** in help text (R5) |
+
+Remediations R1–R9 implemented by Terra (second pass, same worktree); re-review required
+before merge per §3 validity policy.

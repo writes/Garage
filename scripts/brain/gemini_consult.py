@@ -10,6 +10,8 @@ LANDMINES honored:
   * #2  Always feed input non-interactively + redirect stdin from /dev/null; bound with
         an outer timeout so a hung CLI cannot wedge the whole loop.
   * #3  The free @google/gemini-cli OAuth tier is dead for individuals — not in the ladder.
+  * #12 agy silently downgrades unrecognized --model labels. Use only an exact server-roster
+        display label and verify its resolver log; never trust model self-report.
 
 Usage:
   python3 gemini_consult.py --prompt-file q.txt [--timeout 120] [--backend auto|agy|vertex|api]
@@ -27,6 +29,7 @@ from typing import Dict, Optional, Tuple
 
 VERTEX_MODEL = "gemini-2.5-pro"
 VERTEX_LOCATION = os.environ.get("VERTEX_LOCATION", "us-central1")
+AGY_MODEL = os.environ.get("BRAIN_GEMINI_MODEL", "Gemini 3.1 Pro (High)")
 
 VOTER_INSTRUCTION = (
     "You are one of three independent LLM voters resolving a decision. Reply with ONLY a "
@@ -63,7 +66,7 @@ def _extract_json(text: str) -> Optional[Dict]:
     return None
 
 
-def _normalize(obj: Dict, backend: str) -> Dict:
+def _normalize(obj: Dict, backend: str, agy_model: str = AGY_MODEL) -> Dict:
     decision = obj.get("decision", obj.get("vote", ""))
     reasoning = obj.get("reasoning", obj.get("rationale", ""))
     try:
@@ -77,12 +80,16 @@ def _normalize(obj: Dict, backend: str) -> Dict:
         "reasoning": str(reasoning).strip(),
         "confidence": confidence,
         "backend": backend,
+        "model": agy_model if backend == "agy" else VERTEX_MODEL,
     }
 
 
-def try_agy(prompt: str, timeout: int) -> Tuple[Optional[str], str]:
+def try_agy(prompt: str, timeout: int, model: Optional[str] = None) -> Tuple[Optional[str], str]:
     """Preferred backend. NEVER `agy models`. Always -p + --print-timeout + stdin /dev/null."""
-    cmd = ["agy", "-p", prompt, "--print-timeout", f"{timeout}s"]
+    cmd = ["agy"]
+    if model:
+        cmd.extend(["--model", model])
+    cmd.extend(["-p", prompt, "--print-timeout", f"{timeout}s"])
     try:
         proc = subprocess.run(
             cmd,
@@ -160,11 +167,23 @@ def try_api(prompt: str, timeout: int) -> Tuple[Optional[str], str]:
         return None, f"api error: {e}"
 
 
-def consult(prompt: str, timeout: int = 120, backend: str = "auto") -> Dict:
+def consult(
+    prompt: str,
+    timeout: int = 120,
+    backend: str = "auto",
+    model: Optional[str] = None,
+) -> Dict:
+    """Consult Gemini, pinning agy to AGY_MODEL unless a caller overrides it.
+
+    The Vertex/API fallbacks intentionally remain in their separate
+    gemini-2.5-pro namespace; a fallback must never masquerade as agy's
+    strategic model label.
+    """
     full = VOTER_INSTRUCTION + "\n\n=== DECISION ===\n" + prompt
+    agy_model = AGY_MODEL if model is None else model
     ladder = {
-        "auto": [try_agy, try_vertex, try_api],
-        "agy": [try_agy],
+        "auto": [lambda p, t: try_agy(p, t, model=agy_model), try_vertex, try_api],
+        "agy": [lambda p, t: try_agy(p, t, model=agy_model)],
         "vertex": [try_vertex],
         "api": [try_api],
     }[backend]
@@ -179,7 +198,7 @@ def consult(prompt: str, timeout: int = 120, backend: str = "auto") -> Dict:
         if obj is None:
             notes.append(f"{used}: no JSON in reply")
             continue
-        result = _normalize(obj, used)
+        result = _normalize(obj, used, agy_model or AGY_MODEL)
         result["backend_notes"] = notes
         return result
 
@@ -189,6 +208,7 @@ def consult(prompt: str, timeout: int = 120, backend: str = "auto") -> Dict:
         "reasoning": "",
         "confidence": 0.0,
         "backend": "none",
+        "model": "",
         "error": "all backends failed",
         "backend_notes": notes,
     }

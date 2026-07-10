@@ -151,10 +151,10 @@ secrets, data-loss, App Check, privacy manifest).
 | Organ | File / surface | Portability | Responsibility |
 |---|---|:--:|---|
 | I | `scripts/brain/consensus.py` | ✅ copy | Pure 2/3 resolver + `append_ledger_majority`; injective canonicalization; 17/17 self-test |
-| I | `scripts/brain/gemini_consult.py` | ✅ copy | Headless Gemini voter: agy→Vertex→API ladder, JSON out |
-| I | `scripts/brain/tri_agent_vote.py` | ✅ copy | Live 3-voter runner (concurrent pools) → resolve → ledger |
+| I | `scripts/brain/gemini_consult.py` | ✅ copy | Headless Gemini voter: agy (pinned `"Gemini 3.1 Pro (High)"` — landmine #12)→Vertex→API ladder, JSON out |
+| I | `scripts/brain/tri_agent_vote.py` | ✅ copy | Live 3-voter runner (Fable 5 / GPT-5.6 Sol / Gemini 3.1 Pro High; concurrent pools) → resolve → ledger |
 | I | `DECISION_LEDGER.jsonl` | ✅ schema | Append-only resolved decisions (one JSON/line) |
-| II | `scripts/brain/dual_agent_loop.py` | ◐ adapt | Worktree plan⇄implement⇄review loop + scope enforce |
+| II | `scripts/brain/dual_agent_loop.py` | ◐ adapt | Worktree plan(Fable 5)⇄implement(GPT-5.6 Terra)⇄cross-check(Gemini, read-only)⇄review(Fable 5) + scope enforce |
 | II | `scripts/brain/scope_guard.py` | ◐ adapt | Protected/allowed/protocol classifier + auto-revert |
 | II | `scripts/ci/{policy,security,verify-ios}-checks.sh` | ✗ domain | Immutable promotion gate (build+tests+policy) — pre-existing |
 | III | `HANDOFF.md` + `scripts/brain/session_handoff.py` | ✅ copy | Thin cross-agent state + `--status`/`--init`/`update` CLI |
@@ -168,14 +168,23 @@ secrets, data-loss, App Check, privacy manifest).
 | V | `docs/research-assay/audit/{REGISTRY.md,index.jsonl,index.schema.json,tier-*}` | ✅ schema | Idea graveyard; search-before-evaluating DB |
 | V | `.claude/workflows/async-commit-review.js` | ◐ adapt | Post-commit finder→refuter on capital/critical-path files |
 | V | `.claude/workflows/instrument-audit.js` | ◐ adapt | Pre-release 4-lens finder→refuter GO/NO-GO brief |
+| V | `scripts/brain/tri_review.py` | ✅ copy | Pre-main tri-provider merge-readiness review (Fable 5 `--effort high` + GPT-5.6 Sol + Gemini 3.1 Pro High) → advisory GO/NO-GO brief; SHA-bound, fail-closed secret screen |
 
 `✅ copy` = portable as-is · `◐ adapt` = portable structure, swap content · `✗ domain` = rebuild
 the pattern for your domain.
 
 ### Required external CLIs (all present in this install — no degraded mode)
 `claude` (orchestrator+voter+reviewer) · `codex` (voter+implementer — **prompt on STDIN
-always**) · `agy` (preferred Gemini voter — **never `agy models`**) · `git` (worktrees) ·
-`gcloud` (Vertex fallback).
+always**; ≥0.144.1 for GPT-5.6) · `agy` (preferred Gemini voter — **never `agy models`**) ·
+`git` (worktrees) · `gcloud` (Vertex fallback).
+
+**Model routing v3 (operator directive 2026-07-10 —
+`docs/research/2026-07-10_MODEL_ROUTING_V3.md`):** strategy/planning docs = Fable 5 draft +
+GPT-5.6 Sol co-review; consensus votes = Fable 5 / GPT-5.6 Sol / Gemini 3.1 Pro (High);
+implementation = GPT-5.6 Terra (single writer) + Gemini 3.1 Pro (High) read-only cross-check;
+pre-main review = all three providers at top strategic tier via `tri_review.py`. Pins are
+env-overridable `BRAIN_*` constants in the scripts. "Gemini Pro Preview" is absent from the agy
+roster (observation-only watch armed; adoption requires Law-4 intake).
 
 ### Concurrency / rate-limit law
 429s are a transient concurrency herd, not the cap. **≤4 fat agents · 1 Codex track · 1 Workflow
@@ -226,8 +235,22 @@ never an auto-edit beyond appending rows the human confirms (Law 5).
 | 15 | Async-commit-review workflow | V | `.claude/workflows/async-commit-review.js` | §2.V | LIVE | 2026-06-29 |
 | 16 | Instrument-audit (pre-release, 4 lenses) | V | `.claude/workflows/instrument-audit.js` | §2.V | LIVE | 2026-06-29 |
 | 17 | **This blueprint (self-referential)** | — | `docs/ai/MACHINE_BRAIN_BLUEPRINT.md` | all | LIVE | 2026-06-29 |
+| 18 | Pre-main tri-provider review (Law 5) | V | `scripts/brain/tri_review.py` | §2.V,§4 | LIVE | 2026-07-10 |
+| 19 | Model routing v3 (lane-split collective) | IV | `docs/research/2026-07-10_MODEL_ROUTING_V3.md` + doctrine §2 + `BRAIN_*` pins in `scripts/brain/*` | §4 | LIVE | 2026-07-10 |
 
 ### 5.4 Changelog (append-only; newest first)
+
+- **2026-07-10** — **Model routing v3 (lane-split collective)** per operator directive: strategy
+  /planning = Fable 5 + GPT-5.6 Sol; implementation = GPT-5.6 Terra + Gemini 3.1 Pro (High)
+  read-only cross-check (new `stage_cross_check` in `dual_agent_loop.py`); pre-main review = all
+  three providers at top strategic tier (new `scripts/brain/tri_review.py`, registry #18:
+  SHA-bound evidence, fail-closed protected-path + secret screening, strict verdict JSON,
+  advisory-only). Voter pins in `tri_agent_vote.py`/`gemini_consult.py`. Spec + Sol review
+  disposition: `docs/research/2026-07-10_MODEL_ROUTING_V3.md`. Enablers: codex CLI 0.143.0 →
+  0.144.1 (GPT-5.6 was 400-ing on 0.143.0), agy 1.1.1. New landmine #12 (agy silent model
+  downgrade). "Gemini Pro Preview" absent from roster — substitution flagged to operator, watch
+  armed. Implemented by GPT-5.6 Terra in a supervised worktree (spec §4.6); tri-reviewed
+  pre-merge by all three providers.
 
 - **2026-06-29** — **Brain installed (v1) into the Garage iOS repo** (branch
   `codex/simulator-local-demo`). Greenfield install, all 6 phases, full tri-agent capability
@@ -296,6 +319,7 @@ and `scripts/brain/scope_guard.py`.
 | 9 | "Deployed ✅" trusted without checking the running image | Verify consumption, not presence; probe the deployed image |
 | 10 | HANDOFF/doctrine duplicated instead of pointed-to | HANDOFF only points; one fact, one surface; obey the budget |
 | 11 | Blueprint drifts behind the repo | The maintenance contract (§5.1) + reconciliation ritual (§5.2) |
+| 12 | agy `--model` with an unrecognized value silently downgrades to "Gemini 3.5 Flash (Medium)" — no error | Pin the exact roster label (`"Gemini 3.1 Pro (High)"`); after changing a pin, verify the resolver line in `~/.gemini/antigravity-cli/cli.log`, never model self-report |
 
 ---
 

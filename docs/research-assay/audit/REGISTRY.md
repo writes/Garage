@@ -44,6 +44,8 @@ If you find a match, you are done — report the prior tier and stop.
 
 ## Assays (newest first)
 
+- 2026-07-10 · **Tier A** · Pin Gemini lanes to exact agy roster label "Gemini 3.1 Pro (High)"; operator-requested "Gemini Pro Preview" DOES NOT EXIST in the roster (all preview-style names silently downgrade to 3.5 Flash — landmine #12). · composite 17 · adopted: death = pinned label vanishes from roster or a stronger Pro label passes intake · → tier-a/2026-07-10_gemini-3.1-pro-high-pin.md
+- 2026-07-10 · **Tier A** · Route strategy/votes/review to GPT-5.6 Sol and implementation to GPT-5.6 Terra via codex CLI ≥0.144.1 (0.143.0 400-ed on 5.6 — stale CLI is a proven single point of failure). · composite 16 · adopted: death = Sol/Terra off subscription tier or measured quality regression vs GPT-5.5 · → tier-a/2026-07-10_gpt-5.6-sol-terra-routing.md
 - 2026-06-29 · **Tier C** · Adopting 10x (agentic NL→SwiftUI app builder; client-side Claude tool-loop + XcodeGen + Simulator preview) as Garage's build tool. · composite 6 · keep-as-REFERENCE: doctrine-compatible & likely this repo's progenitor, but PolyForm-Noncommercial license blocks commercial adoption (and is a possible existing exposure) → redesign-required · → tier-c/2026-06-29_10x-agentic-ios-app-builder.md
 - 2026-06-29 · **Tier D** · Rewriting the Garage app as a React PWA (React + Tailwind + Supabase + Vercel) per blueprint.md's stack would improve velocity/cost via a web stack, replacing native SwiftUI + Firebase. · composite 2 · kill: doctrine_fit=fail (native iOS architecture is LOCKED per README.md; blueprint is product truth, not stack truth) · → tier-d/2026-06-29_react-pwa-supabase-rewrite.md
 <!-- newest assays are PREPENDED above this line; keep this comment last -->

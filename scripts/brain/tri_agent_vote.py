@@ -2,9 +2,10 @@
 """tri_agent_vote.py — run a live tri-agent consensus and append the ledger (Organ I).
 
 Poses ONE enumerated question to three INDEPENDENT voters in parallel:
-  * claude  — `claude -p`            (Anthropic pool)
-  * codex   — `codex exec` on STDIN  (OpenAI pool; bare `codex exec` w/o stdin HANGS — landmine #2)
-  * gemini  — scripts/brain/gemini_consult.py  (agy→Vertex→API — landmine #1/#3)
+  * claude  — Fable 5 (`claude -p --model claude-fable-5`)
+  * codex   — GPT-5.6 Sol on STDIN (bare `codex exec` w/o stdin HANGS — landmine #2)
+  * gemini  — Gemini 3.1 Pro (High), via gemini_consult.py
+               (agy→Vertex→API — landmine #1/#3; fallbacks are visibly recorded)
 
 Each emits {decision, reasoning, confidence}; we resolve by 2/3 majority (no veto)
 via consensus.py and append one row to DECISION_LEDGER.jsonl.
@@ -29,6 +30,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import consensus  # noqa: E402  (local sibling)
 from gemini_consult import _extract_json, consult as gemini_consult  # noqa: E402
+
+CLAUDE_MODEL = os.environ.get("BRAIN_CLAUDE_MODEL", "claude-fable-5")
+CODEX_STRATEGY_MODEL = os.environ.get("BRAIN_CODEX_STRATEGY_MODEL", "gpt-5.6-sol")
+GEMINI_MODEL = os.environ.get("BRAIN_GEMINI_MODEL", "Gemini 3.1 Pro (High)")
 
 VOTER_INSTRUCTION = (
     "You are ONE of three independent LLM voters resolving a decision. Think, then reply with "
@@ -62,24 +67,33 @@ def _run(cmd: List[str], stdin_text: Optional[str], timeout: int) -> Optional[st
 
 
 def vote_claude(prompt: str, timeout: int) -> Dict:
-    out = _run(["claude", "-p", prompt], stdin_text=None, timeout=timeout)
-    return _parse("claude", out)
+    out = _run(["claude", "-p", "--model", CLAUDE_MODEL, prompt], stdin_text=None, timeout=timeout)
+    result = _parse("claude", out)
+    result["model"] = CLAUDE_MODEL
+    result["backend"] = "claude"
+    return result
 
 
 def vote_codex(prompt: str, timeout: int) -> Dict:
     # codex exec MUST receive the prompt on stdin (landmine #2).
-    out = _run(["codex", "exec", "-"], stdin_text=prompt, timeout=timeout)
-    return _parse("codex", out)
+    out = _run(["codex", "exec", "-m", CODEX_STRATEGY_MODEL, "-"], stdin_text=prompt, timeout=timeout)
+    result = _parse("codex", out)
+    result["model"] = CODEX_STRATEGY_MODEL
+    result["backend"] = "codex"
+    return result
 
 
 def vote_gemini(prompt: str, timeout: int) -> Dict:
-    res = gemini_consult(prompt, timeout=timeout, backend="auto")
+    res = gemini_consult(prompt, timeout=timeout, backend="auto", model=GEMINI_MODEL)
     return {
         "agent": "gemini",
         "decision": res.get("decision", ""),
         "reasoning": res.get("reasoning", ""),
         "confidence": float(res.get("confidence", 0.0)),
         "backend": res.get("backend"),
+        # A non-agy backend is a visibly distinct gemini-2.5-pro fallback,
+        # never silently equated with the pinned strategic voter.
+        "model": res.get("model", ""),
     }
 
 

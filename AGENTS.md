@@ -58,6 +58,22 @@ Build/verify: `xcodegen generate`; gates `./scripts/ci/{policy-checks,security-c
    confidence to swing a 1/1/1 fallback is a logged protocol violation (landmine #5).
 4. The orchestrator then drives **plan → implement → review** (Organ II).
 
+### MODEL ROUTING (v3 — operator directive 2026-07-10)
+Full matrix + Sol-review disposition: `docs/research/2026-07-10_MODEL_ROUTING_V3.md`.
+- **Strategy/planning docs:** Fable 5 drafts; **GPT-5.6 Sol** co-reviews before execution
+  (`codex exec -m gpt-5.6-sol -`, spec on STDIN). Substantive decisions inside a plan still go
+  to the tri-vote (Law 1); planner disagreement **escalates to a vote — never Fable fiat**.
+- **Implementation:** **GPT-5.6 Terra** (`codex exec -m gpt-5.6-terra -`) is the single writer;
+  **Gemini 3.1 Pro (High)** cross-checks read-only (`dual_agent_loop.py` `stage_cross_check`).
+- **Pre-main feature review:** ALL three providers at top strategic tier via
+  `python3 scripts/brain/tri_review.py --timestamp "$(date -u +%FT%TZ)"` — Fable 5
+  (`--effort high`) + GPT-5.6 Sol + Gemini 3.1 Pro (High). Valid only with 3 schema-conforming
+  verdicts from the pinned models; NO-GO/DEGRADED ⇒ remediate & rerun, or operator override in
+  the ledger tied to head SHA. Advisory — **the human holds the merge gate** (Law 5).
+- **Votes (Law 1):** pinned Fable 5 / GPT-5.6 Sol / Gemini 3.1 Pro (High) in `tri_agent_vote.py`.
+- Pins are env-overridable `BRAIN_*` constants. "Gemini Pro Preview" is NOT in the agy roster —
+  observation-only watch; adopting any new model label requires Law-4 intake first.
+
 ### AUTONOMOUS BUILD RITUAL (Law 3)
 - Run inside a worktree via `scripts/brain/dual_agent_loop.py`; the post-turn
   `scripts/brain/scope_guard.py` auto-reverts out-of-scope writes and HALTS on any change to a
@@ -129,7 +145,9 @@ Voters/tools (all present in this install): `claude` (orchestrator+voter+reviewe
 Key landmines: #1 `agy models` hangs · #2 CLIs hang on stdin (always redirect + outer timeout) ·
 #4 429 herd (concurrency caps above) · #6 never a null ledger timestamp · #8 secrets can leak
 via file content even though the scope check is path-based · #9 verify the *running* image, not
-a "deployed ✅" note.
+a "deployed ✅" note · #12 agy `--model` **silently downgrades** to "Gemini 3.5 Flash (Medium)"
+on any unrecognized value — pin the exact roster label and verify via the resolver line in
+`~/.gemini/antigravity-cli/cli.log`, never model self-report.
 
 ---
 
@@ -141,9 +159,11 @@ a "deployed ✅" note.
 - **🟢 Machine brain INSTALLED (v1, 2026-06-29)** — Organs I–V + living blueprint stood up on
   branch `codex/simulator-local-demo`; full tri-agent capability (`claude`+`codex`+`agy` all on
   PATH, no degraded mode). Source map: `docs/ai/MACHINE_BRAIN_BLUEPRINT.md` §5.3.
-- **🟢 Consensus resolver verified** — `scripts/brain/consensus.py selftest` 17/17 (unanimous /
-  2-of-3 no-veto / 1-1-1 highest-confidence fallback / injective canonicalization). Ledger:
-  `DECISION_LEDGER.jsonl`.
+- **🟢 Model routing v3 LIVE (2026-07-10, operator directive)** — lanes: strategy = Fable 5 +
+  GPT-5.6 Sol · implementation = GPT-5.6 Terra + Gemini 3.1 Pro (High) read-only cross-check ·
+  pre-main review = all 3 providers via `scripts/brain/tri_review.py` · votes pinned. Enablers:
+  codex 0.144.1 (5.6 was 400-ing on 0.143.0), agy 1.1.1. "Gemini Pro Preview" absent from
+  roster (watch armed). Spec: `docs/research/2026-07-10_MODEL_ROUTING_V3.md`.
 - **⚖️ SessionStart hook PENDING operator approval** — `.claude/hooks/session-handoff-inject.sh`
   exists; wiring it in `.claude/settings.json` was blocked by the self-modification guard and
   needs the operator's explicit OK (see HANDOFF NEXT ACTION).
