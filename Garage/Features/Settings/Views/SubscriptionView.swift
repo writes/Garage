@@ -45,6 +45,10 @@ struct SubscriptionView: View {
                 Task { try? await appState.purchaseService.restorePurchases() }
             }
             .accessibilityIdentifier("subscription.restore")
+            // Keep the legal disclosures above any package purchase action. This is both
+            // immediately visible at the sheet's medium detent and unambiguously presented
+            // before a customer can begin a purchase.
+            policyLinks
             if let packages = appState.purchaseService.offerings?.current?.availablePackages {
                 ForEach(Swift.Array(packages.enumerated()), id: \.element.identifier) { package in
                     let product = package.element.storeProduct
@@ -74,7 +78,6 @@ struct SubscriptionView: View {
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.textSecondary)
             }
-            policyLinks
         }
     }
 

@@ -60,8 +60,14 @@ final class PaywallRoutingJourneyTests: JourneyTestCase {
         tapTab("Garage", in: app)
         routeToSubscription(from: app.buttons["garage.gate.cta"], in: app)
 
-        require(app.links["subscription.terms"])
-        require(app.links["subscription.privacy"])
+        // SwiftUI Link's XCUITest element type is implementation-dependent (it may be
+        // exposed as a button rather than a link). The stable contract is its identifier.
+        let terms = app.descendants(matching: .any)["subscription.terms"]
+        let privacy = app.descendants(matching: .any)["subscription.privacy"]
+        require(terms)
+        require(privacy)
+        XCTAssertTrue(terms.isHittable, "Terms of Use must be visible before purchase")
+        XCTAssertTrue(privacy.isHittable, "Privacy Policy must be visible before purchase")
     }
 
     private func routeToSubscription(from gate: XCUIElement, in app: XCUIApplication) {
