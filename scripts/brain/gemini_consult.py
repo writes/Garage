@@ -30,6 +30,9 @@ from typing import Dict, Optional, Tuple
 VERTEX_MODEL = "gemini-2.5-pro"
 VERTEX_LOCATION = os.environ.get("VERTEX_LOCATION", "us-central1")
 AGY_MODEL = os.environ.get("BRAIN_GEMINI_MODEL", "Gemini 3.1 Pro (High)")
+AGY_RESOLVER_LABEL_RE = re.compile(
+    r'Propagating selected model override to backend:\s*label="([^"]+)"'
+)
 
 VOTER_INSTRUCTION = (
     "You are one of three independent LLM voters resolving a decision. Reply with ONLY a "
@@ -39,6 +42,44 @@ VOTER_INSTRUCTION = (
     '"confidence": <float 0..1 calibrated to evidence strength>}\n'
     "Calibrate confidence to EVIDENCE (real verification > docs > intuition). Do not inflate."
 )
+
+
+def last_agy_resolver_label(log_text: Optional[str]) -> Optional[str]:
+    """Extract the final agy backend resolver label from already-read log text."""
+    if log_text is None:
+        return None
+    labels = AGY_RESOLVER_LABEL_RE.findall(log_text)
+    return labels[-1] if labels else None
+
+
+def gemini_resolver_decision(log_text: Optional[str], pinned_model: str) -> Tuple[bool, str]:
+    """Fail closed unless agy's final resolver label exactly matches its pin.
+
+    This pure helper deliberately accepts the log content rather than a path so
+    every agy caller shares the same deterministic matching semantics and can
+    self-test it without reading host state.
+    """
+    observed = last_agy_resolver_label(log_text) or "unverified"
+    return observed == pinned_model, observed
+
+
+def verify_agy_resolver(pinned_model: str) -> Tuple[bool, str]:
+    """Read agy's resolver log and compare its final label to ``pinned_model``.
+
+    ``BRAIN_AGY_RESOLVER_LOG`` supports deterministic test and deployment
+    overrides. An unreadable log or absent resolver record is intentionally an
+    ``unverified`` mismatch: agy can silently downgrade unknown model labels.
+    """
+    log_path = os.environ.get(
+        "BRAIN_AGY_RESOLVER_LOG",
+        os.path.expanduser("~/.gemini/antigravity-cli/cli.log"),
+    )
+    try:
+        with open(log_path, encoding="utf-8", errors="replace") as handle:
+            log_text = handle.read()
+    except OSError:
+        log_text = None
+    return gemini_resolver_decision(log_text, pinned_model)
 
 
 def _extract_json(text: str) -> Optional[Dict]:
@@ -85,7 +126,11 @@ def _normalize(obj: Dict, backend: str, agy_model: str = AGY_MODEL) -> Dict:
 
 
 def try_agy(prompt: str, timeout: int, model: Optional[str] = None) -> Tuple[Optional[str], str]:
-    """Preferred backend. NEVER `agy models`. Always -p + --print-timeout + stdin /dev/null."""
+    """Preferred backend. NEVER `agy models`. Always -p + --print-timeout + stdin /dev/null.
+
+    ``consult`` verifies the resolver log immediately after a successful call,
+    while it still knows the exact requested pin and can fail the voter closed.
+    """
     cmd = ["agy"]
     if model:
         cmd.extend(["--model", model])
@@ -194,11 +239,33 @@ def consult(
         if text is None:
             notes.append(used)
             continue
+        if used == "agy":
+            model_verified, resolver_label = verify_agy_resolver(agy_model or AGY_MODEL)
+            if not model_verified:
+                return {
+                    "agent": "gemini",
+                    "decision": "",
+                    "reasoning": "",
+                    "confidence": 0.0,
+                    "backend": "agy",
+                    "model": agy_model or AGY_MODEL,
+                    "model_verified": False,
+                    "resolver_label": resolver_label,
+                    "error": f"agy model downgrade detected (observed: {resolver_label})",
+                    "backend_notes": notes,
+                }
         obj = _extract_json(text)
         if obj is None:
             notes.append(f"{used}: no JSON in reply")
             continue
         result = _normalize(obj, used, agy_model or AGY_MODEL)
+        if used == "agy":
+            result["model_verified"] = True
+            result["resolver_label"] = resolver_label
+        else:
+            # Vertex/API name the model in their request URL, so no separate
+            # local resolver is involved in verifying those fallback lanes.
+            result["model_verified"] = True
         result["backend_notes"] = notes
         return result
 
@@ -209,6 +276,7 @@ def consult(
         "confidence": 0.0,
         "backend": "none",
         "model": "",
+        "model_verified": False,
         "error": "all backends failed",
         "backend_notes": notes,
     }
