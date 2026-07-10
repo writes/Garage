@@ -119,6 +119,32 @@ export async function consumeDailyOilAnalysisQuota(
   return quotaId;
 }
 
+/**
+ * Returns a previously consumed quota unit when Anthropic was unavailable or
+ * returned unusable output. Input and quota validation failures occur before
+ * consumption and must never call this function.
+ */
+export async function refundDailyOilAnalysisQuota(
+  db: QuotaFirestore,
+  uid: string,
+  now: Date,
+): Promise<void> {
+  const date = now.toISOString().slice(0, 10);
+  const quotaRef = db.collection("usage_quotas").doc(dailyQuotaKey(uid, now));
+
+  await db.runTransaction(async (transaction) => {
+    const current = await transaction.get(quotaRef);
+    const count = current.exists ? safeQuotaCount(current.data()?.count) : 0;
+
+    transaction.set(quotaRef, {
+      uid,
+      date,
+      count: Math.max(0, count - 1),
+      updatedAt: now.toISOString(),
+    }, { merge: true });
+  });
+}
+
 function sanitizeString(value: unknown, maxLength: number): string | undefined {
   return typeof value === "string" ? value.slice(0, maxLength) : undefined;
 }
@@ -195,6 +221,17 @@ function pdfBase64FromData(data: unknown): string | undefined {
     : undefined;
 }
 
+function modelTextFromPayload(payload: unknown): string | undefined {
+  if (!isRecord(payload) || !Array.isArray(payload.content)) {
+    return undefined;
+  }
+
+  const firstContentBlock = payload.content[0];
+  return isRecord(firstContentBlock) && typeof firstContentBlock.text === "string"
+    ? firstContentBlock.text
+    : undefined;
+}
+
 export async function parseOilAnalysisRequest(
   request: OilAnalysisRequest,
   dependencies: ParseOilAnalysisDependencies,
@@ -220,55 +257,66 @@ export async function parseOilAnalysisRequest(
   const now = (dependencies.now ?? (() => new Date()))();
   await consumeDailyOilAnalysisQuota(dependencies.db, request.auth.uid, now);
 
-  const response = await dependencies.fetchImpl("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2000,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "document",
-              source: {
-                type: "base64",
-                media_type: "application/pdf",
-                data: pdfBase64,
+  try {
+    const response = await dependencies.fetchImpl("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2000,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "document",
+                source: {
+                  type: "base64",
+                  media_type: "application/pdf",
+                  data: pdfBase64,
+                },
               },
-            },
-            {
-              type: "text",
-              text: "Extract all oil analysis fields from this report and return structured JSON only.",
-            },
-          ],
-        },
-      ],
-    }),
-  });
+              {
+                type: "text",
+                text: "Extract all oil analysis fields from this report and return structured JSON only.",
+              },
+            ],
+          },
+        ],
+      }),
+    });
 
-  if (!response.ok) {
-    throw new HttpsError("internal", `Claude request failed with ${response.status}.`);
-  }
+    if (!response.ok) {
+      throw new HttpsError("internal", `Claude request failed with ${response.status}.`);
+    }
 
-  let payload: { content?: Array<{ text?: string }> };
-  try {
-    payload = await response.json() as { content?: Array<{ text?: string }> };
-  } catch {
-    throw new HttpsError("internal", "Claude returned malformed JSON.");
-  }
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      throw new HttpsError("internal", "Claude returned malformed JSON.");
+    }
 
-  const text = payload.content?.[0]?.text ?? "{}";
+    const text = modelTextFromPayload(payload);
+    if (!text) {
+      throw new HttpsError("internal", "Claude returned malformed JSON.");
+    }
 
-  try {
-    return sanitizeOilAnalysisResponse(JSON.parse(text.replace(/```json|```/g, "").trim()) as unknown);
-  } catch {
-    throw new HttpsError("internal", "Claude returned malformed JSON.");
+    try {
+      return sanitizeOilAnalysisResponse(JSON.parse(text.replace(/```json|```/g, "").trim()) as unknown);
+    } catch {
+      throw new HttpsError("internal", "Claude returned malformed JSON.");
+    }
+  } catch (error) {
+    await refundDailyOilAnalysisQuota(dependencies.db, request.auth.uid, now);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    throw new HttpsError("internal", "Claude request failed.");
   }
 }
 

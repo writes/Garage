@@ -94,16 +94,71 @@ describe("handleRevenueCatWebhookRequest", () => {
     });
   });
 
-  it("accepts a valid revoke when pro is absent", async () => {
+  it("deactivates an EXPIRATION even when the expired pro entitlement is listed", async () => {
     const db = new InMemoryFirestore();
     db.seed("users/owner-1", {});
 
-    const result = await send(db, event({ entitlement_ids: [], id: "revoke-1", type: "EXPIRATION" }));
+    const result = await send(db, event({ id: "revoke-1", type: "EXPIRATION" }));
 
     expect(result.statusCode).toBe(200);
     expect(db.data("users/owner-1")).toMatchObject({
       subscription: { isActive: false },
     });
+  });
+
+  it("grants pro only for a supported grant event with the pro entitlement", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/owner-1", {});
+
+    await send(db, event({ id: "renewal-pro", type: "RENEWAL", entitlement_ids: ["pro"] }));
+
+    expect(db.data("users/owner-1")).toMatchObject({
+      subscription: { isActive: true },
+    });
+  });
+
+  it("records a CANCELLATION without changing the active entitlement", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/owner-1", {
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        updatedAt: "2026-07-09T10:00:00.000Z",
+      },
+    });
+
+    await send(db, event({ id: "cancellation-1", type: "CANCELLATION" }));
+
+    expect(db.data("users/owner-1")).toMatchObject({
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        updatedAt: "2026-07-09T10:00:00.000Z",
+      },
+    });
+    expect(db.data("revenuecat_events/cancellation-1")).toMatchObject({ type: "CANCELLATION" });
+  });
+
+  it("records an unknown event without changing entitlement state", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/owner-1", {
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        updatedAt: "2026-07-09T10:00:00.000Z",
+      },
+    });
+
+    await send(db, event({ id: "unknown-1", type: "BILLING_ISSUE" }));
+
+    expect(db.data("users/owner-1")).toMatchObject({
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        updatedAt: "2026-07-09T10:00:00.000Z",
+      },
+    });
+    expect(db.data("revenuecat_events/unknown-1")).toMatchObject({ type: "BILLING_ISSUE" });
   });
 
   it("makes a duplicate event id idempotent", async () => {
@@ -162,6 +217,32 @@ describe("handleRevenueCatWebhookRequest", () => {
 
     expect(db.data("users/owner-1")).toMatchObject({
       subscription: { isActive: true, updatedAt: "2026-07-12T10:00:00.000Z" },
+    });
+  });
+
+  it("resolves a same-millisecond grant then revoke pair as inactive", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/owner-1", {});
+    const timestamp = Date.parse("2026-07-12T10:00:00.000Z");
+
+    await send(db, event({ id: "same-ms-grant", event_timestamp_ms: timestamp, type: "RENEWAL" }));
+    await send(db, event({ id: "same-ms-revoke", event_timestamp_ms: timestamp, type: "EXPIRATION" }));
+
+    expect(db.data("users/owner-1")).toMatchObject({
+      subscription: { isActive: false, updatedAt: "2026-07-12T10:00:00.000Z" },
+    });
+  });
+
+  it("resolves a same-millisecond revoke then grant pair as inactive", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/owner-1", {});
+    const timestamp = Date.parse("2026-07-12T10:00:00.000Z");
+
+    await send(db, event({ id: "same-ms-revoke", event_timestamp_ms: timestamp, type: "EXPIRATION" }));
+    await send(db, event({ id: "same-ms-grant", event_timestamp_ms: timestamp, type: "RENEWAL" }));
+
+    expect(db.data("users/owner-1")).toMatchObject({
+      subscription: { isActive: false, updatedAt: "2026-07-12T10:00:00.000Z" },
     });
   });
 

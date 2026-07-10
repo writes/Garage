@@ -4,6 +4,7 @@ import {
   MAX_PDF_BASE64_BYTES,
   consumeDailyOilAnalysisQuota,
   parseOilAnalysisRequest,
+  refundDailyOilAnalysisQuota,
   sanitizeOilAnalysisResponse,
 } from "../src/functions/claudeProxy";
 import { InMemoryFirestore } from "./helpers/inMemoryFirestore";
@@ -40,6 +41,23 @@ describe("parseOilAnalysisRequest", () => {
     expect(db.data("usage_quotas/owner-1_2026-07-10")).toBeUndefined();
   });
 
+  it("does not refund quota-exceeded requests because no unit was consumed", async () => {
+    const db = new InMemoryFirestore();
+
+    for (let attempt = 0; attempt < DAILY_OIL_ANALYSIS_QUOTA; attempt += 1) {
+      await consumeDailyOilAnalysisQuota(db, "owner-1", fixedNow);
+    }
+
+    await expectHttpsError(parseOilAnalysisRequest({
+      auth: { uid: "owner-1" },
+      data: { pdfBase64: "cGRm" },
+    }, dependencies(db)), "resource-exhausted");
+
+    expect(db.data("usage_quotas/owner-1_2026-07-10")).toMatchObject({
+      count: DAILY_OIL_ANALYSIS_QUOTA,
+    });
+  });
+
   it("enforces an atomic daily quota and uses a per-uid UTC reset key", async () => {
     const db = new InMemoryFirestore();
 
@@ -57,13 +75,51 @@ describe("parseOilAnalysisRequest", () => {
       .resolves.toBe("owner-1_2026-07-11");
   });
 
-  it("turns malformed model JSON into an internal error", async () => {
+  it("floors a quota refund at zero", async () => {
+    const db = new InMemoryFirestore();
+
+    await refundDailyOilAnalysisQuota(db, "owner-1", fixedNow);
+
+    expect(db.data("usage_quotas/owner-1_2026-07-10")).toMatchObject({ count: 0 });
+  });
+
+  it("refunds consumed quota when Anthropic returns a non-success response", async () => {
+    const db = new InMemoryFirestore();
+    const requestDependencies = dependencies(db);
+    requestDependencies.fetchImpl = async (): Promise<Response> => new Response("upstream unavailable", { status: 500 });
+
+    await expectHttpsError(parseOilAnalysisRequest({
+      auth: { uid: "owner-1" },
+      data: { pdfBase64: "cGRm" },
+    }, requestDependencies), "internal");
+
+    expect(db.data("usage_quotas/owner-1_2026-07-10")).toMatchObject({ count: 0 });
+  });
+
+  it("refunds consumed quota when the Anthropic request throws", async () => {
+    const db = new InMemoryFirestore();
+    const requestDependencies = dependencies(db);
+    requestDependencies.fetchImpl = async (): Promise<Response> => {
+      throw new Error("network unavailable");
+    };
+
+    await expectHttpsError(parseOilAnalysisRequest({
+      auth: { uid: "owner-1" },
+      data: { pdfBase64: "cGRm" },
+    }, requestDependencies), "internal");
+
+    expect(db.data("usage_quotas/owner-1_2026-07-10")).toMatchObject({ count: 0 });
+  });
+
+  it("refunds consumed quota when the model returns malformed JSON", async () => {
     const db = new InMemoryFirestore();
 
     await expectHttpsError(parseOilAnalysisRequest({
       auth: { uid: "owner-1" },
       data: { pdfBase64: "cGRm" },
     }, dependencies(db, "this is not JSON")), "internal");
+
+    expect(db.data("usage_quotas/owner-1_2026-07-10")).toMatchObject({ count: 0 });
   });
 
   it("drops unknown and incorrectly typed values while clamping finite numeric output", () => {

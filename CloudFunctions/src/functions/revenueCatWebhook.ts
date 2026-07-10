@@ -48,6 +48,15 @@ export type RevenueCatWebhookDependencies = {
 
 type TransactionResult = "duplicate" | "processed" | "stale" | "unknown-user";
 
+const grantEventTypes = new Set<RevenueCatEvent["type"]>([
+  "INITIAL_PURCHASE",
+  "RENEWAL",
+  "UNCANCELLATION",
+  "PRODUCT_CHANGE",
+  "NON_RENEWING_PURCHASE",
+  "TRANSFER",
+]);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -134,6 +143,23 @@ function storedSubscriptionUpdatedAt(userData: Record<string, unknown> | undefin
   return timestampMillis(userData.subscription.updatedAt);
 }
 
+/**
+ * A cancellation only disables auto-renewal; the existing entitlement remains
+ * valid until RevenueCat sends an EXPIRATION. Unknown events are recorded but
+ * intentionally do not change access.
+ */
+function entitlementActivityForEvent(event: RevenueCatEvent): boolean | undefined {
+  if (grantEventTypes.has(event.type)) {
+    return event.entitlementIds.includes("pro");
+  }
+
+  if (event.type === "EXPIRATION") {
+    return false;
+  }
+
+  return undefined;
+}
+
 export async function handleRevenueCatWebhookRequest(
   request: RevenueCatWebhookRequest,
   response: RevenueCatWebhookResponse,
@@ -161,7 +187,7 @@ export async function handleRevenueCatWebhookRequest(
 
   const eventRef = dependencies.db.collection("revenuecat_events").doc(event.id);
   const userRef = dependencies.db.collection("users").doc(event.appUserId);
-  const isActive = event.entitlementIds.includes("pro");
+  const isActive = entitlementActivityForEvent(event);
   const updatedAt = new Date(event.eventTimestampMs).toISOString();
   const receivedAt = (dependencies.now ?? (() => new Date()))().toISOString();
 
@@ -187,8 +213,18 @@ export async function handleRevenueCatWebhookRequest(
     });
 
     const priorUpdatedAt = storedSubscriptionUpdatedAt(user.data());
-    if (priorUpdatedAt !== undefined && event.eventTimestampMs <= priorUpdatedAt) {
+    if (
+      priorUpdatedAt !== undefined
+      && (
+        event.eventTimestampMs < priorUpdatedAt
+        || (event.eventTimestampMs === priorUpdatedAt && isActive !== false)
+      )
+    ) {
       return "stale";
+    }
+
+    if (isActive === undefined) {
+      return "processed";
     }
 
     transaction.set(userRef, {
