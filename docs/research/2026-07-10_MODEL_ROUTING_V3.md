@@ -251,3 +251,14 @@ NO-GO (0.98) → NO-GO (advisory)**. Triage:
 
 Loop-bound: if the round-3 re-review returns NO-GO on genuinely new findings, STOP and hand
 the brief to the operator (the merge gate is theirs regardless — Law 5).
+
+## 10. Third live tri-review (2026-07-10) — DEGRADED, two bounded fixes
+
+Brief `reports/tri-review/2026-07-10T15-27-17Z.md` on `8a09816`: **Fable GO (0.78) · Sol lane
+FAILED (R12's empty-cwd isolation broke codex: "Not inside a trusted directory…") · Gemini
+NO-GO (0.95, model resolver-verified — R13 observed working)**. Gemini's sole blocker:
+resolver verification exists only in `tri_review.py`, not in the vote (`gemini_consult`) and
+loop cross-check lanes. Both findings are bounded follow-through of already-accepted
+principles, within the loop-bound → **R17** (codex `--skip-git-repo-check`, isolation kept)
+and **R18** (resolver verification factored into `gemini_consult` and applied to all agy
+lanes; mismatch ⇒ dead voter / unavailable cross-check, fail-closed).
