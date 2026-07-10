@@ -126,10 +126,12 @@ _DONE_RE = re.compile(r"\b(DONE|COMPLETE|SHIP\s*IT|APPROVED)\b", re.IGNORECASE)
 _CONTINUE_RE = re.compile(r"\b(CONTINUE|ITERATE|NOT\s*DONE|REVISE)\b", re.IGNORECASE)
 _RATE_RE = re.compile(r"\b(429|rate.?limit|too many requests|overloaded)\b", re.IGNORECASE)
 
-# Review-created protocol artifacts are not candidate implementation evidence.
-# Keep this in one list so both the diff and its manifest exclude exactly the
-# same paths before coverage is calculated.
-REVIEW_PROTOCOL_ARTIFACTS = (
+# Loop-created protocol artifacts are not candidate implementation evidence.
+# Keep this one list so both the Gemini cross-check and Fable review exclude
+# exactly the same paths from their diff and manifest before coverage is
+# calculated.  The durable ledger is excluded from reviewer evidence but is
+# independently guarded by scope_guard's byte-prefix append policy.
+PROTOCOL_ARTIFACTS = (
     "PLAN.md",
     "PLAN_REVIEW.md",
     "CROSS_CHECK.md",
@@ -140,6 +142,7 @@ REVIEW_PROTOCOL_ARTIFACTS = (
     "DONE",
     "DECISION.md",
     "RESOLUTION.md",
+    "DECISION_LEDGER.jsonl",
 )
 CROSS_CHECK_VIOLATION = (
     "CROSS-CHECK VIOLATION: unexpected worktree delta "
@@ -599,8 +602,9 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
         report = f"(cross-check unavailable: {intent_result.note})\n"
         return _write_sanitized_provider_artifact(worktree, "CROSS_CHECK.md", report)
 
-    diff_result = _git(worktree, "diff", "HEAD")
-    manifest_result = _git(worktree, "diff", "--name-status", "HEAD")
+    pathspec = _candidate_diff_pathspec()
+    diff_result = _git(worktree, "diff", "HEAD", "--", *pathspec)
+    manifest_result = _git(worktree, "diff", "--name-status", "HEAD", "--", *pathspec)
     if not diff_result.ok or not manifest_result.ok:
         note = diff_result.note if not diff_result.ok else manifest_result.note
         report = f"(cross-check unavailable: {note})\n"
@@ -692,9 +696,9 @@ def stage_cross_check(worktree: str, dry_run: bool) -> str:
     return _write_sanitized_provider_artifact(worktree, "CROSS_CHECK.md", report, raw_stdout)
 
 
-def _review_diff_pathspec() -> List[str]:
-    """Return Git pathspecs for candidate code, excluding loop protocol files."""
-    return ["."] + [f":(exclude){name}" for name in REVIEW_PROTOCOL_ARTIFACTS]
+def _candidate_diff_pathspec() -> List[str]:
+    """Return shared cross-check/review pathspecs excluding protocol artifacts."""
+    return ["."] + [f":(exclude){name}" for name in PROTOCOL_ARTIFACTS]
 
 
 def _unavailable_review_coverage(note: str) -> Dict[str, object]:
@@ -738,7 +742,7 @@ def stage_review(worktree: str, goal: str, plan: str, cross_check: str,
     # Match the cross-check evidence: expose untracked candidate files to the
     # diff without staging their contents, leaving scope_guard semantics intact.
     intent_result = _git(worktree, "add", "--intent-to-add", "-A")
-    pathspec = _review_diff_pathspec()
+    pathspec = _candidate_diff_pathspec()
     if intent_result.ok:
         diff_result = _git(worktree, "diff", "HEAD", "--", *pathspec)
         manifest_result = _git(worktree, "diff", "--name-status", "HEAD", "--", *pathspec)
@@ -917,8 +921,10 @@ def run_loop(
         enforced = scope_guard.enforce(worktree, revert=True)
         rec["reverted"] = enforced.get("reverted", [])
         rec["protected"] = enforced.get("protected", [])
+        rec["ledger_appends"] = enforced.get("ledger_appends", [])
+        rec["ledger_violations"] = enforced.get("ledger_violations", [])
         if enforced.get("halt"):
-            print("  scope_guard halted the loop (protected paths changed).")
+            print("  scope_guard halted the loop (protected paths changed or ledger append-only policy violated).")
             rec["finished"] = _now_iso()
             state["iterations"].append(rec)      # type: ignore[attr-defined]
             state["halted"] = True
@@ -949,8 +955,10 @@ def run_loop(
             cross_enforced = scope_guard.enforce(worktree, revert=True)
             rec["cross_check_reverted"] = cross_enforced.get("reverted", [])
             rec["cross_check_protected"] = cross_enforced.get("protected", [])
+            rec["cross_check_ledger_appends"] = cross_enforced.get("ledger_appends", [])
+            rec["cross_check_ledger_violations"] = cross_enforced.get("ledger_violations", [])
             if cross_enforced.get("halt"):
-                print("  scope_guard halted the loop (protected paths changed).")
+                print("  scope_guard halted the loop (protected paths changed or ledger append-only policy violated).")
                 rec["finished"] = _now_iso()
                 state["iterations"].append(rec)  # type: ignore[attr-defined]
                 state["halted"] = True

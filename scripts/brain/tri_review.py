@@ -68,6 +68,10 @@ ROSTER = {
     "gemini": "Gemini 3.1 Pro (High)",
 }
 MAX_DIFF_BYTES = 120000
+MAX_VERDICT_FINDINGS = 5
+MAX_VERDICT_ITEM_CHARS = 300
+MAX_RAW_STDOUT_EXCERPT_CHARS = 2000
+TRUNCATION_SUFFIX = "...[truncated]"
 REVIEWER_ORDER = ("claude", "codex", "gemini")
 ISO8601_Z_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\Z")
 # Import, rather than copy, the protected list: scope_guard remains the sole
@@ -371,8 +375,20 @@ def _coverage_markdown(coverage: Dict[str, Any]) -> str:
     return "\n".join(rows)
 
 
+def _truncate_verdict_item(item: str) -> str:
+    """Bound one persisted finding while preserving an explicit truncation cue."""
+    if len(item) <= MAX_VERDICT_ITEM_CHARS:
+        return item
+    return item[:MAX_VERDICT_ITEM_CHARS - len(TRUNCATION_SUFFIX)] + TRUNCATION_SUFFIX
+
+
+def _raw_stdout_excerpt(raw_stdout: str) -> str:
+    """Return the largest safe persisted provider-output excerpt."""
+    return raw_stdout[:MAX_RAW_STDOUT_EXCERPT_CHARS]
+
+
 def validate_verdict_json(obj: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Validate and normalize the exact advisory reviewer verdict schema."""
+    """Validate and hard-bound the exact advisory reviewer verdict schema."""
     if not isinstance(obj, dict):
         return None
     verdict = obj.get("verdict")
@@ -392,8 +408,14 @@ def validate_verdict_json(obj: Optional[Dict[str, Any]]) -> Optional[Dict[str, A
         return None
     return {
         "verdict": verdict,
-        "blocking": [item[:500] for item in blocking],
-        "advisory": [item[:500] for item in advisory],
+        "blocking": [
+            _truncate_verdict_item(item)
+            for item in blocking[:MAX_VERDICT_FINDINGS]
+        ],
+        "advisory": [
+            _truncate_verdict_item(item)
+            for item in advisory[:MAX_VERDICT_FINDINGS]
+        ],
         "confidence": normalized_confidence,
     }
 
@@ -451,7 +473,7 @@ def _failed_review(
         "advisory": [],
         "confidence": None,
         "error": error[:500],
-        "raw_stdout_excerpt": raw_stdout[:4000],
+        "raw_stdout_excerpt": _raw_stdout_excerpt(raw_stdout),
         "retry_used": retry_used,
     }
     if resolver_label is not None:
@@ -567,7 +589,7 @@ def run_reviewer(agent: str, prompt: str, timeout: int, repo: str) -> Dict[str, 
                         "valid": True,
                         **verdict,
                         "resolver_label": resolver_label,
-                        "raw_stdout_excerpt": raw_stdout[:4000],
+                        "raw_stdout_excerpt": _raw_stdout_excerpt(raw_stdout),
                     }
 
             proc = subprocess.run(
@@ -603,7 +625,7 @@ def run_reviewer(agent: str, prompt: str, timeout: int, repo: str) -> Dict[str, 
             "backend": backend,
             "valid": True,
             **verdict,
-            "raw_stdout_excerpt": raw_stdout[:4000],
+            "raw_stdout_excerpt": _raw_stdout_excerpt(raw_stdout),
         }
 
     try:
@@ -898,6 +920,29 @@ def _selftest() -> int:
     check("bad verdict rejected", validate_verdict_json({"verdict": "MAYBE", "blocking": [], "advisory": [], "confidence": 0.5}) is None)
     check("non-list findings rejected", validate_verdict_json({"verdict": "GO", "blocking": "none", "advisory": [], "confidence": 0.5}) is None)
     check("out-of-range confidence rejected", validate_verdict_json({"verdict": "GO", "blocking": [], "advisory": [], "confidence": 1.1}) is None)
+    oversized_verdict = validate_verdict_json({
+        "verdict": "NO-GO",
+        "blocking": ["b" * 325 for _ in range(MAX_VERDICT_FINDINGS + 2)],
+        "advisory": ["a" * 325 for _ in range(MAX_VERDICT_FINDINGS + 2)],
+        "confidence": 0.75,
+    })
+    check(
+        "verdict findings truncate to five items of 300 chars with suffix",
+        oversized_verdict is not None
+        and all(
+            len(oversized_verdict[field]) == MAX_VERDICT_FINDINGS
+            and all(
+                len(item) == MAX_VERDICT_ITEM_CHARS and item.endswith(TRUNCATION_SUFFIX)
+                for item in oversized_verdict[field]
+            )
+            for field in ("blocking", "advisory")
+        ),
+    )
+    check(
+        "persisted raw stdout excerpt truncates to 2000 chars",
+        len(_failed_review("test", "model", "backend", "failure", raw_stdout="x" * 2001)["raw_stdout_excerpt"])
+        == MAX_RAW_STDOUT_EXCERPT_CHARS,
+    )
 
     all_go = [{"valid": True, "verdict": "GO"}] * 3
     one_no_go = [{"valid": True, "verdict": "GO"}, {"valid": True, "verdict": "NO-GO"}, {"valid": True, "verdict": "GO"}]
