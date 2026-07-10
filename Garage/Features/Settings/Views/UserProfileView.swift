@@ -12,5 +12,10 @@ struct UserProfileView: View {
             TextField("Policy Number", text: $viewModel.policyNumber)
         }
         .navigationTitle("Profile")
+        .toolbar {
+            Button("Save") {
+                Task { await viewModel.save() }
+            }
+        }
     }
 }

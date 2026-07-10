@@ -22,6 +22,7 @@ final class AuthService {
     private(set) var isAuthenticated = false
     private var authListener: AuthStateDidChangeListenerHandle?
     private let mode: Mode
+    private var testUID: String?
 
     private init(mode: Mode = .live) {
         self.mode = mode
@@ -38,11 +39,17 @@ final class AuthService {
         }
     }
 
+    init(testUID: String) {
+        mode = .uiTest
+        self.testUID = testUID
+        isAuthenticated = true
+    }
+
     var uid: String? {
         if mode == .localDemo || AppRuntime.isLocalDemoMode {
             return AppRuntime.demoUserId
         }
-        return currentUser?.uid
+        return testUID ?? currentUser?.uid
     }
 
     func signInWithApple(idToken: String, nonce: String, fullName: PersonNameComponents? = nil) async throws {
@@ -72,7 +79,7 @@ final class AuthService {
 
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
 
-        let tokens = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<GoogleSignInTokens, Error>) in
+        let tokens: GoogleSignInTokens = try await withCheckedThrowingContinuation { continuation in
             GIDSignIn.sharedInstance.signIn(withPresenting: presentingViewController) { result, error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -105,9 +112,17 @@ final class AuthService {
 
     func signOut() throws {
         guard !AppRuntime.isLocalDemoMode else { return }
-        guard mode == .live else { return }
+        guard mode != .localDemo else { return }
+        guard mode == .live else {
+            testUID = nil
+            currentUser = nil
+            isAuthenticated = false
+            return
+        }
         GIDSignIn.sharedInstance.signOut()
         try Auth.auth().signOut()
+        currentUser = nil
+        isAuthenticated = false
     }
 }
 

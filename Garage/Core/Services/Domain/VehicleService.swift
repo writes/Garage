@@ -15,6 +15,7 @@ final class VehicleService {
     private let firestore: FirestoreService?
     private let purchaseService: PurchaseService
     private let mode: Mode
+    private var testVehicles: [String: Vehicle]?
 
     private init(
         mode: Mode = .live,
@@ -26,7 +27,20 @@ final class VehicleService {
         self.purchaseService = purchaseService ?? (mode == .live && !AppRuntime.isLocalDemoMode ? .shared : .uiTest)
     }
 
+    init(testVehicles: [Vehicle], purchaseService: PurchaseService) {
+        mode = .uiTest
+        firestore = nil
+        self.purchaseService = purchaseService
+        self.testVehicles = Dictionary(uniqueKeysWithValues: testVehicles.map { ($0.id, $0) })
+    }
+
     func createVehicle(_ vehicle: Vehicle) async throws -> Vehicle {
+        if var testVehicles {
+            try Self.validateVehicleLimit(existingVehicleCount: testVehicles.count, isPro: purchaseService.isPro)
+            testVehicles[vehicle.id] = vehicle
+            self.testVehicles = testVehicles
+            return vehicle
+        }
         guard !AppRuntime.isLocalDemoMode else { return vehicle }
         guard mode == .live else { return vehicle }
         guard let uid = AuthService.shared.uid else {
@@ -41,9 +55,10 @@ final class VehicleService {
             .limit(to: 5)
             .getDocuments()
 
-        if !purchaseService.isPro && snapshot.documents.count >= Constants.maxFreeVehicles {
-            throw AppError.vehicleLimitReached
-        }
+        try Self.validateVehicleLimit(
+            existingVehicleCount: snapshot.documents.count,
+            isPro: purchaseService.isPro
+        )
 
         var newVehicle = vehicle
         newVehicle.userId = uid
@@ -53,6 +68,11 @@ final class VehicleService {
     }
 
     func updateVehicle(_ vehicle: Vehicle) async throws {
+        if var testVehicles {
+            testVehicles[vehicle.id] = vehicle
+            self.testVehicles = testVehicles
+            return
+        }
         guard !AppRuntime.isLocalDemoMode else { return }
         guard mode == .live else { return }
         guard let firestore else {
@@ -65,6 +85,9 @@ final class VehicleService {
     }
 
     func fetchVehicles() async throws -> [Vehicle] {
+        if let testVehicles {
+            return testVehicles.values.sorted { $0.displayOrder < $1.displayOrder }
+        }
         guard mode == .live, !AppRuntime.isLocalDemoMode else {
             return SeedData.vehicles
         }
@@ -127,6 +150,12 @@ final class VehicleService {
                     }
                 }
             continuation.onTermination = { _ in listener.remove() }
+        }
+    }
+
+    static func validateVehicleLimit(existingVehicleCount: Int, isPro: Bool) throws {
+        guard isPro || existingVehicleCount < Constants.maxFreeVehicles else {
+            throw AppError.vehicleLimitReached
         }
     }
 }

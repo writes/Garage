@@ -62,7 +62,8 @@ enum AppError: LocalizedError, Equatable, Sendable {
 #if targetEnvironment(simulator)
             return
                 "Sign in with Apple couldn't start on the simulator. Verify the debug app ID is enabled " +
-                "for Sign in with Apple, the capability is present in this build, and the simulator is signed into an Apple ID."
+                "for Sign in with Apple, the capability is present in this build, and the simulator is signed into " +
+                "an Apple ID."
 #else
             return
                 "Sign in with Apple couldn't start for this build. " +

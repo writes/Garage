@@ -26,7 +26,7 @@ final class PDFExportService {
             document.add(.contentLeft, text: "Vehicle History: Not connected")
         }
 
-        for entry in entries where shouldInclude(entry: entry, selectedSections: selectedSections) {
+        for entry in entries where Self.shouldInclude(entry: entry, selectedSections: selectedSections) {
             document.add(
                 .contentLeft,
                 text: "\(entry.entryType.displayName) • \(entry.entryDate.shortDisplay)"
@@ -44,13 +44,20 @@ final class PDFExportService {
             document.add(.contentLeft, text: "Receipts and invoices included separately")
         }
 
-        let url = FileManager.default.temporaryDirectory.appending(path: "garage-report-\(UUID().uuidString).pdf")
-        let generator = PDFGenerator(document: document)
-        try generator.generate(to: url)
-        return try Data(contentsOf: url)
+        return try Self.withTemporaryReportFile { url in
+            let generator = PDFGenerator(document: document)
+            try generator.generate(to: url)
+            return try Data(contentsOf: url)
+        }
     }
 
-    private func shouldInclude(entry: FirestoreEntry, selectedSections: Set<ReportSection>) -> Bool {
+    nonisolated static func withTemporaryReportFile<T>(_ operation: (URL) throws -> T) throws -> T {
+        let url = FileManager.default.temporaryDirectory.appending(path: "garage-report-\(UUID().uuidString).pdf")
+        defer { try? FileManager.default.removeItem(at: url) }
+        return try operation(url)
+    }
+
+    nonisolated static func shouldInclude(entry: FirestoreEntry, selectedSections: Set<ReportSection>) -> Bool {
         switch entry.entryType {
         case .oilChange, .oilConsumption, .oilAnalysis:
             return selectedSections.contains(.oilHistory)

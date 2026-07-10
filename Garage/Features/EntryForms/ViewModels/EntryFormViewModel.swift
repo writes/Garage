@@ -6,6 +6,7 @@ import Observation
 final class EntryFormViewModel {
     private let entryService: EntryService
     private let vehicleService: VehicleService
+    private let userID: () -> String?
 
     var entryDate = Date.now
     var odometerReading = ""
@@ -20,10 +21,12 @@ final class EntryFormViewModel {
 
     init(
         entryService: EntryService = .shared,
-        vehicleService: VehicleService = .shared
+        vehicleService: VehicleService = .shared,
+        userID: @escaping () -> String? = { AuthService.shared.uid }
     ) {
         self.entryService = entryService
         self.vehicleService = vehicleService
+        self.userID = userID
     }
 
     func prepare(vehicleId: String) async {
@@ -47,8 +50,8 @@ final class EntryFormViewModel {
         entryType: EntryType,
         details: T
     ) async -> Bool {
-        guard validateOdometer(), let uid = AuthService.shared.uid else {
-            if AuthService.shared.uid == nil {
+        guard validateOdometer(), let uid = userID() else {
+            if userID() == nil {
                 error = .auth("Not authenticated")
             }
             return false

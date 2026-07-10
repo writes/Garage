@@ -20,6 +20,11 @@ final class PurchaseService {
         self.mode = mode
     }
 
+    init(testIsPro: Bool) {
+        mode = .uiTest
+        isPro = testIsPro
+    }
+
     func checkSubscriptionStatus() async {
         guard mode == .live else { return }
 
