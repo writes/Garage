@@ -245,8 +245,30 @@ export async function handleRevenueCatWebhookRequest(
   const updatedAt = new Date(event.eventTimestampMs).toISOString();
   const receivedAt = (dependencies.now ?? (() => new Date()))().toISOString();
 
+  if (event.kind === "transfer") {
+    await dependencies.db.runTransaction(async (transaction) => {
+      const existingEvent = await transaction.get(eventRef);
+
+      if (existingEvent.exists) {
+        return "duplicate";
+      }
+
+      transaction.set(eventRef, eventRecord(event, receivedAt, updatedAt));
+      return "processed";
+    });
+
+    response.status(200).send("ok");
+    return;
+  }
+
+  const userRef = dependencies.db.collection("users").doc(event.appUserId);
+
   await dependencies.db.runTransaction(async (transaction) => {
+    // Firestore requires every transaction read to complete before its first
+    // write. Read both documents up front so the idempotency record cannot
+    // make the entitlement read fail in production.
     const existingEvent = await transaction.get(eventRef);
+    const user = await transaction.get(userRef);
 
     if (existingEvent.exists) {
       return "duplicate";
@@ -254,14 +276,6 @@ export async function handleRevenueCatWebhookRequest(
 
     transaction.set(eventRef, eventRecord(event, receivedAt, updatedAt));
 
-    // A transfer is a relationship change between multiple identities, not a
-    // single-user entitlement verdict. RevenueCat follows with per-user events.
-    if (event.kind === "transfer") {
-      return "processed";
-    }
-
-    const userRef = dependencies.db.collection("users").doc(event.appUserId);
-    const user = await transaction.get(userRef);
     const isActive = entitlementActivityForEvent(event);
 
     const priorUpdatedAt = storedSubscriptionUpdatedAt(user.data());

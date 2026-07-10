@@ -70,6 +70,16 @@ async function send(
 }
 
 describe("handleRevenueCatWebhookRequest", () => {
+  it("makes the transaction double reject reads after a write", async () => {
+    const db = new InMemoryFirestore();
+    const eventRef = db.collection("revenuecat_events").doc("ordering-check");
+
+    await expect(db.runTransaction(async (transaction) => {
+      transaction.set(eventRef, { type: "RENEWAL" });
+      return transaction.get(eventRef);
+    })).rejects.toThrow("Firestore transactions require all reads to be executed before all writes.");
+  });
+
   it("accepts a valid Bearer-authenticated grant and writes the entitlement", async () => {
     const db = new InMemoryFirestore();
     db.seed("users/owner-1", { profile: { displayName: "Owner" } });

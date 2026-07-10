@@ -17,13 +17,20 @@ class Snapshot {
 }
 
 class Transaction {
+  private hasWritten = false;
+
   public constructor(private readonly documents: Map<string, DocumentData>) {}
 
   public async get(reference: Reference): Promise<Snapshot> {
+    if (this.hasWritten) {
+      throw new Error("Firestore transactions require all reads to be executed before all writes.");
+    }
+
     return new Snapshot(this.documents.get(reference.path));
   }
 
   public set(reference: Reference, data: DocumentData, options?: { merge?: boolean }): this {
+    this.hasWritten = true;
     const existing = this.documents.get(reference.path);
     const nextValue = options?.merge && existing ? { ...existing, ...structuredClone(data) } : structuredClone(data);
     this.documents.set(reference.path, nextValue);
