@@ -22,7 +22,9 @@ final class EntryFormViewModel {
     init(
         entryService: EntryService = .shared,
         vehicleService: VehicleService = .shared,
-        userID: @escaping () -> String? = { AuthService.shared.uid }
+        userID: @escaping () -> String? = {
+            AppRuntime.isLocalDemoMode ? AppRuntime.demoUserId : AuthService.shared.uid
+        }
     ) {
         self.entryService = entryService
         self.vehicleService = vehicleService

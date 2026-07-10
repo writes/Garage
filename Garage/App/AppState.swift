@@ -33,6 +33,7 @@ final class AppState {
     var userProfile: UserProfile?
     var syncStatus: SyncStatus = .idle
     var isBootstrapping = false
+    private var authenticationRevision = 0
 
     init(
         authService: AuthService = .shared,
@@ -47,7 +48,8 @@ final class AppState {
     }
 
     var isAuthenticated: Bool {
-        authService.isAuthenticated
+        _ = authenticationRevision
+        return authService.isAuthenticated
     }
 
     var isPro: Bool {
@@ -99,6 +101,15 @@ final class AppState {
 
     func selectVehicle(_ vehicle: Vehicle) {
         currentVehicle = vehicle
+    }
+
+    func signOut() {
+        do {
+            try authService.signOut()
+            authenticationRevision += 1
+        } catch {
+            AppLogger.shared.error("Sign out failed: \(error.localizedDescription)")
+        }
     }
 }
 

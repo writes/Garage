@@ -31,6 +31,7 @@ struct VehicleFormView: View {
             }
             if let error = viewModel.error {
                 ErrorBanner(error: error)
+                    .accessibilityIdentifier("vehicle.form.error")
             }
             PrimaryButton(title: "Save Vehicle") {
                 Task {

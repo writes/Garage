@@ -62,6 +62,9 @@ struct LogView: View {
             .onChange(of: viewModel.searchText) { _, _ in
                 Task { await reload() }
             }
+            .onChange(of: viewModel.selectedTypes) { _, _ in
+                Task { await reload() }
+            }
             .onChange(of: router.activeSheet) { _, activeSheet in
                 guard activeSheet == nil else { return }
                 Task { await reload() }

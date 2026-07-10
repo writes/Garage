@@ -111,8 +111,11 @@ final class AuthService {
     }
 
     func signOut() throws {
+        if mode == .localDemo {
+            isAuthenticated = false
+            return
+        }
         guard !AppRuntime.isLocalDemoMode else { return }
-        guard mode != .localDemo else { return }
         guard mode == .live else {
             testUID = nil
             currentUser = nil

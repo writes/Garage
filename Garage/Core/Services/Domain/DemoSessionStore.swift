@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// Debug-only persistence backing the local demo and UI journey tests.
 ///
@@ -6,6 +7,7 @@ import Foundation
 /// store intentionally starts from the seeds again, which keeps demo relaunches
 /// deterministic without ever sending demo writes to Firebase.
 @MainActor
+@Observable
 final class DemoSessionStore {
     static let shared = DemoSessionStore()
 
@@ -23,11 +25,13 @@ final class DemoSessionStore {
     private var partOverlay: [String: SparePart] = [:]
     private var detailingOverlay: [String: DetailingRecord] = [:]
     private var profileOverlay: [String: String] = [:]
+    private(set) var revision = 0
 
     init() {}
 
     func save(_ entry: FirestoreEntry) {
         entryOverlay[entry.id] = entry
+        revision += 1
     }
 
     func entries(for vehicleId: String) -> [FirestoreEntry] {
@@ -38,6 +42,7 @@ final class DemoSessionStore {
 
     func save(_ vehicle: Vehicle) {
         vehicleOverlay[vehicle.id] = vehicle
+        revision += 1
     }
 
     func vehicles() -> [Vehicle] {
@@ -47,6 +52,7 @@ final class DemoSessionStore {
 
     func save(_ reminder: Reminder) {
         reminderOverlay[reminder.id] = reminder
+        revision += 1
     }
 
     func reminders(for vehicleId: String) -> [Reminder] {
@@ -56,6 +62,7 @@ final class DemoSessionStore {
 
     func save(_ part: SparePart) {
         partOverlay[part.id] = part
+        revision += 1
     }
 
     func parts(for vehicleId: String) -> [SparePart] {
@@ -65,6 +72,7 @@ final class DemoSessionStore {
 
     func save(_ record: DetailingRecord) {
         detailingOverlay[record.id] = record
+        revision += 1
     }
 
     func detailingRecords(for vehicleId: String) -> [DetailingRecord] {
@@ -78,6 +86,7 @@ final class DemoSessionStore {
 
     func saveProfile(_ fields: [String: String]) {
         profileOverlay = fields
+        revision += 1
     }
 
     private func merged<Value: Identifiable>(

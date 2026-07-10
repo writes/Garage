@@ -17,7 +17,7 @@ struct SettingsView: View {
                     .accessibilityIdentifier("settings.export")
                 Button(appState.isPro ? "Manage Subscription" : "Upgrade to Pro") { router.present(.subscription) }
                     .accessibilityIdentifier("settings.subscription")
-                Button("Sign Out") { try? AuthService.shared.signOut() }
+                Button("Sign Out") { appState.signOut() }
                     .accessibilityIdentifier("settings.signout")
             }
             .navigationTitle("Settings")

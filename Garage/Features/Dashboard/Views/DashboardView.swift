@@ -3,6 +3,7 @@ import SwiftUI
 struct DashboardView: View {
     @Environment(AppState.self) private var appState
     @State private var viewModel = DashboardViewModel()
+    @State private var demoStore = DemoSessionStore.shared
 
     var body: some View {
         NavigationStack {
@@ -26,6 +27,8 @@ struct DashboardView: View {
             .navigationTitle("Dashboard")
             .background(Theme.Colors.background.ignoresSafeArea())
             .task { await reload() }
+            .task(id: demoStore.revision) { await reload() }
+            .onAppear { Task { await reload() } }
             .onChange(of: appState.selectedTab) { _, selectedTab in
                 guard selectedTab == .dashboard else { return }
                 Task { await reload() }
@@ -54,22 +57,33 @@ struct DashboardView: View {
     }
 
     private var remindersSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+        let reminders = displayedReminders
+        return VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             Text("Upcoming reminders")
                 .font(Theme.Typography.title)
-            if viewModel.upcomingReminders.isEmpty {
+            if reminders.isEmpty {
                 EmptyStateView(
                     title: "No reminders set",
                     message: "Create mileage or date-based reminders from Settings when you're ready.",
                     systemImage: "bell"
                 )
             } else {
-                ForEach(viewModel.upcomingReminders) { reminder in
+                ForEach(reminders) { reminder in
                     ReminderCard(reminder: reminder)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var displayedReminders: [Reminder] {
+        guard AppRuntime.isLocalDemoMode, let vehicleId = appState.currentVehicle?.id else {
+            return viewModel.upcomingReminders
+        }
+        _ = demoStore.revision
+        return demoStore.reminders(for: vehicleId).sorted {
+            ($0.dueDate ?? .distantFuture) < ($1.dueDate ?? .distantFuture)
+        }
     }
 
     private func reload() async {

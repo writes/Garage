@@ -13,7 +13,7 @@ final class AuthViewModel {
     private(set) var error: AppError?
 
     init(
-        authService: AuthService = .shared,
+        authService: AuthService = AppRuntime.isLocalDemoMode ? .localDemo : .shared,
         appleSignInTimeoutNanoseconds: UInt64 = Constants.appleSignInTimeoutNanoseconds
     ) {
         self.authService = authService

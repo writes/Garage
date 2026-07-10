@@ -28,6 +28,7 @@ struct VehicleSwitcher: View {
             .foregroundStyle(Theme.Colors.textPrimary)
         }
         .accessibilityLabel("Vehicle switcher")
+        .accessibilityValue(appState.currentVehicle?.id ?? "")
         .accessibilityIdentifier("vehicle.switcher")
     }
 
