@@ -3,26 +3,27 @@ import XCTest
 /// Hermetic UI-routing journey: LOCAL_DEMO_MODE only; no live Firebase or RevenueCat evidence.
 @MainActor
 final class ExportFlowJourneyTests: JourneyTestCase {
-    func testFreeDemoShowsExportProGate() {
+    func testFreeDemoBuildsAndSharesCSVWhilePDFRemainsGated() {
         let app = launchDemo()
         openExport(in: app)
 
+        require(app.staticTexts["Raw data export — free forever"])
+        require(app.buttons["export.buildCSV"])
         require(app.buttons["export.gate.cta"])
-        XCTAssertFalse(app.buttons["export.buildCSV"].exists)
+        XCTAssertFalse(app.buttons["export.buildPDF"].exists)
+
+        revealAndTap(app.buttons["export.buildCSV"], in: app)
+        require(app.descendants(matching: .any)["export.shareCSV"])
     }
 
-    func testProDemoBuildsNonEmptyCSVExport() {
+    func testProDemoBuildsShareableCSVExport() {
         let app = launchDemo(pro: true)
         openExport(in: app)
 
-        let galleryToggle = app.switches["export.toggle.galleryPhotos"]
-        tapWhenHittable(galleryToggle)
+        require(app.buttons["export.buildPDF"])
+        XCTAssertFalse(app.buttons["export.gate.cta"].exists)
         revealAndTap(app.buttons["export.buildCSV"], in: app)
-
-        let result = app.staticTexts["export.result"]
-        require(result)
-        XCTAssertTrue(result.label.contains("bytes"))
-        XCTAssertFalse(result.label.contains("0 bytes"))
+        require(app.descendants(matching: .any)["export.shareCSV"])
     }
 
     private func openExport(in app: XCUIApplication) {

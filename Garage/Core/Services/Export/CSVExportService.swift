@@ -7,22 +7,99 @@ final class CSVExportService {
     private init() {}
 
     func export(entries: [FirestoreEntry]) -> Data {
-        let header = "id,type,date,odometer,cost,isDIY,shopName,notes,attachments,details\r\n"
-        let rows = entries.map {
-            [
-                $0.id,
-                $0.entryType.rawValue,
-                $0.entryDate.ISO8601Format(),
-                String($0.odometerReading),
-                String($0.cost ?? 0),
-                String($0.isDiy ?? false),
-                Self.safeFreeText($0.shopName ?? ""),
-                Self.safeFreeText($0.notes ?? ""),
-                $0.attachmentPaths.map(Self.safeFreeText).joined(separator: "|"),
-                Self.safeFreeText(Self.detailsText($0.details))
-            ].map(Self.escapedField).joined(separator: ",")
+        var data = Data(Self.rawSchemaHeader.utf8)
+        Self.append(entries, to: &data)
+        return data
+    }
+
+    func makeRawExportWriter(at url: URL) throws -> RawExportWriter {
+        try RawExportWriter(url: url)
+    }
+
+    @MainActor
+    final class RawExportWriter {
+        private let handle: FileHandle
+        private var isClosed = false
+
+        init(url: URL) throws {
+            guard FileManager.default.createFile(atPath: url.path, contents: nil) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            handle = try FileHandle(forWritingTo: url)
+            try handle.write(contentsOf: Data(CSVExportService.rawSchemaHeader.utf8))
         }
-        return Data((header + rows.joined(separator: "\r\n")).utf8)
+
+        func append(entries: [FirestoreEntry]) throws {
+            guard !isClosed else { return }
+            var pageData = Data()
+            CSVExportService.append(entries, to: &pageData)
+            try handle.write(contentsOf: pageData)
+        }
+
+        func finish() throws {
+            guard !isClosed else { return }
+            try handle.close()
+            isClosed = true
+        }
+
+        func cancel() {
+            guard !isClosed else { return }
+            try? handle.close()
+            isClosed = true
+        }
+    }
+
+    private static let rawSchemaHeader = [
+        "schema_version",
+        "id",
+        "vehicleId",
+        "userId",
+        "entryType",
+        "entryDate",
+        "odometerReading",
+        "cost",
+        "isDiy",
+        "shopName",
+        "notes",
+        "attachmentPaths",
+        "isResolved",
+        "details",
+        "createdAt",
+        "updatedAt"
+    ].joined(separator: ",") + "\r\n"
+
+    private static func append(_ entries: [FirestoreEntry], to data: inout Data) {
+        for entry in entries {
+            data.append(contentsOf: row(for: entry).utf8)
+            data.append(contentsOf: "\r\n".utf8)
+        }
+    }
+
+    private static func row(for entry: FirestoreEntry) -> String {
+        let cost = entry.cost.map { String($0) } ?? ""
+        let isDiy = entry.isDiy.map { String($0) } ?? ""
+        let attachmentPaths = entry.attachmentPaths.map(safeFreeText).joined(separator: "|")
+        let isResolved = entry.isResolved.map { String($0) } ?? ""
+        let details = safeFreeText(detailsText(entry.details))
+        let values: [String] = [
+            "2",
+            entry.id,
+            entry.vehicleId,
+            entry.userId,
+            entry.entryType.rawValue,
+            entry.entryDate.ISO8601Format(),
+            String(entry.odometerReading),
+            cost,
+            isDiy,
+            safeFreeText(entry.shopName ?? ""),
+            safeFreeText(entry.notes ?? ""),
+            attachmentPaths,
+            isResolved,
+            details,
+            entry.createdAt?.ISO8601Format() ?? "",
+            entry.updatedAt?.ISO8601Format() ?? ""
+        ]
+        return values.map(escapedField).joined(separator: ",")
     }
 
     static func safeFreeText(_ value: String) -> String {

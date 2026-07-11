@@ -3,7 +3,7 @@ import XCTest
 /// Hermetic UI-routing journey: LOCAL_DEMO_MODE only; no live Firebase or RevenueCat evidence.
 @MainActor
 final class PaywallRoutingJourneyTests: JourneyTestCase {
-    func testFreeGatesRouteFromGarageRemindersAndExportToSubscription() {
+    func testFreeGatesRouteFromGarageRemindersAndPDFReportsToSubscription() {
         let app = launchDemo()
 
         tapTab("Garage", in: app)
@@ -20,6 +20,7 @@ final class PaywallRoutingJourneyTests: JourneyTestCase {
         tapWhenHittable(settingsBack)
         let export = app.buttons["settings.export"]
         tapWhenHittable(export)
+        require(app.buttons["export.buildCSV"])
         routeToSubscription(from: app.buttons["export.gate.cta"], in: app)
     }
 
@@ -40,6 +41,7 @@ final class PaywallRoutingJourneyTests: JourneyTestCase {
         let export = app.buttons["settings.export"]
         tapWhenHittable(export)
         require(app.buttons["export.buildCSV"])
+        require(app.buttons["export.buildPDF"])
         XCTAssertFalse(app.buttons["export.gate.cta"].exists)
     }
 

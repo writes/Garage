@@ -77,6 +77,46 @@ struct EntryServiceTests {
         #expect(lastFuel?.id == "latest-fuel")
     }
 
+    @Test func fetchEntries_pagesStablyAcrossEqualTimestampBoundaries() async throws {
+        let entries = (0..<1_203).map { index in
+            entry(
+                id: String(format: "entry-%04d", index),
+                type: .maintenance,
+                odometer: index,
+                date: paginationDate(for: index)
+            )
+        }
+        let service = EntryService(testEntries: Array(entries.reversed()))
+        var cursor: EntryCursor?
+        var pageCounts: [Int] = []
+        var collectedIDs: [String] = []
+
+        repeat {
+            let page = try await service.fetchEntries(
+                query: EntryQuery(vehicleId: "vehicle"),
+                limit: 500,
+                after: cursor
+            )
+            pageCounts.append(page.entries.count)
+            collectedIDs.append(contentsOf: page.entries.map(\.id))
+            cursor = page.nextCursor
+        } while cursor != nil
+
+        let expectedIDs = entries
+            .sorted {
+                if $0.entryDate != $1.entryDate {
+                    return $0.entryDate > $1.entryDate
+                }
+                return $0.id < $1.id
+            }
+            .map(\.id)
+
+        #expect(pageCounts == [500, 500, 203])
+        #expect(collectedIDs.count == 1_203)
+        #expect(Set(collectedIDs).count == 1_203)
+        #expect(collectedIDs == expectedIDs)
+    }
+
     private func entry(
         id: String,
         type: EntryType,
@@ -101,5 +141,15 @@ struct EntryServiceTests {
             createdAt: nil,
             updatedAt: nil
         )
+    }
+
+    private func paginationDate(for index: Int) -> TimeInterval {
+        if (495...505).contains(index) {
+            return 1_999_505
+        }
+        if (995...1_005).contains(index) {
+            return 1_999_005
+        }
+        return 2_000_000 - Double(index)
     }
 }

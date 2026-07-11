@@ -4,6 +4,8 @@ import Observation
 @MainActor
 @Observable
 final class ExportViewModel {
+    private static let csvPageSize = 500
+
     private let entryService: EntryService
     private let galleryService: GalleryService
     private let pdfExportService: PDFExportService
@@ -15,6 +17,7 @@ final class ExportViewModel {
     var includeGalleryPhotos = true
     var includeReceipts = true
     private(set) var exportData: Data?
+    private(set) var csvExportURL: URL?
     private(set) var error: AppError?
 
     init(
@@ -49,15 +52,45 @@ final class ExportViewModel {
     }
 
     func buildCSV(vehicle: Vehicle) async {
+        discardCSVExport()
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "garage-raw-export-\(UUID().uuidString).csv")
+
         do {
-            let entries = filterByDate(
-                try await entryService.fetchEntries(query: EntryQuery(vehicleId: vehicle.id), limit: 500)
-            )
-            exportData = csvExportService.export(entries: entries)
+            let writer = try csvExportService.makeRawExportWriter(at: url)
+            var didFinish = false
+            defer {
+                if !didFinish {
+                    writer.cancel()
+                }
+            }
+
+            var cursor: EntryCursor?
+            repeat {
+                let page = try await entryService.fetchEntries(
+                    query: EntryQuery(vehicleId: vehicle.id),
+                    limit: Self.csvPageSize,
+                    after: cursor
+                )
+                try writer.append(entries: page.entries)
+                cursor = page.nextCursor
+            } while cursor != nil
+
+            try writer.finish()
+            didFinish = true
+            csvExportURL = url
+            exportData = nil
             error = nil
         } catch {
+            try? FileManager.default.removeItem(at: url)
             self.error = AppError(from: error)
         }
+    }
+
+    private func discardCSVExport() {
+        guard let csvExportURL else { return }
+        try? FileManager.default.removeItem(at: csvExportURL)
+        self.csvExportURL = nil
     }
 
     private func filterByDate(_ entries: [FirestoreEntry]) -> [FirestoreEntry] {

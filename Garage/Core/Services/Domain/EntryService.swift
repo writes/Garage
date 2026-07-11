@@ -1,6 +1,17 @@
 import FirebaseFirestore
 import Observation
 
+struct EntryPage {
+    let entries: [FirestoreEntry]
+    let nextCursor: EntryCursor?
+}
+
+struct EntryCursor {
+    fileprivate let document: DocumentSnapshot?
+    fileprivate let entryDate: Date
+    fileprivate let documentID: String
+}
+
 @MainActor
 @Observable
 final class EntryService {
@@ -63,30 +74,50 @@ final class EntryService {
     }
 
     func fetchEntries(query: EntryQuery, limit: Int = Constants.pageSize) async throws -> [FirestoreEntry] {
+        try await fetchEntries(query: query, limit: limit, after: nil).entries
+    }
+
+    func fetchEntries(
+        query: EntryQuery,
+        limit: Int,
+        after cursor: EntryCursor?
+    ) async throws -> EntryPage {
         if let testEntries {
-            return Self.entries(testEntries, matching: query, limit: limit)
+            return Self.page(testEntries, matching: query, limit: limit, after: cursor)
         }
 #if DEBUG
         if AppRuntime.isLocalDemoMode {
-            return Self.entries(
+            return Self.page(
                 DemoSessionStore.shared.entries(for: query.vehicleId),
                 matching: query,
-                limit: limit
+                limit: limit,
+                after: cursor
             )
         }
 #endif
 
         var request: Query = firestore.db.collection(FirestorePaths.vehicleEntries(vehicleId: query.vehicleId))
             .order(by: "entryDate", descending: true)
+            .order(by: FieldPath.documentID())
             .limit(to: limit)
 
         if !query.entryTypes.isEmpty && query.entryTypes.count < EntryType.allCases.count {
             request = request.whereField("entryType", in: query.entryTypes.map(\.rawValue))
         }
 
+        if let document = cursor?.document {
+            request = request.start(afterDocument: document)
+        }
+
         let snapshot = try await request.getDocuments()
         let entries = try snapshot.documents.map { try firestore.decode(FirestoreEntry.self, from: $0.data()) }
-        return Self.filter(entries, with: query.searchText)
+        let nextCursor = snapshot.documents.count == limit
+            ? Self.cursor(document: snapshot.documents.last, entry: entries.last)
+            : nil
+        return EntryPage(
+            entries: Self.filter(entries, with: query.searchText),
+            nextCursor: nextCursor
+        )
     }
 
     func fetchLatestOdometer(vehicleId: String) async throws -> Int? {
@@ -144,16 +175,54 @@ final class EntryService {
         }
     }
 
-    nonisolated static func entries(
+    static func page(
         _ entries: [FirestoreEntry],
         matching query: EntryQuery,
-        limit: Int
-    ) -> [FirestoreEntry] {
+        limit: Int,
+        after cursor: EntryCursor?
+    ) -> EntryPage {
         let forVehicle = entries.filter { $0.vehicleId == query.vehicleId }
         let matchingTypes = query.entryTypes.isEmpty
             ? forVehicle
             : forVehicle.filter { query.entryTypes.contains($0.entryType) }
-        return Array(filter(matchingTypes, with: query.searchText).prefix(limit))
+        let ordered = matchingTypes.sorted(by: Self.isOrderedBefore)
+        let remaining = cursor.map { cursor in
+            ordered.filter { Self.isAfter($0, cursor: cursor) }
+        } ?? ordered
+        let page = Array(remaining.prefix(limit))
+        let nextCursor = page.count == limit ? Self.cursor(for: page.last) : nil
+        return EntryPage(
+            entries: filter(page, with: query.searchText),
+            nextCursor: nextCursor
+        )
+    }
+
+    static func cursor(document: DocumentSnapshot?, entry: FirestoreEntry?) -> EntryCursor? {
+        guard let document, let entry else { return nil }
+        return EntryCursor(
+            document: document,
+            entryDate: entry.entryDate,
+            documentID: document.documentID
+        )
+    }
+
+    static func cursor(for entry: FirestoreEntry?) -> EntryCursor? {
+        guard let entry else { return nil }
+        return EntryCursor(document: nil, entryDate: entry.entryDate, documentID: entry.id)
+    }
+
+    static func isOrderedBefore(_ lhs: FirestoreEntry, _ rhs: FirestoreEntry) -> Bool {
+        if lhs.entryDate != rhs.entryDate {
+            return lhs.entryDate > rhs.entryDate
+        }
+        return lhs.id < rhs.id
+    }
+
+    static func isAfter(_ entry: FirestoreEntry, cursor: EntryCursor) -> Bool {
+        if entry.entryDate != cursor.entryDate {
+            return entry.entryDate < cursor.entryDate
+        }
+        return entry.id > cursor.documentID
     }
 
     nonisolated static func latestOdometer(in entries: [FirestoreEntry], vehicleId: String) -> Int? {
