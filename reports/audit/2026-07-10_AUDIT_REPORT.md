@@ -1,11 +1,13 @@
 # Garage Full-App Audit — Final Report (2026-07-10)
 
-**Verdict: merge-ready on `audit/app-hardening`** pending the final review + your gate. Full CI
-gate GREEN (build + archive + all suites). The plan (`2026-07-10_AUDIT_PLAN.md`) ran fully
-through the machine's rituals: **6 Law-1 audit tri-votes + 5 product tri-votes**, **8 Terra
-implementation passes (A–H)**, **3 Gemini cross-checks + 5 three-provider merge-review rounds**,
-Sol plan co-review (8 blockers dispositioned). Every implementer green was independently
-re-verified by the orchestrator on a clean simulator.
+**Verdict: CONVERGED, merge-ready on `audit/app-hardening`** pending your gate. Full CI gate
+GREEN (build + archive + Release build + all suites, independently re-verified). The plan
+(`2026-07-10_AUDIT_PLAN.md`) ran fully through the machine's rituals: **6 Law-1 audit tri-votes
++ 5 product tri-votes**, **11 Terra implementation passes (A–K)**, **3 Gemini cross-checks + 7
+three-provider merge-review rounds**, Sol plan co-review (8 blockers dispositioned). The last
+three review rounds were majority-GO; convergence declared after the orchestrator independently
+verified every RevenueCat entry point (`checkSubscriptionStatus`/`purchase`/`restorePurchases`)
+is identity-gated. Every implementer green was re-verified on a clean simulator.
 
 ## Before → After
 
@@ -38,10 +40,14 @@ re-verified by the orchestrator on a clean simulator.
    refund only on infrastructure failure, **not** on a billed unrecognized response.
 9. **Firestore rules self-grant Pro** — any user could client-write `subscription` → denied;
    rules test flipped from expected-failure to **enforced**. *(Protected surface — see gate.)*
-10. **RevenueCat/Firebase identity mismatch** — RevenueCat was configured before Firebase auth
-   without an app user ID, so its webhook wrote an anonymous RevenueCat document while the app
-   read `users/{FirebaseUID}.subscription` → the auth-state seam now logs RevenueCat in with the
-   Firebase UID and logs it out on sign-out; test/local-demo modes never invoke the real SDK.
+10. **RevenueCat/Firebase identity mismatch (critical, end-to-end — no test could catch it)** —
+   RevenueCat was configured with no app user ID and never `logIn`'d, so it used an anonymous
+   ID; the webhook wrote `users/{anonymousID}.subscription` while the app read
+   `users/{FirebaseUID}` → **the entire server-side entitlement pipeline was disconnected from
+   the user.** Fix: the auth-state seam `logIn`s RevenueCat with the Firebase UID (`logOut` on
+   sign-out); the returned `CustomerInfo` is applied; and **all three entitlement entry points
+   — status check, purchase, restore — are gated on identity readiness** so a cold-launch race
+   can't populate `isPro` from the anonymous customer. Found only by the tri-provider review.
 
 **Data integrity / correctness**
 11. **CSV export** — lossy comma-mangling + formula injection (leading-space bypass,
