@@ -70,6 +70,27 @@ struct PurchaseServiceTests {
         #expect(service.isPro)
     }
 
+    @Test func restorePurchases_waitsForIdentityBeforeStartingTheRestore() async throws {
+        let identityGate = IdentityGate()
+        let restoreProbe = RestorePurchasesProbe()
+        let service = PurchaseService(
+            testIsPro: false,
+            restorePurchasesOverride: restoreProbe.restore,
+            identityReady: identityGate.wait
+        )
+
+        let restoreTask = Task { try await service.restorePurchases() }
+        await Task.yield()
+
+        #expect(restoreProbe.calls == 0)
+
+        identityGate.open(for: "firebase-user")
+        try await restoreTask.value
+
+        #expect(restoreProbe.calls == 1)
+        #expect(service.isPro)
+    }
+
     @Test func annualDisclosureIncludesLocalizedPriceDurationAndRenewal() {
         let disclosure = SubscriptionDisclosure.renewalTerms(
             localizedPrice: "$34.99",

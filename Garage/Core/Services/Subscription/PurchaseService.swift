@@ -37,7 +37,9 @@ final class PurchaseService {
         customerInfoOverride: (@MainActor () async throws -> CustomerInfo)? = nil,
         purchaseOverride: (@MainActor () async throws -> CustomerInfo)? = nil
     ) {
-        mode = customerInfoOverride == nil && purchaseOverride == nil ? .uiTest : .live
+        mode = customerInfoOverride == nil && purchaseOverride == nil && restorePurchasesOverride == nil
+            ? .uiTest
+            : .live
         isPro = testIsPro
         self.identityReady = identityReady ?? { "test-user" }
         self.customerInfoOverride = customerInfoOverride
@@ -81,13 +83,16 @@ final class PurchaseService {
     }
 
     func restorePurchases() async throws {
+        guard mode == .live else {
+            throw AppError.subscriptionRequired("Purchases unavailable in UI tests")
+        }
+        guard await identityReady() != nil else {
+            throw AppError.auth("Subscription identity is not ready")
+        }
+
         if let restorePurchasesOverride {
             isPro = try await restorePurchasesOverride()
             return
-        }
-
-        guard mode == .live else {
-            throw AppError.subscriptionRequired("Purchases unavailable in UI tests")
         }
 
         let customerInfo = try await Purchases.shared.restorePurchases()
