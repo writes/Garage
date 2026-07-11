@@ -4,6 +4,11 @@ type Reference = {
   path: string;
 };
 
+export type TransactionTrace = {
+  reads: string[];
+  writes: string[];
+};
+
 class Snapshot {
   public constructor(private readonly value: DocumentData | undefined) {}
 
@@ -19,18 +24,23 @@ class Snapshot {
 class Transaction {
   private hasWritten = false;
 
-  public constructor(private readonly documents: Map<string, DocumentData>) {}
+  public constructor(
+    private readonly documents: Map<string, DocumentData>,
+    private readonly trace: TransactionTrace,
+  ) {}
 
   public async get(reference: Reference): Promise<Snapshot> {
     if (this.hasWritten) {
       throw new Error("Firestore transactions require all reads to be executed before all writes.");
     }
 
+    this.trace.reads.push(reference.path);
     return new Snapshot(this.documents.get(reference.path));
   }
 
   public set(reference: Reference, data: DocumentData, options?: { merge?: boolean }): this {
     this.hasWritten = true;
+    this.trace.writes.push(reference.path);
     const existing = this.documents.get(reference.path);
     const nextValue = options?.merge && existing ? { ...existing, ...structuredClone(data) } : structuredClone(data);
     this.documents.set(reference.path, nextValue);
@@ -44,6 +54,7 @@ class Transaction {
  */
 export class InMemoryFirestore {
   private readonly documents = new Map<string, DocumentData>();
+  private readonly traces: TransactionTrace[] = [];
 
   public collection(collectionPath: string): { doc(id: string): Reference } {
     return {
@@ -52,7 +63,9 @@ export class InMemoryFirestore {
   }
 
   public async runTransaction<T>(updateFunction: (transaction: Transaction) => Promise<T>): Promise<T> {
-    return updateFunction(new Transaction(this.documents));
+    const trace: TransactionTrace = { reads: [], writes: [] };
+    this.traces.push(trace);
+    return updateFunction(new Transaction(this.documents, trace));
   }
 
   public seed(path: string, data: DocumentData): void {
@@ -62,5 +75,9 @@ export class InMemoryFirestore {
   public data(path: string): DocumentData | undefined {
     const value = this.documents.get(path);
     return value === undefined ? undefined : structuredClone(value);
+  }
+
+  public transactionTraces(): TransactionTrace[] {
+    return structuredClone(this.traces);
   }
 }

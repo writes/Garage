@@ -104,15 +104,43 @@ describe("handleRevenueCatWebhookRequest", () => {
     });
   });
 
-  it("deactivates an EXPIRATION when the expired pro entitlement is listed", async () => {
+  it("persists an authoritative expiration timestamp with an active pro grant", async () => {
     const db = new InMemoryFirestore();
     db.seed("users/owner-1", {});
+
+    await send(db, event({
+      expiration_at_ms: Date.parse("2026-08-10T10:00:00.000Z"),
+      id: "renewal-with-expiry",
+    }));
+
+    expect(db.data("users/owner-1")).toMatchObject({
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        updatedAt: "2026-07-10T10:00:00.000Z",
+        expiresAt: "2026-08-10T10:00:00.000Z",
+      },
+    });
+  });
+
+  it("deactivates an EXPIRATION when the expired pro entitlement is listed", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/owner-1", {
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        expiresAt: "2026-08-10T10:00:00.000Z",
+      },
+    });
 
     const result = await send(db, event({ id: "revoke-1", type: "EXPIRATION" }));
 
     expect(result.statusCode).toBe(200);
     expect(db.data("users/owner-1")).toMatchObject({
-      subscription: { isActive: false },
+      subscription: {
+        isActive: false,
+        expiresAt: "2026-08-10T10:00:00.000Z",
+      },
     });
   });
 
@@ -134,6 +162,7 @@ describe("handleRevenueCatWebhookRequest", () => {
         entitlement: "pro",
         isActive: true,
         updatedAt: "2026-07-09T10:00:00.000Z",
+        expiresAt: "2026-08-10T10:00:00.000Z",
       },
     });
 
@@ -144,6 +173,7 @@ describe("handleRevenueCatWebhookRequest", () => {
         entitlement: "pro",
         isActive: true,
         updatedAt: "2026-07-09T10:00:00.000Z",
+        expiresAt: "2026-08-10T10:00:00.000Z",
       },
     });
     expect(db.data("revenuecat_events/unrelated-renewal")).toMatchObject({
@@ -184,6 +214,7 @@ describe("handleRevenueCatWebhookRequest", () => {
         entitlement: "pro",
         isActive: true,
         updatedAt: "2026-07-09T10:00:00.000Z",
+        expiresAt: "2026-08-10T10:00:00.000Z",
       },
     });
 
@@ -194,6 +225,7 @@ describe("handleRevenueCatWebhookRequest", () => {
         entitlement: "pro",
         isActive: true,
         updatedAt: "2026-07-09T10:00:00.000Z",
+        expiresAt: "2026-08-10T10:00:00.000Z",
       },
     });
     expect(db.data("revenuecat_events/cancellation-1")).toMatchObject({ type: "CANCELLATION" });

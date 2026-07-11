@@ -6,6 +6,7 @@ type StandardRevenueCatEvent = {
   appUserId: string;
   entitlementIds: string[];
   eventTimestampMs: number;
+  expirationAtMs?: number;
   id: string;
   kind: "standard";
   type: string;
@@ -79,6 +80,13 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
+function isTimestampMillis(value: unknown): value is number {
+  return typeof value === "number"
+    && Number.isFinite(value)
+    && Number.isSafeInteger(value)
+    && !Number.isNaN(new Date(value).getTime());
+}
+
 function parseRevenueCatEvent(body: unknown): RevenueCatEvent | undefined {
   if (!isRecord(body) || !isRecord(body.event)) {
     return undefined;
@@ -89,10 +97,7 @@ function parseRevenueCatEvent(body: unknown): RevenueCatEvent | undefined {
   if (
     !isNonEmptyString(event.id)
     || !isNonEmptyString(event.type)
-    || typeof event.event_timestamp_ms !== "number"
-    || !Number.isFinite(event.event_timestamp_ms)
-    || !Number.isSafeInteger(event.event_timestamp_ms)
-    || Number.isNaN(new Date(event.event_timestamp_ms).getTime())
+    || !isTimestampMillis(event.event_timestamp_ms)
   ) {
     return undefined;
   }
@@ -114,7 +119,12 @@ function parseRevenueCatEvent(body: unknown): RevenueCatEvent | undefined {
   }
 
   const entitlementIds = event.entitlement_ids;
-  if (!isNonEmptyString(event.app_user_id) || !isStringArray(entitlementIds)) {
+  const rawExpirationAtMs = event.expiration_at_ms;
+  if (
+    !isNonEmptyString(event.app_user_id)
+    || !isStringArray(entitlementIds)
+    || (rawExpirationAtMs != null && !isTimestampMillis(rawExpirationAtMs))
+  ) {
     return undefined;
   }
 
@@ -122,6 +132,7 @@ function parseRevenueCatEvent(body: unknown): RevenueCatEvent | undefined {
     appUserId: event.app_user_id,
     entitlementIds,
     eventTimestampMs: event.event_timestamp_ms,
+    ...(rawExpirationAtMs != null ? { expirationAtMs: rawExpirationAtMs } : {}),
     id: event.id,
     kind: "standard",
     type: event.type,
@@ -276,9 +287,10 @@ export async function handleRevenueCatWebhookRequest(
 
     transaction.set(eventRef, eventRecord(event, receivedAt, updatedAt));
 
+    const userData = user.data();
     const isActive = entitlementActivityForEvent(event);
 
-    const priorUpdatedAt = storedSubscriptionUpdatedAt(user.data());
+    const priorUpdatedAt = storedSubscriptionUpdatedAt(userData);
     if (
       priorUpdatedAt !== undefined
       && (
@@ -293,11 +305,18 @@ export async function handleRevenueCatWebhookRequest(
       return "processed";
     }
 
+    const priorSubscription = userData && isRecord(userData.subscription) ? userData.subscription : undefined;
+    const priorExpiresAt = priorSubscription?.expiresAt;
+    const expiresAt = isActive === true && event.expirationAtMs !== undefined
+      ? new Date(event.expirationAtMs).toISOString()
+      : priorExpiresAt;
+
     transaction.set(userRef, {
       subscription: {
         entitlement: "pro",
         isActive,
         updatedAt,
+        ...(expiresAt !== undefined ? { expiresAt } : {}),
       },
     }, { merge: true });
 
