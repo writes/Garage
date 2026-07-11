@@ -172,3 +172,9 @@ on any unrecognized value — pin the exact roster label and verify via the reso
   "React/PWA/Supabase rewrite" → **Tier D** (doctrine fail: native iOS is locked).
 - **🟢 App baseline** — Garage iOS app builds via XcodeGen; CI gate = `scripts/ci/*`; this brain
   install changed **no** app/product code, only added intelligence-layer surfaces.
+- **🟢 Profit-first blueprint GOVERNING (2026-07-11, operator directive)** — evidence-verified
+  adoption: 12-claim truth table vs live code, 2 new tri-votes (Passport credit REMOVED
+  unanimous; vehicle-limit = rules getAfter counter), Q5 naming WITHDRAWN (Roadfolio hard
+  collision; Motorkeep impaired — motorkeep.ru), Q4 scrape ToS-prohibited → lawful redesign.
+  Consensus resolver enum-grouping defect found+fixed (landmine #13). Plan + P0 waves:
+  `docs/research/2026-07-11_PROFIT_FIRST_BLUEPRINT.md`.
