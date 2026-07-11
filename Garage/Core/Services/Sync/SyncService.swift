@@ -9,7 +9,7 @@ final class SyncService {
 
     private(set) var currentStatus: SyncStatus = .idle
 
-    private init() {}
+    init() {}
 
     func enqueue<T: Encodable>(
         _ value: T,

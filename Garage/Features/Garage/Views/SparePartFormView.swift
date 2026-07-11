@@ -12,18 +12,26 @@ struct SparePartFormView: View {
 
     var body: some View {
         BottomSheet(title: "Add Spare Part") {
-            TextField("Part name", text: $name).textFieldStyle(.roundedBorder)
+            TextField("Part name", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("parts.form.name")
             Picker("Category", selection: $category) {
                 ForEach(PartCategory.allCases, id: \.self) { category in Text(category.rawValue).tag(category) }
             }
-            TextField("Quantity", text: $quantity).keyboardType(.numberPad).textFieldStyle(.roundedBorder)
+            TextField("Quantity", text: $quantity)
+                .keyboardType(.numberPad)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("parts.form.quantity")
             Picker("Condition", selection: $condition) {
                 ForEach(PartCondition.allCases, id: \.self) { condition in Text(condition.rawValue).tag(condition) }
             }
-            TextField("Storage location", text: $storageLocation).textFieldStyle(.roundedBorder)
+            TextField("Storage location", text: $storageLocation)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("parts.form.location")
             PrimaryButton(title: "Save Part") {
                 Task { await save() }
             }
+            .accessibilityIdentifier("parts.form.save")
         }
     }
 

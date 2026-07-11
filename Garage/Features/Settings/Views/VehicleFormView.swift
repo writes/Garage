@@ -7,13 +7,23 @@ struct VehicleFormView: View {
 
     var body: some View {
         BottomSheet(title: "Add Vehicle") {
-            TextField("Nickname", text: $viewModel.nickname).textFieldStyle(.roundedBorder)
-            TextField("Make", text: $viewModel.make).textFieldStyle(.roundedBorder)
-            TextField("Model", text: $viewModel.model).textFieldStyle(.roundedBorder)
-            TextField("Year", text: $viewModel.year).keyboardType(.numberPad).textFieldStyle(.roundedBorder)
+            TextField("Nickname", text: $viewModel.nickname)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("vehicle.form.nickname")
+            TextField("Make", text: $viewModel.make)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("vehicle.form.make")
+            TextField("Model", text: $viewModel.model)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("vehicle.form.model")
+            TextField("Year", text: $viewModel.year)
+                .keyboardType(.numberPad)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("vehicle.form.year")
             TextField("Current odometer", text: $viewModel.currentOdometer)
                 .keyboardType(.numberPad)
                 .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("vehicle.form.odometer")
             Picker("Fuel type", selection: $viewModel.fuelType) {
                 ForEach(FuelType.allCases, id: \.self) { type in
                     Text(type.rawValue.replacingOccurrences(of: "_", with: " ")).tag(type)
@@ -21,6 +31,7 @@ struct VehicleFormView: View {
             }
             if let error = viewModel.error {
                 ErrorBanner(error: error)
+                    .accessibilityIdentifier("vehicle.form.error")
             }
             PrimaryButton(title: "Save Vehicle") {
                 Task {
@@ -30,6 +41,7 @@ struct VehicleFormView: View {
                     }
                 }
             }
+            .accessibilityIdentifier("vehicle.form.save")
         }
     }
 }

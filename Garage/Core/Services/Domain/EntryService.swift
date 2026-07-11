@@ -7,11 +7,32 @@ final class EntryService {
     static let shared = EntryService()
 
     private var firestore: FirestoreService { .shared }
+    private var testEntries: [FirestoreEntry]?
 
     private init() {}
 
+#if DEBUG
+    init(testEntries: [FirestoreEntry]) {
+        self.testEntries = testEntries
+    }
+#endif
+
     func save(_ entry: FirestoreEntry) async throws {
-        guard !AppRuntime.isLocalDemoMode else { return }
+        if var testEntries {
+            if let index = testEntries.firstIndex(where: { $0.id == entry.id }) {
+                testEntries[index] = entry
+            } else {
+                testEntries.append(entry)
+            }
+            self.testEntries = testEntries
+            return
+        }
+#if DEBUG
+        if AppRuntime.isLocalDemoMode {
+            DemoSessionStore.shared.save(entry)
+            return
+        }
+#endif
 
         let reference = firestore.db.collection(FirestorePaths.vehicleEntries(vehicleId: entry.vehicleId))
             .document(entry.id)
@@ -19,9 +40,19 @@ final class EntryService {
     }
 
     func fetchRecent(vehicleId: String, limit: Int = Constants.dashboardRecentLimit) async throws -> [FirestoreEntry] {
-        if AppRuntime.isLocalDemoMode {
-            return Array(SeedData.entries(for: vehicleId).prefix(limit))
+        if let testEntries {
+            return Array(
+                testEntries
+                    .filter { $0.vehicleId == vehicleId }
+                    .sorted { $0.entryDate > $1.entryDate }
+                    .prefix(limit)
+            )
         }
+#if DEBUG
+        if AppRuntime.isLocalDemoMode {
+            return Array(DemoSessionStore.shared.entries(for: vehicleId).prefix(limit))
+        }
+#endif
 
         let snapshot = try await firestore.db.collection(FirestorePaths.vehicleEntries(vehicleId: vehicleId))
             .order(by: "entryDate", descending: true)
@@ -32,13 +63,18 @@ final class EntryService {
     }
 
     func fetchEntries(query: EntryQuery, limit: Int = Constants.pageSize) async throws -> [FirestoreEntry] {
-        if AppRuntime.isLocalDemoMode {
-            let entries = Self.filter(SeedData.entries(for: query.vehicleId), with: query.searchText)
-            let filteredByType = query.entryTypes.isEmpty
-                ? entries
-                : entries.filter { query.entryTypes.contains($0.entryType) }
-            return Array(filteredByType.prefix(limit))
+        if let testEntries {
+            return Self.entries(testEntries, matching: query, limit: limit)
         }
+#if DEBUG
+        if AppRuntime.isLocalDemoMode {
+            return Self.entries(
+                DemoSessionStore.shared.entries(for: query.vehicleId),
+                matching: query,
+                limit: limit
+            )
+        }
+#endif
 
         var request: Query = firestore.db.collection(FirestorePaths.vehicleEntries(vehicleId: query.vehicleId))
             .order(by: "entryDate", descending: true)
@@ -54,11 +90,17 @@ final class EntryService {
     }
 
     func fetchLatestOdometer(vehicleId: String) async throws -> Int? {
-        if AppRuntime.isLocalDemoMode {
-            return SeedData.entries(for: vehicleId)
-                .max(by: { $0.odometerReading < $1.odometerReading })?
-                .odometerReading
+        if let testEntries {
+            return Self.latestOdometer(in: testEntries, vehicleId: vehicleId)
         }
+#if DEBUG
+        if AppRuntime.isLocalDemoMode {
+            return Self.latestOdometer(
+                in: DemoSessionStore.shared.entries(for: vehicleId),
+                vehicleId: vehicleId
+            )
+        }
+#endif
 
         let snapshot = try await firestore.db.collection(FirestorePaths.vehicleEntries(vehicleId: vehicleId))
             .order(by: "odometerReading", descending: true)
@@ -71,9 +113,17 @@ final class EntryService {
     }
 
     func lastFuelEntry(vehicleId: String) async throws -> FirestoreEntry? {
-        if AppRuntime.isLocalDemoMode {
-            return SeedData.entries(for: vehicleId).first { $0.entryType == .fuel }
+        if let testEntries {
+            return Self.latestFuelEntry(in: testEntries, vehicleId: vehicleId)
         }
+#if DEBUG
+        if AppRuntime.isLocalDemoMode {
+            return Self.latestFuelEntry(
+                in: DemoSessionStore.shared.entries(for: vehicleId),
+                vehicleId: vehicleId
+            )
+        }
+#endif
 
         let snapshot = try await firestore.db.collection(FirestorePaths.vehicleEntries(vehicleId: vehicleId))
             .whereField("entryType", isEqualTo: EntryType.fuel.rawValue)
@@ -92,5 +142,33 @@ final class EntryService {
                 || entry.entryType.displayName.lowercased().contains(lowered)
                 || entry.details.description.lowercased().contains(lowered)
         }
+    }
+
+    nonisolated static func entries(
+        _ entries: [FirestoreEntry],
+        matching query: EntryQuery,
+        limit: Int
+    ) -> [FirestoreEntry] {
+        let forVehicle = entries.filter { $0.vehicleId == query.vehicleId }
+        let matchingTypes = query.entryTypes.isEmpty
+            ? forVehicle
+            : forVehicle.filter { query.entryTypes.contains($0.entryType) }
+        return Array(filter(matchingTypes, with: query.searchText).prefix(limit))
+    }
+
+    nonisolated static func latestOdometer(in entries: [FirestoreEntry], vehicleId: String) -> Int? {
+        entries
+            .filter { $0.vehicleId == vehicleId }
+            .map(\.odometerReading)
+            .max()
+    }
+
+    nonisolated static func latestFuelEntry(
+        in entries: [FirestoreEntry],
+        vehicleId: String
+    ) -> FirestoreEntry? {
+        entries
+            .filter { $0.vehicleId == vehicleId && $0.entryType == .fuel }
+            .max { $0.entryDate < $1.entryDate }
     }
 }

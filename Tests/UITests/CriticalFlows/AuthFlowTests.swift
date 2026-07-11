@@ -2,11 +2,12 @@ import XCTest
 
 @MainActor
 final class AuthFlowTests: XCTestCase {
-    func testAppLaunchesToAuthenticationOrGarageShell() {
+    func testLocalDemoLaunchesToTheRealGarageShell() {
         let app = XCUIApplication()
-        app.launchArguments = ["UI_TEST_MODE"]
+        app.launchArguments = ["LOCAL_DEMO_MODE"]
         app.launch()
 
-        XCTAssertEqual(app.state, .runningForeground)
+        XCTAssertTrue(app.buttons["entry.add"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["sync.badge"].exists)
     }
 }

@@ -30,4 +30,21 @@ struct WearServiceTests {
         #expect(items.count == 1)
         #expect(items.first?.percentage == 65)
     }
+
+    @Test func latestDashboardItems_dropsTypesWithoutPercentage() {
+        let missingPercentage = WearSnapshot(
+            id: "missing",
+            vehicleId: "vehicle",
+            entryId: nil,
+            wearItem: .rearTires,
+            valuePct: nil,
+            valueRaw: "Unknown",
+            odometerReading: 1000,
+            recordedAt: .now
+        )
+
+        let items = WearService.latestDashboardItems(from: [missingPercentage])
+
+        #expect(items.isEmpty)
+    }
 }

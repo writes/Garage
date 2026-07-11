@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import Garage
 
+@MainActor
 struct AppErrorTests {
     @Test func networkNSError_mapsToNetwork() {
         let error = NSError(
@@ -24,7 +25,8 @@ struct AppErrorTests {
 #if targetEnvironment(simulator)
         let expectedMessage =
             "Sign in with Apple couldn't start on the simulator. Verify the debug app ID is enabled " +
-            "for Sign in with Apple, the capability is present in this build, and the simulator is signed into an Apple ID."
+            "for Sign in with Apple, the capability is present in this build, and the simulator is signed into " +
+            "an Apple ID."
 #else
         let expectedMessage =
             "Sign in with Apple couldn't start for this build. " +
@@ -34,5 +36,27 @@ struct AppErrorTests {
         #expect(
             AppError(from: error) == .auth(expectedMessage)
         )
+    }
+
+    @Test func firebaseDomains_mapToTheirAppErrorDomains() {
+        let auth = NSError(
+            domain: "FIRAuthErrorDomain",
+            code: 17020,
+            userInfo: [NSLocalizedDescriptionKey: "Sign-in failed"]
+        )
+        let firestore = NSError(
+            domain: "FIRFirestoreErrorDomain",
+            code: 7,
+            userInfo: [NSLocalizedDescriptionKey: "Permission denied"]
+        )
+        let storage = NSError(
+            domain: "FIRStorageErrorDomain",
+            code: -13021,
+            userInfo: [NSLocalizedDescriptionKey: "Object missing"]
+        )
+
+        #expect(AppError(from: auth) == .auth("Sign-in failed"))
+        #expect(AppError(from: firestore) == .database("Permission denied"))
+        #expect(AppError(from: storage) == .storage("Object missing"))
     }
 }

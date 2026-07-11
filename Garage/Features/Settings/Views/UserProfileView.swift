@@ -5,12 +5,20 @@ struct UserProfileView: View {
 
     var body: some View {
         Form {
-            TextField("Name", text: $viewModel.name)
-            TextField("Address", text: $viewModel.address)
-            TextField("Phone", text: $viewModel.phone)
+            TextField("Name", text: $viewModel.name).accessibilityIdentifier("profile.name")
+            TextField("Address", text: $viewModel.address).accessibilityIdentifier("profile.address")
+            TextField("Phone", text: $viewModel.phone).accessibilityIdentifier("profile.phone")
             TextField("Insurance Company", text: $viewModel.insuranceCompany)
+                .accessibilityIdentifier("profile.insurance")
             TextField("Policy Number", text: $viewModel.policyNumber)
+                .accessibilityIdentifier("profile.policy")
         }
         .navigationTitle("Profile")
+        .toolbar {
+            Button("Save") {
+                Task { await viewModel.save() }
+            }
+            .accessibilityIdentifier("profile.save")
+        }
     }
 }

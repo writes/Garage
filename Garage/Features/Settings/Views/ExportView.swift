@@ -10,7 +10,8 @@ struct ExportView: View {
             if !appState.isPro {
                 ProGateView(
                     title: "Exports are part of Pro",
-                    message: "Generate buyer-ready PDF reports and full-fidelity CSV exports from one place."
+                    message: "Generate buyer-ready PDF reports and full-fidelity CSV exports from one place.",
+                    actionIdentifier: "export.gate.cta"
                 ) {
                     router.present(.subscription)
                 }
@@ -19,9 +20,13 @@ struct ExportView: View {
                     Text("Report builder")
                         .font(Theme.Typography.title)
                     DatePicker("Start date", selection: $viewModel.startDate, displayedComponents: .date)
+                        .accessibilityIdentifier("export.range.start")
                     DatePicker("End date", selection: $viewModel.endDate, displayedComponents: .date)
+                        .accessibilityIdentifier("export.range.end")
                     Toggle("Include gallery photos", isOn: $viewModel.includeGalleryPhotos)
+                        .accessibilityIdentifier("export.toggle.galleryPhotos")
                     Toggle("Include receipts and invoices", isOn: $viewModel.includeReceipts)
+                        .accessibilityIdentifier("export.toggle.receipts")
                 }
                 .garageCard()
 
@@ -39,6 +44,7 @@ struct ExportView: View {
                                 }
                             }
                         ))
+                        .accessibilityIdentifier("export.toggle.\(section.id)")
                     }
                 }
                 .garageCard()
@@ -46,13 +52,16 @@ struct ExportView: View {
                 PrimaryButton(title: "Build PDF Report") {
                     Task { await viewModel.buildPDF(vehicle: vehicle) }
                 }
+                .accessibilityIdentifier("export.buildPDF")
                 SecondaryButton(title: "Build CSV Export") {
                     Task { await viewModel.buildCSV(vehicle: vehicle) }
                 }
+                .accessibilityIdentifier("export.buildCSV")
                 if let data = viewModel.exportData {
                     Text("Export ready: \(data.count.formatted()) bytes")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.Colors.textSecondary)
+                        .accessibilityIdentifier("export.result")
                 }
                 if let error = viewModel.error {
                     ErrorBanner(error: error)

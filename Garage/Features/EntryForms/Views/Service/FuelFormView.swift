@@ -11,12 +11,21 @@ struct FuelFormView: View {
 
     var body: some View {
         EntryFormScaffold(title: "Fuel Fill-up", viewModel: form, onSave: save) {
-            TextField("Gallons", text: $gallons).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
+            TextField("Gallons", text: $gallons)
+                .keyboardType(.decimalPad)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("fuel.form.gallons")
             TextField("Price per gallon", text: $pricePerGallon)
                 .keyboardType(.decimalPad)
                 .textFieldStyle(.roundedBorder)
-            TextField("Total cost", text: $totalCost).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
-            TextField("Station name", text: $stationName).textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("fuel.form.price")
+            TextField("Total cost", text: $totalCost)
+                .keyboardType(.decimalPad)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("fuel.form.total")
+            TextField("Station name", text: $stationName)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("fuel.form.station")
             Picker("Fuel grade", selection: $fuelGrade) {
                 ForEach(FuelType.allCases, id: \.self) { grade in
                     Text(grade.rawValue.replacingOccurrences(of: "_", with: " ")).tag(grade)

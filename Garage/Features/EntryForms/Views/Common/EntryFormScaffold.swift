@@ -6,7 +6,7 @@ struct EntryFormScaffold<Content: View>: View {
     var onSave: () async -> Bool
     @ViewBuilder var content: Content
 
-    @Environment(\.dismiss) private var dismiss
+    @Environment(AppRouter.self) private var router
 
     var body: some View {
         BottomSheet(title: title) {
@@ -27,18 +27,21 @@ struct EntryFormScaffold<Content: View>: View {
                     .padding(Theme.Spacing.xs)
                     .background(Theme.Colors.surface)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
+                    .accessibilityIdentifier("entry.form.notes")
             }
             AttachmentPicker(attachmentPaths: $viewModel.attachmentPaths)
             if let error = viewModel.error {
                 ErrorBanner(error: error)
+                    .accessibilityIdentifier("entry.form.error")
             }
             PrimaryButton(title: viewModel.isSaving ? "Saving..." : "Save Entry") {
                 Task {
                     if await onSave() {
-                        dismiss()
+                        router.dismissSheet()
                     }
                 }
             }
+            .accessibilityIdentifier("entry.form.save")
         }
     }
 }

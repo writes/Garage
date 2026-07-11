@@ -7,10 +7,14 @@ import Security
 final class SecureStoreService {
     static let shared = SecureStoreService()
 
-    private init() {}
+    private let service: String
+
+    init(service: String = "com.yourcompany.garage.securestore") {
+        self.service = service
+    }
 
     func save(value: Data, for key: String) throws {
-        let query = Self.baseQuery(for: key)
+        let query = baseQuery(for: key)
         SecItemDelete(query as CFDictionary)
 
         var attributes = query
@@ -24,7 +28,7 @@ final class SecureStoreService {
     }
 
     func readValue(for key: String) throws -> Data? {
-        var query = Self.baseQuery(for: key)
+        var query = baseQuery(for: key)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
 
@@ -42,13 +46,13 @@ final class SecureStoreService {
     }
 
     func deleteValue(for key: String) {
-        SecItemDelete(Self.baseQuery(for: key) as CFDictionary)
+        SecItemDelete(baseQuery(for: key) as CFDictionary)
     }
 
-    private static func baseQuery(for key: String) -> [String: Any] {
+    private func baseQuery(for key: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.yourcompany.garage.securestore",
+            kSecAttrService as String: service,
             kSecAttrAccount as String: key
         ]
     }

@@ -13,17 +13,23 @@ struct GarageView: View {
                         message: """
                         Gallery, wheel photos, spare parts, detailing,
                         warranty, and recalls are unlocked with Pro.
-                        """
+                        """,
+                        actionIdentifier: "garage.gate.cta"
                     ) {
                         router.present(.subscription)
                     }
                     .listRowSeparator(.hidden)
                 } else {
                     NavigationLink("Photo Gallery") { PhotoGalleryView() }
+                        .accessibilityIdentifier("garage.gallery")
                     NavigationLink("Wheel Gallery") { WheelGalleryView() }
+                        .accessibilityIdentifier("garage.wheels")
                     NavigationLink("Spare Parts") { SparePartsView() }
+                        .accessibilityIdentifier("garage.parts")
                     NavigationLink("Detailing Log") { DetailingLogView() }
+                        .accessibilityIdentifier("garage.detailing")
                     NavigationLink("Warranty & Recalls") { WarrantyRecallView() }
+                        .accessibilityIdentifier("garage.warranty")
                 }
             }
             .navigationTitle("Garage")

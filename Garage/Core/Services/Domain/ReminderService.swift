@@ -11,7 +11,12 @@ final class ReminderService {
     private init() {}
 
     func save(_ reminder: Reminder) async throws {
-        guard !AppRuntime.isLocalDemoMode else { return }
+#if DEBUG
+        if AppRuntime.isLocalDemoMode {
+            DemoSessionStore.shared.save(reminder)
+            return
+        }
+#endif
 
         let reference = firestore.db.collection(FirestorePaths.vehicleReminders(vehicleId: reminder.vehicleId))
             .document(reminder.id)
@@ -19,9 +24,11 @@ final class ReminderService {
     }
 
     func fetchUpcoming(vehicleId: String) async throws -> [Reminder] {
+#if DEBUG
         if AppRuntime.isLocalDemoMode {
-            return Self.sortUpcoming(SeedData.reminders(for: vehicleId))
+            return Self.sortUpcoming(DemoSessionStore.shared.reminders(for: vehicleId))
         }
+#endif
 
         let snapshot = try await firestore.db.collection(FirestorePaths.vehicleReminders(vehicleId: vehicleId))
             .limit(to: 20)

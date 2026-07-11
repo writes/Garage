@@ -12,7 +12,8 @@ struct StatsView: View {
                     if !appState.isPro {
                         ProGateView(
                             title: "Stats are a Pro feature",
-                            message: "Unlock MPG trends, cost breakdowns, and wear history charts for every vehicle."
+                            message: "Unlock MPG trends, cost breakdowns, and wear history charts for every vehicle.",
+                            actionIdentifier: "stats.gate.cta"
                         ) {
                             router.present(.subscription)
                         }

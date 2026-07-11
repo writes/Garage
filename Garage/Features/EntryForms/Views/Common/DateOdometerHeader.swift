@@ -9,6 +9,7 @@ struct DateOdometerHeader: View {
         VStack(spacing: Theme.Spacing.md) {
             DatePicker("Date", selection: $entryDate, displayedComponents: .date)
                 .datePickerStyle(.compact)
+                .accessibilityIdentifier("entry.form.date")
 
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text("Odometer Reading")
@@ -18,6 +19,7 @@ struct DateOdometerHeader: View {
                 TextField("Current mileage", text: $odometerReading)
                     .keyboardType(.numberPad)
                     .font(Theme.Typography.title)
+                    .accessibilityIdentifier("entry.form.odometer")
 
                 if let lastKnownOdometer {
                     Text("Last recorded: \(lastKnownOdometer.formatted()) mi")

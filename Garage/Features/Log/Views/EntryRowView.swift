@@ -15,6 +15,7 @@ struct EntryRowView: View {
             }
             Text("\(entry.odometerReading.formatted()) mi")
                 .font(Theme.Typography.caption)
+                .accessibilityIdentifier("entry.row.odometer.\(entry.odometerReading)")
             if let notes = entry.notes, notes.isNotEmpty {
                 Text(notes)
                     .font(Theme.Typography.body)

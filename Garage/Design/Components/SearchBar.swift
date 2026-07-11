@@ -11,6 +11,7 @@ struct SearchBar: View {
             TextField(placeholder, text: $text)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .accessibilityIdentifier("log.search")
         }
         .padding(Theme.Spacing.md)
         .background(Theme.Colors.surface)
