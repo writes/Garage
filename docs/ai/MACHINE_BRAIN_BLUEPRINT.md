@@ -218,7 +218,7 @@ never an auto-edit beyond appending rows the human confirms (Law 5).
 
 | # | Capability | Organ | Source of truth | § | Status | Added |
 |---|---|:--:|---|---|---|---|
-| 1 | 2/3-majority resolver (no veto) + injective canonicalization | I | `scripts/brain/consensus.py:resolve_majority` | §2.I,§4 | LIVE (17/17) | 2026-06-29 |
+| 1 | 2/3-majority resolver (no veto) + injective + enum-anchored canonicalization | I | `scripts/brain/consensus.py:resolve_majority` (`options=` roster param) | §2.I,§4 | LIVE (24/24) | 2026-06-29 (enum fix 2026-07-11) |
 | 2 | Gemini voter (agy→Vertex→API) | I | `scripts/brain/gemini_consult.py` | §2.I,§4 | LIVE | 2026-06-29 |
 | 3 | Live tri-agent vote runner (concurrent pools) | I | `scripts/brain/tri_agent_vote.py` | §2.I,§4 | LIVE | 2026-06-29 |
 | 4 | Decision ledger (append-only) | I | `DECISION_LEDGER.jsonl` | §2.I,§8 | LIVE | 2026-06-29 |
@@ -239,6 +239,19 @@ never an auto-edit beyond appending rows the human confirms (Law 5).
 | 19 | Model routing v3 (lane-split collective) | IV | `docs/research/2026-07-10_MODEL_ROUTING_V3.md` + doctrine §2 + `BRAIN_*` pins in `scripts/brain/*` | §4 | LIVE | 2026-07-10 |
 
 ### 5.4 Changelog (append-only; newest first)
+
+- **2026-07-11** — **Resolver canonicalization defect found live and fixed (landmine #13
+  candidate → registered below).** A Law-1 vote (vehicle-limit mechanism) mis-resolved: gemini's
+  bare `"A"` and claude's `"A: <full text>"` hashed to different groups, so a true 2/3 majority
+  fell to the `highest_confidence_no_majority` fallback and the lone dissenter won — a
+  functional veto. Fix: `consensus.py` gained `enum_option_map`/`resolve_enum` and an
+  `options=` roster param on `resolve_majority`/`append_ledger_majority` (letter-anchored
+  grouping: bare letters, `A:`/`b)`/`C -` variants, and echoed option bodies group; hedged
+  "A and B" and out-of-roster letters never map). `tri_agent_vote.py` passes its parsed roster
+  through (incl. `degraded_pair_agrees`). Self-test 17→24 cases, all green; the recorded
+  positions replay to majority A; correction row appended to the ledger (protocol
+  `resolution_correction`, 2026-07-11T17:47:57Z). Ledger audit: 1 flipped vote (corrected),
+  9 understated-consensus rows (decisions unaffected).
 
 - **2026-07-10 (later)** — **Routing v3 hardened through 11 live tri-reviews / 12 Terra passes
   (R1–R56)**; sync note: R17–R56 shipped across several commits during the review loop, squared
@@ -334,6 +347,7 @@ and `scripts/brain/scope_guard.py`.
 | 10 | HANDOFF/doctrine duplicated instead of pointed-to | HANDOFF only points; one fact, one surface; obey the budget |
 | 11 | Blueprint drifts behind the repo | The maintenance contract (§5.1) + reconciliation ritual (§5.2) |
 | 12 | agy `--model` with an unrecognized value silently downgrades to "Gemini 3.5 Flash (Medium)" — no error | Pin the exact roster label (`"Gemini 3.1 Pro (High)"`); after changing a pin, verify the resolver line in `~/.gemini/antigravity-cli/cli.log`, never model self-report |
+| 13 | Voters answer the same option in different shapes (bare "A" vs "A: full text" vs echoed body) — string-hash grouping splits a real majority and the confidence fallback hands the lone dissenter a veto | Pass the enumerated option roster into `resolve_majority(options=)` (tri_agent_vote does since 2026-07-11); watch any `highest_confidence_no_majority` row whose positions contain bare letters — it may be a mis-resolution, not a true 1/1/1 |
 
 ---
 

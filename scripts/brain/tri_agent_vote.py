@@ -199,19 +199,24 @@ def is_live_pinned_voter(position: Dict) -> bool:
     return agent != "gemini" or position.get("model_verified") is True
 
 
-def degraded_pair_agrees(positions: List[Dict]) -> bool:
+def degraded_pair_agrees(positions: List[Dict], options: Optional[List[str]] = None) -> bool:
     """Require exactly two live decisions to share consensus canonical form.
 
     A degraded 1-1 split cannot use the normal resolver's confidence fallback:
     that would append a single-model choice to the Law-1 ledger. Reusing the
     consensus canonical key preserves its whitespace/case normalization and
-    structural collision resistance.
+    structural collision resistance; when the enumerated option roster is
+    supplied, letter-anchored grouping applies (bare "A" == "A: full text").
     """
-    return (
-        len(positions) == 2
-        and consensus.canonical_key(positions[0].get("decision"))
-        == consensus.canonical_key(positions[1].get("decision"))
-    )
+    if len(positions) != 2:
+        return False
+    letters = consensus.enum_option_map(options)
+
+    def key(p: Dict) -> str:
+        letter = consensus.resolve_enum(p.get("decision"), letters)
+        return f"enum:{letter}" if letter is not None else consensus.canonical_key(p.get("decision"))
+
+    return key(positions[0]) == key(positions[1])
 
 
 def effective_models() -> Dict[str, str]:
@@ -315,7 +320,8 @@ def main(argv=None) -> int:
     # without canonical agreement it would elevate one model in a 1-1 split.
     # Enforce this before dry-run too, so no mode presents that split as a
     # valid degraded resolution.
-    if degraded and not degraded_pair_agrees(live):
+    option_roster = [o.strip() for o in args.options.split("|") if o.strip()]
+    if degraded and not degraded_pair_agrees(live, options=option_roster):
         print(json.dumps({
             "error": "degraded pair disagrees - operator decision required",
             "positions": live,
@@ -325,7 +331,7 @@ def main(argv=None) -> int:
         return 1
 
     if args.dry_run:
-        resolution = consensus.resolve_majority(live)
+        resolution = consensus.resolve_majority(live, options=option_roster)
         print(json.dumps({"resolution": resolution, "positions": live, "extra": extra},
                          indent=2, ensure_ascii=False))
         sys.stderr.write("# DRY RUN — ledger NOT written\n")
@@ -348,7 +354,7 @@ def main(argv=None) -> int:
 
     row, resolution = consensus.append_ledger_majority(
         live, topic=args.question, timestamp=args.timestamp,
-        ledger_path=args.ledger, extra=extra,
+        ledger_path=args.ledger, extra=extra, options=option_roster,
     )
     print(json.dumps({"resolution": resolution, "positions": live, "extra": extra},
                      indent=2, ensure_ascii=False))
