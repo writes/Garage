@@ -5,6 +5,15 @@ import Foundation
 protocol AnalyticsTracking: AnyObject {
     func track(_ event: AnalyticsEvent)
     func setEnabled(_ enabled: Bool)
+    /// Fails closed after a user tries to revoke consent but persistence cannot confirm it.
+    /// The suppression deliberately lasts for the current app session.
+    func suppressCollectionForCurrentSession()
+}
+
+extension AnalyticsTracking {
+    func suppressCollectionForCurrentSession() {
+        setEnabled(false)
+    }
 }
 
 /// The complete v1 product-event contract.
@@ -160,6 +169,7 @@ enum AnalyticsParameter: Equatable, Sendable {
 @MainActor
 final class FirebaseAnalyticsService: AnalyticsTracking {
     private var isEnabled = false
+    private var isCollectionSuppressedForCurrentSession = false
 
     func track(_ event: AnalyticsEvent) {
         guard isEnabled else { return }
@@ -168,8 +178,14 @@ final class FirebaseAnalyticsService: AnalyticsTracking {
     }
 
     func setEnabled(_ enabled: Bool) {
-        isEnabled = enabled
-        Analytics.setAnalyticsCollectionEnabled(enabled)
+        let effectiveEnabled = enabled && !isCollectionSuppressedForCurrentSession
+        isEnabled = effectiveEnabled
+        Analytics.setAnalyticsCollectionEnabled(effectiveEnabled)
+    }
+
+    func suppressCollectionForCurrentSession() {
+        isCollectionSuppressedForCurrentSession = true
+        setEnabled(false)
     }
 }
 

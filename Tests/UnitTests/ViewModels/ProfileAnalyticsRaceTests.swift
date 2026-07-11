@@ -108,3 +108,117 @@ private final class SuspendedSaveProfileStore: ProfileStore {
         saveContinuation = nil
     }
 }
+
+@MainActor
+struct ProfileAnalyticsConsentTests {
+    @Test func toggleBeforeSuccessfulLoad_doesNotWriteProfileFields() async {
+        let store = ConsentProfileStore(fields: populatedFields(analyticsOptOut: false))
+        let analytics = AnalyticsSpy()
+        let viewModel = makeViewModel(store: store, analytics: analytics)
+
+        let didSave = await viewModel.setAnalyticsSharingEnabled(false)
+
+        #expect(!didSave)
+        #expect(!viewModel.hasSuccessfullyLoadedProfile)
+        #expect(store.savePayloads.isEmpty)
+        #expect(analytics.enabledValues == [false])
+    }
+
+    @Test func postLoadConsentToggle_writesOnlyAnalyticsFieldAndPreservesProfile() async {
+        let initialFields = populatedFields(analyticsOptOut: false)
+        let store = ConsentProfileStore(fields: initialFields)
+        let analytics = AnalyticsSpy()
+        let viewModel = makeViewModel(store: store, analytics: analytics)
+        await viewModel.load()
+
+        let didSave = await viewModel.setAnalyticsSharingEnabled(false)
+
+        #expect(didSave)
+        #expect(store.savePayloads == [["analyticsOptOut": .boolean(true)]])
+        #expect(store.profile?["name"] == initialFields["name"])
+        #expect(store.profile?["address"] == initialFields["address"])
+        #expect(store.profile?["phone"] == initialFields["phone"])
+        #expect(store.profile?["insuranceCompany"] == initialFields["insuranceCompany"])
+        #expect(store.profile?["policyNumber"] == initialFields["policyNumber"])
+        #expect(viewModel.userProfile?.analyticsOptOut == true)
+    }
+
+    @Test func failedOptOut_revertsTheToggleShowsErrorAndStaysFailClosedForSession() async {
+        let store = ConsentProfileStore(
+            fields: populatedFields(analyticsOptOut: false),
+            saveError: ConsentProfileStoreError.save
+        )
+        let analytics = AnalyticsSpy()
+        let viewModel = makeViewModel(store: store, analytics: analytics)
+        await viewModel.load()
+        let enabledValueCountBeforeAttempt = analytics.enabledValues.count
+
+        let didSave = await viewModel.setAnalyticsSharingEnabled(false)
+
+        #expect(!didSave)
+        #expect(viewModel.analyticsOptOut == false)
+        #expect(viewModel.error != nil)
+        #expect(store.savePayloads == [["analyticsOptOut": .boolean(true)]])
+        #expect(!analytics.enabledValues.dropFirst(enabledValueCountBeforeAttempt).isEmpty)
+        #expect(analytics.enabledValues.dropFirst(enabledValueCountBeforeAttempt).allSatisfy { !$0 })
+
+        await viewModel.load()
+
+        #expect(analytics.enabledValues.dropFirst(enabledValueCountBeforeAttempt).allSatisfy { !$0 })
+    }
+
+    @Test func failedOptIn_revertsTheToggleAndDoesNotEnableCollection() async {
+        let store = ConsentProfileStore(
+            fields: populatedFields(analyticsOptOut: true),
+            saveError: ConsentProfileStoreError.save
+        )
+        let analytics = AnalyticsSpy()
+        let viewModel = makeViewModel(store: store, analytics: analytics)
+        await viewModel.load()
+        let enabledValueCountBeforeAttempt = analytics.enabledValues.count
+
+        let didSave = await viewModel.setAnalyticsSharingEnabled(true)
+
+        #expect(!didSave)
+        #expect(viewModel.analyticsOptOut)
+        #expect(viewModel.error != nil)
+        #expect(store.savePayloads == [["analyticsOptOut": .boolean(false)]])
+        #expect(analytics.enabledValues.dropFirst(enabledValueCountBeforeAttempt).allSatisfy { !$0 })
+    }
+
+    @Test func failedInitialLoad_keepsConsentToggleUnavailableAndShowsError() async {
+        let store = ConsentProfileStore(loadError: ConsentProfileStoreError.load)
+        let analytics = AnalyticsSpy()
+        let viewModel = makeViewModel(store: store, analytics: analytics)
+
+        await viewModel.load()
+
+        #expect(!viewModel.hasSuccessfullyLoadedProfile)
+        #expect(viewModel.error != nil)
+        #expect(analytics.enabledValues.last == false)
+    }
+
+    private func makeViewModel(
+        store: any ProfileStore,
+        analytics: any AnalyticsTracking
+    ) -> ProfileViewModel {
+        ProfileViewModel(
+            store: store,
+            userID: { "user" },
+            analytics: analytics,
+            isDemoMode: false,
+            automaticallyLoad: false
+        )
+    }
+
+    private func populatedFields(analyticsOptOut: Bool) -> ProfileFields {
+        [
+            "name": .string("Ada Driver"),
+            "address": .string("1 Garage Way"),
+            "phone": .string("555-1212"),
+            "insuranceCompany": .string("Roadworthy"),
+            "policyNumber": .string("POL-42"),
+            "analyticsOptOut": .boolean(analyticsOptOut)
+        ]
+    }
+}

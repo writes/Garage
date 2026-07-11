@@ -97,8 +97,10 @@ final class EntryService {
 #endif
 
         var request: Query = firestore.db.collection(FirestorePaths.vehicleEntries(vehicleId: query.vehicleId))
+            // Keep the document ID implicit: Firestore tiebreaks `entryDate DESC`
+            // with `__name__ DESC`. An explicit ascending ID order needs a mixed-
+            // direction composite index; `start(afterDocument:)` remains gapless.
             .order(by: "entryDate", descending: true)
-            .order(by: FieldPath.documentID())
             .limit(to: limit)
 
         if !query.entryTypes.isEmpty && query.entryTypes.count < EntryType.allCases.count {
@@ -215,14 +217,14 @@ final class EntryService {
         if lhs.entryDate != rhs.entryDate {
             return lhs.entryDate > rhs.entryDate
         }
-        return lhs.id < rhs.id
+        return lhs.id > rhs.id
     }
 
     static func isAfter(_ entry: FirestoreEntry, cursor: EntryCursor) -> Bool {
         if entry.entryDate != cursor.entryDate {
             return entry.entryDate < cursor.entryDate
         }
-        return entry.id > cursor.documentID
+        return entry.id < cursor.documentID
     }
 
     nonisolated static func latestOdometer(in entries: [FirestoreEntry], vehicleId: String) -> Int? {

@@ -91,6 +91,11 @@ final class DemoSessionStore {
         revision += 1
     }
 
+    func saveProfileFields(_ fields: ProfileFields) {
+        profileOverlay.merge(fields) { _, replacement in replacement }
+        revision += 1
+    }
+
     private func merged<Value: Identifiable>(
         _ seed: [Value],
         with overlay: [String: Value]

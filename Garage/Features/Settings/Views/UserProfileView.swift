@@ -24,6 +24,11 @@ struct UserProfileView: View {
                 }
             ))
             .accessibilityIdentifier("profile.analytics")
+            .disabled(!viewModel.hasSuccessfullyLoadedProfile)
+            if let error = viewModel.error {
+                ErrorBanner(error: error)
+                    .accessibilityIdentifier("profile.error")
+            }
         }
         .navigationTitle("Profile")
         .toolbar {

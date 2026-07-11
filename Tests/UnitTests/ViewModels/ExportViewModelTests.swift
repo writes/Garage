@@ -35,7 +35,7 @@ struct ExportViewModelTests {
                 if $0.entryDate != $1.entryDate {
                     return $0.entryDate > $1.entryDate
                 }
-                return $0.id < $1.id
+                return $0.id > $1.id
             }
             .map(\.id)
 

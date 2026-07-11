@@ -36,6 +36,9 @@ struct ProfileViewModelTests {
         #expect(second.policyNumber == "POL-42")
         #expect(second.analyticsOptOut)
         #expect(store.savedUIDs == ["user"])
+        #expect(Set(store.savedPayloads[0].keys) == Set([
+            "name", "address", "phone", "insuranceCompany", "policyNumber", "analyticsOptOut"
+        ]))
     }
 
     @Test func demoMode_loadsAndSavesThroughTheSessionStore() async {
@@ -77,25 +80,21 @@ struct ProfileViewModelTests {
         #expect(store.profile(uid: "user")?["name"] == .string("Ada Driver"))
     }
 
-    @Test func firestoreStore_writesANestedProfileMapInsteadOfLiteralDottedKeys() async throws {
+    @Test func firestoreStore_writesTargetedProfileFieldsAsANestedMap() async throws {
         let document = LiteralKeyFirestoreProfileDocument(data: [
             "profile": ["futureProfileKey": "preserve me"]
         ])
         let store = FirestoreProfileStore(documentForUser: { _ in document })
 
-        try await store.saveProfile([
-            "name": .string("Ada Driver"),
-            "analyticsOptOut": .boolean(false)
-        ], uid: "user")
+        try await store.saveProfileFields(["analyticsOptOut": .boolean(false)], uid: "user")
 
         let payload = try #require(document.lastSetData)
         #expect(payload.keys.sorted() == ["profile"])
         let profile = try #require(payload["profile"] as? [String: Any])
-        #expect(profile["name"] as? String == "Ada Driver")
+        #expect(profile.keys.sorted() == ["analyticsOptOut"])
         #expect(profile["analyticsOptOut"] as? Bool == false)
         #expect(!document.sawDottedTopLevelKey)
         #expect(document.profile?["futureProfileKey"] as? String == "preserve me")
-        #expect(document.profile?["name"] as? String == "Ada Driver")
     }
 
     @Test func missingPreference_defaultsToOptOutAndDisablesCollection() async {
@@ -131,6 +130,7 @@ struct ProfileViewModelTests {
         #expect(didSave)
         #expect(!viewModel.analyticsOptOut)
         #expect(store.profile(uid: "user")?["analyticsOptOut"] == .boolean(false))
+        #expect(store.savedPayloads == [["analyticsOptOut": .boolean(false)]])
         #expect(analytics.enabledValues.last == true)
     }
 }
@@ -139,6 +139,7 @@ struct ProfileViewModelTests {
 private final class InMemoryProfileStore: ProfileStore {
     private var profiles: [String: ProfileFields]
     private(set) var savedUIDs: [String] = []
+    private(set) var savedPayloads: [ProfileFields] = []
 
     init(profiles: [String: ProfileFields] = [:]) {
         self.profiles = profiles
@@ -151,11 +152,54 @@ private final class InMemoryProfileStore: ProfileStore {
     func saveProfile(_ fields: ProfileFields, uid: String) async throws {
         profiles[uid, default: [:]].merge(fields) { _, replacement in replacement }
         savedUIDs.append(uid)
+        savedPayloads.append(fields)
     }
 
     func profile(uid: String) -> ProfileFields? {
         profiles[uid]
     }
+}
+
+@MainActor
+final class ConsentProfileStore: ProfileStore {
+    private var fields: ProfileFields
+    private let loadError: Error?
+    private let saveError: Error?
+    private(set) var savePayloads: [ProfileFields] = []
+
+    init(
+        fields: ProfileFields = [:],
+        loadError: Error? = nil,
+        saveError: Error? = nil
+    ) {
+        self.fields = fields
+        self.loadError = loadError
+        self.saveError = saveError
+    }
+
+    var profile: ProfileFields? {
+        fields
+    }
+
+    func loadProfile(uid _: String) async throws -> ProfileFields? {
+        if let loadError {
+            throw loadError
+        }
+        return fields
+    }
+
+    func saveProfile(_ fields: ProfileFields, uid _: String) async throws {
+        savePayloads.append(fields)
+        if let saveError {
+            throw saveError
+        }
+        self.fields.merge(fields) { _, replacement in replacement }
+    }
+}
+
+enum ConsentProfileStoreError: Error {
+    case load
+    case save
 }
 
 @MainActor

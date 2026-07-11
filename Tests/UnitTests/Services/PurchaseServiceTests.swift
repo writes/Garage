@@ -58,7 +58,7 @@ struct PurchaseServiceTests {
 
     @Test func purchase_waitsForIdentityBeforeStartingThePurchase() async throws {
         let identityGate = IdentityGate()
-        let purchaseProbe = CustomerInfoProbe(customerInfo: customerInfo(isPro: true))
+        let purchaseProbe = PurchaseResultProbe(result: purchaseResult(isPro: true, userCancelled: false))
         let analytics = AnalyticsSpy()
         analytics.setEnabled(true)
         let service = PurchaseService(
@@ -82,6 +82,40 @@ struct PurchaseServiceTests {
         #expect(analytics.events.map(\.definition) == [
             AnalyticsEventDefinition(name: "purchase_completed", parameters: [.productID(.monthly)])
         ])
+    }
+
+    @Test func cancelledPurchase_doesNotTrackCompletedEvent() async throws {
+        let purchaseProbe = PurchaseResultProbe(result: purchaseResult(isPro: true, userCancelled: true))
+        let analytics = AnalyticsSpy()
+        analytics.setEnabled(true)
+        let service = PurchaseService(
+            testIsPro: false,
+            purchaseOverride: purchaseProbe.load,
+            analytics: analytics
+        )
+
+        try await service.purchaseForTesting()
+
+        #expect(purchaseProbe.calls == 1)
+        #expect(service.isPro)
+        #expect(analytics.events.isEmpty)
+    }
+
+    @Test func nonEntitledPurchase_doesNotTrackCompletedEvent() async throws {
+        let purchaseProbe = PurchaseResultProbe(result: purchaseResult(isPro: false, userCancelled: false))
+        let analytics = AnalyticsSpy()
+        analytics.setEnabled(true)
+        let service = PurchaseService(
+            testIsPro: false,
+            purchaseOverride: purchaseProbe.load,
+            analytics: analytics
+        )
+
+        try await service.purchaseForTesting()
+
+        #expect(purchaseProbe.calls == 1)
+        #expect(!service.isPro)
+        #expect(analytics.events.isEmpty)
     }
 
     @Test func restorePurchases_waitsForIdentityBeforeStartingTheRestore() async throws {
@@ -138,6 +172,10 @@ struct PurchaseServiceTests {
             firstSeen: now,
             originalAppUserId: "firebase-user"
         )
+    }
+
+    private func purchaseResult(isPro: Bool, userCancelled: Bool) -> PurchaseResultData {
+        (transaction: nil, customerInfo: customerInfo(isPro: isPro), userCancelled: userCancelled)
     }
 }
 

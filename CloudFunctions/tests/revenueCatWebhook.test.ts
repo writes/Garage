@@ -54,6 +54,19 @@ function event(overrides: Record<string, unknown> = {}): { event: Record<string,
   };
 }
 
+function transferEvent(overrides: Record<string, unknown> = {}): { event: Record<string, unknown> } {
+  return {
+    event: {
+      event_timestamp_ms: Date.parse("2026-07-10T10:00:00.000Z"),
+      id: "transfer-1",
+      transferred_from: ["old-owner"],
+      transferred_to: ["new-owner"],
+      type: "TRANSFER",
+      ...overrides,
+    },
+  };
+}
+
 async function send(
   db: InMemoryFirestore,
   body: unknown,
@@ -387,29 +400,149 @@ describe("handleRevenueCatWebhookRequest", () => {
     expect(db.data("revenuecat_events/event-1")).toBeUndefined();
   });
 
-  it("records a user-less TRANSFER payload without selecting or mutating a user", async () => {
+  it("revokes transfer sources, durably grants destinations, and records the transfer", async () => {
     const db = new InMemoryFirestore();
-    const transfer = {
-      event: {
-        event_timestamp_ms: Date.parse("2026-07-10T10:00:00.000Z"),
-        id: "transfer-1",
-        transferred_from: ["anonymous-old-owner"],
-        transferred_to: ["anonymous-new-owner"],
-        type: "TRANSFER",
+    db.seed("users/old-owner", {
+      profile: { displayName: "Old owner" },
+      subscription: {
+        entitlement: "pro",
+        expiresAt: "2026-07-31T10:00:00.000Z",
+        isActive: true,
+        updatedAt: "2026-07-09T10:00:00.000Z",
       },
-    };
+    });
 
-    const result = await send(db, transfer);
+    const result = await send(db, transferEvent({
+      expiration_at_ms: Date.parse("2026-08-10T10:00:00.000Z"),
+    }));
 
     expect(result.statusCode).toBe(200);
-    expect(db.data("users/anonymous-old-owner")).toBeUndefined();
-    expect(db.data("users/anonymous-new-owner")).toBeUndefined();
+    expect(db.data("users/old-owner")).toMatchObject({
+      profile: { displayName: "Old owner" },
+      subscription: {
+        entitlement: "pro",
+        expiresAt: "2026-07-31T10:00:00.000Z",
+        isActive: false,
+        updatedAt: "2026-07-10T10:00:00.000Z",
+      },
+    });
+    expect(db.data("users/new-owner")).toMatchObject({
+      subscription: {
+        entitlement: "pro",
+        expiresAt: "2026-08-10T10:00:00.000Z",
+        isActive: true,
+        updatedAt: "2026-07-10T10:00:00.000Z",
+      },
+    });
     expect(db.data("revenuecat_events/transfer-1")).toMatchObject({
-      transferredFrom: ["anonymous-old-owner"],
-      transferredTo: ["anonymous-new-owner"],
+      transferredFrom: ["old-owner"],
+      transferredTo: ["new-owner"],
       type: "TRANSFER",
     });
     expect(db.data("revenuecat_events/transfer-1")).not.toHaveProperty("appUserId");
+    expect(db.transactionTraces()).toEqual([{
+      reads: ["revenuecat_events/transfer-1", "users/old-owner", "users/new-owner"],
+      writes: ["revenuecat_events/transfer-1", "users/old-owner", "users/new-owner"],
+    }]);
+  });
+
+  it("makes a duplicate transfer event id idempotent", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/old-owner", {});
+
+    await send(db, transferEvent({ id: "transfer-duplicate" }));
+    const replay = await send(db, transferEvent({
+      event_timestamp_ms: Date.parse("2026-07-11T10:00:00.000Z"),
+      id: "transfer-duplicate",
+      transferred_from: ["new-owner"],
+      transferred_to: ["third-owner"],
+    }));
+
+    expect(replay.statusCode).toBe(200);
+    expect(db.data("users/old-owner")).toMatchObject({
+      subscription: { isActive: false, updatedAt: "2026-07-10T10:00:00.000Z" },
+    });
+    expect(db.data("users/new-owner")).toMatchObject({
+      subscription: { isActive: true, updatedAt: "2026-07-10T10:00:00.000Z" },
+    });
+    expect(db.data("users/third-owner")).toBeUndefined();
+    expect(db.transactionTraces()[1]).toEqual({
+      reads: ["revenuecat_events/transfer-duplicate"],
+      writes: [],
+    });
+  });
+
+  it("records an older transfer without clobbering newer owner states", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/old-owner", {
+      subscription: {
+        entitlement: "pro",
+        expiresAt: "2026-08-15T10:00:00.000Z",
+        isActive: true,
+        updatedAt: "2026-07-12T10:00:00.000Z",
+      },
+    });
+    db.seed("users/new-owner", {
+      subscription: {
+        entitlement: "pro",
+        expiresAt: "2026-08-20T10:00:00.000Z",
+        isActive: false,
+        updatedAt: "2026-07-12T10:00:00.000Z",
+      },
+    });
+
+    const result = await send(db, transferEvent({ id: "stale-transfer" }));
+
+    expect(result.statusCode).toBe(200);
+    expect(db.data("users/old-owner")).toMatchObject({
+      subscription: {
+        expiresAt: "2026-08-15T10:00:00.000Z",
+        isActive: true,
+        updatedAt: "2026-07-12T10:00:00.000Z",
+      },
+    });
+    expect(db.data("users/new-owner")).toMatchObject({
+      subscription: {
+        expiresAt: "2026-08-20T10:00:00.000Z",
+        isActive: false,
+        updatedAt: "2026-07-12T10:00:00.000Z",
+      },
+    });
+    expect(db.data("revenuecat_events/stale-transfer")).toMatchObject({
+      eventTimestampMs: Date.parse("2026-07-10T10:00:00.000Z"),
+      type: "TRANSFER",
+    });
+  });
+
+  it("rejects malformed transfer ownership arrays and expiration before any write", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/old-owner", {
+      subscription: { isActive: true, updatedAt: "2026-07-12T10:00:00.000Z" },
+    });
+
+    const malformedFrom = await send(db, transferEvent({
+      id: "malformed-transfer-from",
+      transferred_from: "old-owner",
+    }));
+    const malformedTo = await send(db, transferEvent({
+      id: "malformed-transfer-to",
+      transferred_to: [42],
+    }));
+    const malformedExpiration = await send(db, transferEvent({
+      expiration_at_ms: "not-a-timestamp",
+      id: "malformed-transfer-expiration",
+    }));
+
+    expect(malformedFrom.statusCode).toBe(400);
+    expect(malformedTo.statusCode).toBe(400);
+    expect(malformedExpiration.statusCode).toBe(400);
+    expect(db.data("users/old-owner")).toMatchObject({
+      subscription: { isActive: true, updatedAt: "2026-07-12T10:00:00.000Z" },
+    });
+    expect(db.data("users/new-owner")).toBeUndefined();
+    expect(db.data("revenuecat_events/malformed-transfer-from")).toBeUndefined();
+    expect(db.data("revenuecat_events/malformed-transfer-to")).toBeUndefined();
+    expect(db.data("revenuecat_events/malformed-transfer-expiration")).toBeUndefined();
   });
 
   it("rejects malformed event bodies before any write", async () => {
