@@ -72,7 +72,7 @@ struct ExportView: View {
                         message: "Raw data CSV export is free forever. Upgrade to generate buyer-ready PDF reports.",
                         actionIdentifier: "export.gate.cta"
                     ) {
-                        router.present(.subscription)
+                        router.present(.subscription(.exportPDF))
                     }
                 }
 

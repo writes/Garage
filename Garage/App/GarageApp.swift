@@ -1,5 +1,6 @@
 import FirebaseCore
 import FirebaseAuth
+import FirebaseAnalytics
 import GoogleSignIn
 import RevenueCat
 import SwiftData
@@ -17,37 +18,18 @@ struct GarageApp: App {
         self.bootstrapMode = bootstrapMode
 
         switch bootstrapMode {
-        case .uiTest:
-            _appState = State(initialValue: AppState(
-                authService: .uiTest,
-                vehicleService: .uiTest,
-                purchaseService: .uiTest,
-                syncService: .shared
-            ))
-            _router = State(initialValue: AppRouter())
-            return
-        case .localDemo:
-            _appState = State(initialValue: AppState(
-                authService: .localDemo,
-                vehicleService: .uiTest,
-                purchaseService: .uiTest,
-                syncService: .shared
-            ))
-            _router = State(initialValue: AppRouter())
-            return
-        case .localSetupRequired:
-            _appState = State(initialValue: AppState(
-                authService: .uiTest,
-                vehicleService: .uiTest,
-                purchaseService: .uiTest,
-                syncService: .shared
-            ))
+        case .uiTest, .localDemo, .localSetupRequired:
+            _appState = State(initialValue: Self.makeNonProductionAppState(for: bootstrapMode))
             _router = State(initialValue: AppRouter())
             return
         case .production:
             break
         }
 
+        // XcodeGen regenerates this plist from protected project.yml properties, so an
+        // Info.plist collection key would not be durable. Apply Firebase's persisted
+        // runtime override before any Firebase configuration can produce an event.
+        Analytics.setAnalyticsCollectionEnabled(false)
         AppIntegrityService.shared.configure()
 
         if FirebaseApp.app() == nil {
@@ -110,6 +92,23 @@ private extension GarageApp {
         }
 
         return FirebaseOptions.defaultOptions() == nil ? .localSetupRequired : .production
+    }
+
+    static func makeNonProductionAppState(for mode: BootstrapMode) -> AppState {
+        let authService: AuthService
+        switch mode {
+        case .localDemo:
+            authService = .localDemo
+        case .uiTest, .localSetupRequired, .production:
+            authService = .uiTest
+        }
+        return AppState(
+            authService: authService,
+            vehicleService: .uiTest,
+            purchaseService: .uiTest,
+            syncService: .shared,
+            analytics: NoopAnalyticsService()
+        )
     }
 
     static func makeModelContainer() -> ModelContainer {

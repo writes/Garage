@@ -12,12 +12,13 @@ import Observation
 final class DemoSessionStore {
     static let shared = DemoSessionStore()
 
-    static let profileFields = [
-        "name": "Garage Demo",
-        "address": "123 Service Lane",
-        "phone": "555-0100",
-        "insuranceCompany": "Demo Insurance",
-        "policyNumber": "DEMO-0001"
+    static let profileFields: ProfileFields = [
+        "name": .string("Garage Demo"),
+        "address": .string("123 Service Lane"),
+        "phone": .string("555-0100"),
+        "insuranceCompany": .string("Demo Insurance"),
+        "policyNumber": .string("DEMO-0001"),
+        "analyticsOptOut": .boolean(true)
     ]
 
     private var entryOverlay: [String: FirestoreEntry] = [:]
@@ -25,7 +26,7 @@ final class DemoSessionStore {
     private var reminderOverlay: [String: Reminder] = [:]
     private var partOverlay: [String: SparePart] = [:]
     private var detailingOverlay: [String: DetailingRecord] = [:]
-    private var profileOverlay: [String: String] = [:]
+    private var profileOverlay: ProfileFields = [:]
     private(set) var revision = 0
 
     init() {}
@@ -81,11 +82,11 @@ final class DemoSessionStore {
             .filter { $0.vehicleId == vehicleId }
     }
 
-    func profile() -> [String: String] {
+    func profile() -> ProfileFields {
         Self.profileFields.merging(profileOverlay) { _, overlay in overlay }
     }
 
-    func saveProfile(_ fields: [String: String]) {
+    func saveProfile(_ fields: ProfileFields) {
         profileOverlay = fields
         revision += 1
     }

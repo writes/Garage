@@ -15,7 +15,7 @@ struct ReminderConfigView: View {
                     message: "Mileage and time-based reminders help keep maintenance on schedule.",
                     actionIdentifier: "reminder.gate.cta"
                 ) {
-                    router.present(.subscription)
+                    router.present(.subscription(.reminders))
                 }
             } else {
                 TextField("Reminder title", text: $viewModel.title)

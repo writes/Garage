@@ -14,7 +14,9 @@ struct ExportViewModelTests {
     @Test func buildCSV_exportsAllPagesAndEntireHistory() async throws {
         let entries = csvEntries()
         let entryService = EntryService(testEntries: Array(entries.reversed()))
-        let viewModel = ExportViewModel(entryService: entryService)
+        let analytics = AnalyticsSpy()
+        analytics.setEnabled(true)
+        let viewModel = ExportViewModel(entryService: entryService, analytics: analytics)
 
         await viewModel.buildCSV(vehicle: vehicle)
 
@@ -43,6 +45,29 @@ struct ExportViewModelTests {
         #expect(Set(ids).count == 1_203)
         #expect(ids == expectedIDs)
         #expect(ids.contains("entry-1202"))
+        #expect(analytics.events == [.exportCSV(entryCount: 1_203)])
+        #expect(analytics.events.map(\.definition) == [
+            AnalyticsEventDefinition(name: "export_csv", parameters: [.entryCount(1_203)])
+        ])
+    }
+
+    @Test func buildPDF_emitsExportEventWithResolvedEntryCountAndSchemaVersion() async {
+        let analytics = AnalyticsSpy()
+        analytics.setEnabled(true)
+        let viewModel = ExportViewModel(
+            entryService: EntryService(testEntries: Array(csvEntries().prefix(2))),
+            galleryService: GalleryService(testPhotos: []),
+            analytics: analytics
+        )
+
+        await viewModel.buildPDF(vehicle: vehicle)
+
+        #expect(viewModel.error == nil)
+        #expect(viewModel.exportData?.isEmpty == false)
+        #expect(analytics.events == [.exportPDF(entryCount: 2)])
+        #expect(analytics.events.map(\.definition) == [
+            AnalyticsEventDefinition(name: "export_pdf", parameters: [.entryCount(2)])
+        ])
     }
 
     private var vehicle: Vehicle {

@@ -91,6 +91,103 @@ struct EntryFormViewModelTests {
         #expect(entries.first?.details["quantityQuarts"] == AnyCodable(8.5))
     }
 
+    @Test func firstEntrySave_emitsTypedEventWithSchemaVersion() async {
+        let vehicle = testVehicle()
+        let analytics = AnalyticsSpy()
+        analytics.setEnabled(true)
+        let viewModel = EntryFormViewModel(
+            entryService: EntryService(testEntries: []),
+            vehicleService: VehicleService(
+                testVehicles: [vehicle],
+                purchaseService: PurchaseService(testIsPro: false)
+            ),
+            analytics: analytics,
+            userID: { "user" }
+        )
+        viewModel.odometerReading = "12100"
+
+        let didSave = await viewModel.save(
+            vehicle: vehicle,
+            entryType: .fuel,
+            details: FuelEntry(
+                gallons: 12.5,
+                pricePerGallon: 5.22,
+                totalCost: 65.25,
+                stationName: "Garage Fuel",
+                fuelGrade: .premium91,
+                calculatedMPG: 20.1
+            )
+        )
+
+        #expect(didSave)
+        #expect(analytics.events == [.firstEntryAdded(entryType: .fuel)])
+        #expect(analytics.events.map(\.definition) == [
+            AnalyticsEventDefinition(name: "first_entry_added", parameters: [.entryType(.fuel)])
+        ])
+    }
+
+    @Test func firstEntrySave_doesNotDuplicateAcrossVehiclesInTheSameAccount() async {
+        let firstVehicle = testVehicle()
+        var secondVehicle = firstVehicle
+        secondVehicle.id = "vehicle-b"
+        secondVehicle.nickname = "Second car"
+        let analytics = AnalyticsSpy()
+        analytics.setEnabled(true)
+        let viewModel = EntryFormViewModel(
+            entryService: EntryService(testEntries: [existingEntry(for: firstVehicle)]),
+            vehicleService: VehicleService(
+                testVehicles: [firstVehicle, secondVehicle],
+                purchaseService: PurchaseService(testIsPro: false)
+            ),
+            analytics: analytics,
+            userID: { "user" }
+        )
+        viewModel.odometerReading = "12100"
+
+        let didSave = await viewModel.save(
+            vehicle: secondVehicle,
+            entryType: .maintenance,
+            details: maintenanceDetails()
+        )
+
+        #expect(didSave)
+        #expect(analytics.events.isEmpty)
+    }
+
+    @Test func optOut_dropsFirstEntryEventAfterSuccessfulSave() async {
+        let vehicle = testVehicle()
+        let analytics = AnalyticsSpy()
+        analytics.setEnabled(false)
+        let viewModel = EntryFormViewModel(
+            entryService: EntryService(testEntries: []),
+            vehicleService: VehicleService(
+                testVehicles: [vehicle],
+                purchaseService: PurchaseService(testIsPro: false)
+            ),
+            analytics: analytics,
+            userID: { "user" }
+        )
+        viewModel.odometerReading = "12100"
+
+        let didSave = await viewModel.save(
+            vehicle: vehicle,
+            entryType: .maintenance,
+            details: MaintenanceEntry(
+                item: .airFilter,
+                otherLabel: nil,
+                nextDueMileage: nil,
+                nextDueDate: nil,
+                symptomDescription: nil,
+                resolutionDescription: nil,
+                status: .resolved
+            )
+        )
+
+        #expect(didSave)
+        #expect(analytics.events.isEmpty)
+        #expect(analytics.enabledValues.contains(false))
+    }
+
     private func testVehicle() -> Vehicle {
         Vehicle(
             id: "vehicle",
@@ -100,6 +197,21 @@ struct EntryFormViewModelTests {
             model: "Test",
             year: 2026,
             currentOdometer: 10_000
+        )
+    }
+
+    private func existingEntry(for vehicle: Vehicle) -> FirestoreEntry {
+        FirestoreEntry(
+            id: "existing-entry", vehicleId: vehicle.id, userId: "user", entryType: .maintenance,
+            entryDate: .now, odometerReading: 10_100, cost: nil, isDiy: nil, shopName: nil,
+            notes: nil, attachmentPaths: [], isResolved: nil, details: [:], createdAt: nil, updatedAt: nil
+        )
+    }
+
+    private func maintenanceDetails() -> MaintenanceEntry {
+        MaintenanceEntry(
+            item: .airFilter, otherLabel: nil, nextDueMileage: nil, nextDueDate: nil,
+            symptomDescription: nil, resolutionDescription: nil, status: .resolved
         )
     }
 }

@@ -10,6 +10,7 @@ final class ExportViewModel {
     private let galleryService: GalleryService
     private let pdfExportService: PDFExportService
     private let csvExportService: CSVExportService
+    private let analytics: any AnalyticsTracking
 
     var selectedSections = Set(ReportSection.allCases)
     var startDate = Calendar.current.date(byAdding: .year, value: -1, to: Date.now) ?? Date.now
@@ -24,12 +25,14 @@ final class ExportViewModel {
         entryService: EntryService = .shared,
         galleryService: GalleryService = .shared,
         pdfExportService: PDFExportService = .shared,
-        csvExportService: CSVExportService = .shared
+        csvExportService: CSVExportService = .shared,
+        analytics: any AnalyticsTracking = AnalyticsService.shared
     ) {
         self.entryService = entryService
         self.galleryService = galleryService
         self.pdfExportService = pdfExportService
         self.csvExportService = csvExportService
+        self.analytics = analytics
     }
 
     func buildPDF(vehicle: Vehicle) async {
@@ -45,6 +48,7 @@ final class ExportViewModel {
                 selectedSections: selectedSections,
                 includeReceipts: includeReceipts
             )
+            analytics.track(.exportPDF(entryCount: resolvedEntries.count))
             error = nil
         } catch {
             self.error = AppError(from: error)
@@ -66,6 +70,7 @@ final class ExportViewModel {
             }
 
             var cursor: EntryCursor?
+            var entryCount = 0
             repeat {
                 let page = try await entryService.fetchEntries(
                     query: EntryQuery(vehicleId: vehicle.id),
@@ -73,6 +78,7 @@ final class ExportViewModel {
                     after: cursor
                 )
                 try writer.append(entries: page.entries)
+                entryCount += page.entries.count
                 cursor = page.nextCursor
             } while cursor != nil
 
@@ -80,6 +86,7 @@ final class ExportViewModel {
             didFinish = true
             csvExportURL = url
             exportData = nil
+            analytics.track(.exportCSV(entryCount: entryCount))
             error = nil
         } catch {
             try? FileManager.default.removeItem(at: url)

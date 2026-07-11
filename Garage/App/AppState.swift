@@ -26,6 +26,8 @@ final class AppState {
     private let vehicleService: VehicleService
     let purchaseService: PurchaseService
     private let syncService: SyncService
+    private let profileStore: any ProfileStore
+    private let analytics: any AnalyticsTracking
 
     var selectedTab: AppTab = .dashboard
     var currentVehicle: Vehicle?
@@ -39,17 +41,27 @@ final class AppState {
         authService: AuthService = .shared,
         vehicleService: VehicleService = .shared,
         purchaseService: PurchaseService = .shared,
-        syncService: SyncService = .shared
+        syncService: SyncService = .shared,
+        analytics: any AnalyticsTracking = AnalyticsService.shared,
+        profileStore: (any ProfileStore)? = nil
     ) {
         self.authService = authService
         self.vehicleService = vehicleService
         self.purchaseService = purchaseService
         self.syncService = syncService
+        self.analytics = analytics
+        self.profileStore = profileStore ?? ProfileStoreFactory.makeDefault()
+        analytics.setEnabled(false)
     }
 
     var isAuthenticated: Bool {
         _ = authenticationRevision
         return authService.isAuthenticated
+    }
+
+    var authenticationStateID: Int {
+        _ = authenticationRevision
+        return authService.authenticationRevision
     }
 
     var isPro: Bool {
@@ -61,6 +73,16 @@ final class AppState {
         isBootstrapping = true
         defer { isBootstrapping = false }
 
+        var expectedAuthenticationRevision: Int
+        repeat {
+            expectedAuthenticationRevision = authService.authenticationRevision
+            await bootstrap(expectedAuthenticationRevision: expectedAuthenticationRevision)
+        } while authService.authenticationRevision != expectedAuthenticationRevision
+    }
+
+    private func bootstrap(expectedAuthenticationRevision: Int) async {
+        analytics.setEnabled(false)
+
         if AppRuntime.isLocalDemoMode {
             syncStatus = .upToDate
         } else {
@@ -68,12 +90,36 @@ final class AppState {
             syncStatus = syncService.currentStatus
         }
 
-        guard authService.isAuthenticated else { return }
+        guard authenticationMatches(expectedAuthenticationRevision),
+              authService.isAuthenticated,
+              let uid = authService.uid else {
+            userProfile = nil
+            vehicles = []
+            currentVehicle = nil
+            return
+        }
 
+        if userProfile?.id != uid {
+            userProfile = nil
+            vehicles = []
+            currentVehicle = nil
+        }
+
+        await loadProfile(uid: uid, expectedAuthenticationRevision: expectedAuthenticationRevision)
+        guard authenticationMatches(expectedAuthenticationRevision, uid: uid) else { return }
+        await loadVehicles(uid: uid, expectedAuthenticationRevision: expectedAuthenticationRevision)
+    }
+
+    private func loadVehicles(uid: String, expectedAuthenticationRevision: Int) async {
         do {
-            vehicles = try await vehicleService.fetchVehicles()
-            if currentVehicle == nil {
-                currentVehicle = vehicles.min(by: { $0.displayOrder < $1.displayOrder })
+            let loadedVehicles = try await vehicleService.fetchVehicles()
+            guard authenticationMatches(expectedAuthenticationRevision, uid: uid) else { return }
+            vehicles = loadedVehicles
+            if let currentVehicle,
+               let matchingVehicle = loadedVehicles.first(where: { $0.id == currentVehicle.id }) {
+                self.currentVehicle = matchingVehicle
+            } else {
+                currentVehicle = loadedVehicles.min(by: { $0.displayOrder < $1.displayOrder })
             }
             #if DEBUG
             if vehicles.isEmpty {
@@ -103,9 +149,46 @@ final class AppState {
         currentVehicle = vehicle
     }
 
+    func paywallDidAppear(source: PaywallSource) {
+        analytics.track(.paywallViewed(source: source))
+    }
+
+    func applyProfile(_ profile: UserProfile) {
+        guard profile.id == authService.uid else {
+            analytics.setEnabled(false)
+            return
+        }
+        userProfile = profile
+    }
+
+    private func loadProfile(uid: String, expectedAuthenticationRevision: Int) async {
+        do {
+            let profile = try await ProfileViewModel.loadProfile(uid: uid, store: profileStore)
+            guard authenticationMatches(expectedAuthenticationRevision, uid: uid) else {
+                analytics.setEnabled(false)
+                return
+            }
+            userProfile = profile
+            analytics.setEnabled(!profile.analyticsOptOut)
+        } catch {
+            userProfile = nil
+            analytics.setEnabled(false)
+            AppLogger.shared.error("Profile bootstrap failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func authenticationMatches(_ expectedRevision: Int, uid: String? = nil) -> Bool {
+        guard authService.authenticationRevision == expectedRevision else { return false }
+        return uid.map { authService.uid == $0 } ?? true
+    }
+
     func signOut() {
+        analytics.setEnabled(false)
         do {
             try authService.signOut()
+            userProfile = nil
+            vehicles = []
+            currentVehicle = nil
             authenticationRevision += 1
         } catch {
             AppLogger.shared.error("Sign out failed: \(error.localizedDescription)")

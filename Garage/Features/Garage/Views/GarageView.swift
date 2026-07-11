@@ -16,7 +16,7 @@ struct GarageView: View {
                         """,
                         actionIdentifier: "garage.gate.cta"
                     ) {
-                        router.present(.subscription)
+                        router.present(.subscription(.garage))
                     }
                     .listRowSeparator(.hidden)
                 } else {

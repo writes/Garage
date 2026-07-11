@@ -27,6 +27,7 @@ enum SubscriptionDisclosure {
 }
 
 struct SubscriptionView: View {
+    let source: PaywallSource
     @Environment(AppState.self) private var appState
 
     var body: some View {
@@ -78,6 +79,9 @@ struct SubscriptionView: View {
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.textSecondary)
             }
+        }
+        .onAppear {
+            appState.paywallDidAppear(source: source)
         }
     }
 

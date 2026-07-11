@@ -7,15 +7,22 @@ import Testing
 struct PurchaseServiceTests {
     @Test func restorePurchases_callsTheInjectedRestorePathAndRefreshesEntitlement() async throws {
         let probe = RestorePurchasesProbe()
+        let analytics = AnalyticsSpy()
+        analytics.setEnabled(true)
         let service = PurchaseService(
             testIsPro: false,
-            restorePurchasesOverride: probe.restore
+            restorePurchasesOverride: probe.restore,
+            analytics: analytics
         )
 
         try await service.restorePurchases()
 
         #expect(probe.calls == 1)
         #expect(service.isPro)
+        #expect(analytics.events == [.purchaseRestored])
+        #expect(analytics.events.map(\.definition) == [
+            AnalyticsEventDefinition(name: "purchase_restored")
+        ])
     }
 
     @Test func subscriptionStatus_waitsForFirebaseRevenueCatIdentityBeforeReadingEntitlements() async {
@@ -52,10 +59,13 @@ struct PurchaseServiceTests {
     @Test func purchase_waitsForIdentityBeforeStartingThePurchase() async throws {
         let identityGate = IdentityGate()
         let purchaseProbe = CustomerInfoProbe(customerInfo: customerInfo(isPro: true))
+        let analytics = AnalyticsSpy()
+        analytics.setEnabled(true)
         let service = PurchaseService(
             testIsPro: false,
             identityReady: identityGate.wait,
-            purchaseOverride: purchaseProbe.load
+            purchaseOverride: purchaseProbe.load,
+            analytics: analytics
         )
 
         let purchaseTask = Task { try await service.purchaseForTesting() }
@@ -68,6 +78,10 @@ struct PurchaseServiceTests {
 
         #expect(purchaseProbe.calls == 1)
         #expect(service.isPro)
+        #expect(analytics.events == [.purchaseCompleted(productID: .monthly)])
+        #expect(analytics.events.map(\.definition) == [
+            AnalyticsEventDefinition(name: "purchase_completed", parameters: [.productID(.monthly)])
+        ])
     }
 
     @Test func restorePurchases_waitsForIdentityBeforeStartingTheRestore() async throws {

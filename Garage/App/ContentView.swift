@@ -12,7 +12,7 @@ struct ContentView: View {
                 LoginView()
             }
         }
-        .task {
+        .task(id: appState.authenticationStateID) {
             await appState.bootstrap()
         }
         .sheet(item: Binding(
@@ -68,8 +68,8 @@ struct ContentView: View {
             VehicleFormView()
         case .export:
             ExportView()
-        case .subscription:
-            SubscriptionView()
+        case .subscription(let source):
+            SubscriptionView(source: source)
         }
     }
 }

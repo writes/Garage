@@ -13,7 +13,8 @@ struct AuthServiceTests {
     }
 
     @Test func uiTestMode_blocksLiveSignInAndSignOutClearsInjectedState() async {
-        let service = AuthService(testUID: "test-user")
+        let analytics = AnalyticsSpy()
+        let service = AuthService(testUID: "test-user", analytics: analytics)
 
         do {
             try await service.signInWithApple(idToken: "token", nonce: "nonce")
@@ -26,6 +27,18 @@ struct AuthServiceTests {
 
         #expect(!service.isAuthenticated)
         #expect(service.uid == nil)
+        #expect(analytics.enabledValues.last == false)
+    }
+
+    @Test func accountSwitch_disablesAnalyticsBeforeTheNextProfileCanLoad() {
+        let analytics = AnalyticsSpy()
+        let service = AuthService(testUID: "first-user", analytics: analytics)
+        analytics.setEnabled(true)
+
+        service.switchAuthenticatedUserForTesting(to: "second-user")
+
+        #expect(service.uid == "second-user")
+        #expect(analytics.enabledValues.last == false)
     }
 
     @Test func authenticatedUser_awaitsRevenueCatIdentityAndAppliesReturnedCustomerInfo() async throws {

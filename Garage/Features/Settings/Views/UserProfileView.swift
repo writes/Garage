@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct UserProfileView: View {
+    @Environment(AppState.self) private var appState
     @State private var viewModel = ProfileViewModel()
 
     var body: some View {
@@ -12,11 +13,25 @@ struct UserProfileView: View {
                 .accessibilityIdentifier("profile.insurance")
             TextField("Policy Number", text: $viewModel.policyNumber)
                 .accessibilityIdentifier("profile.policy")
+            Toggle("Share anonymous usage analytics", isOn: Binding(
+                get: { !viewModel.analyticsOptOut },
+                set: { enabled in
+                    Task {
+                        guard await viewModel.setAnalyticsSharingEnabled(enabled),
+                              let profile = viewModel.userProfile else { return }
+                        appState.applyProfile(profile)
+                    }
+                }
+            ))
+            .accessibilityIdentifier("profile.analytics")
         }
         .navigationTitle("Profile")
         .toolbar {
             Button("Save") {
-                Task { await viewModel.save() }
+                Task {
+                    guard await viewModel.save(), let profile = viewModel.userProfile else { return }
+                    appState.applyProfile(profile)
+                }
             }
             .accessibilityIdentifier("profile.save")
         }

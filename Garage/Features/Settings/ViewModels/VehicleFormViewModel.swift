@@ -5,6 +5,7 @@ import Observation
 @Observable
 final class VehicleFormViewModel {
     private let vehicleService: VehicleService
+    private let analytics: any AnalyticsTracking
 
     var nickname = ""
     var make = ""
@@ -14,8 +15,12 @@ final class VehicleFormViewModel {
     var fuelType: FuelType = .premium93
     private(set) var error: AppError?
 
-    init(vehicleService: VehicleService = .shared) {
+    init(
+        vehicleService: VehicleService = .shared,
+        analytics: any AnalyticsTracking = AnalyticsService.shared
+    ) {
         self.vehicleService = vehicleService
+        self.analytics = analytics
     }
 
     func save() async -> Bool {
@@ -49,6 +54,9 @@ final class VehicleFormViewModel {
                 displayOrder: 0
             )
             _ = try await vehicleService.createVehicle(vehicle)
+            if let vehicles = try? await vehicleService.fetchVehicles(), vehicles.count == 1 {
+                analytics.track(.firstVehicleAdded)
+            }
             error = nil
             return true
         } catch {

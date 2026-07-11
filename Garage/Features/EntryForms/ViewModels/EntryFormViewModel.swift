@@ -7,6 +7,7 @@ final class EntryFormViewModel {
     private let entryService: EntryService
     private let vehicleService: VehicleService
     private let userID: () -> String?
+    private let analytics: any AnalyticsTracking
 
     var entryDate = Date.now
     var odometerReading = ""
@@ -22,12 +23,14 @@ final class EntryFormViewModel {
     init(
         entryService: EntryService = .shared,
         vehicleService: VehicleService = .shared,
+        analytics: any AnalyticsTracking = AnalyticsService.shared,
         userID: @escaping () -> String? = {
             AppRuntime.isLocalDemoMode ? AppRuntime.demoUserId : AuthService.shared.uid
         }
     ) {
         self.entryService = entryService
         self.vehicleService = vehicleService
+        self.analytics = analytics
         self.userID = userID
     }
 
@@ -88,6 +91,8 @@ final class EntryFormViewModel {
             updatedVehicle.updatedAt = .now
             try await vehicleService.updateVehicle(updatedVehicle)
 
+            await trackFirstEntryIfNeeded(vehicleId: vehicle.id, entryType: entryType)
+
             error = nil
             return true
         } catch {
@@ -102,6 +107,21 @@ final class EntryFormViewModel {
             return [:]
         }
         return object.mapValues(Self.wrap(any:))
+    }
+
+    private func trackFirstEntryIfNeeded(vehicleId: String, entryType: EntryType) async {
+        guard let vehicles = try? await vehicleService.fetchVehicles() else { return }
+        let vehicleIDs = Set(vehicles.map(\.id)).union([vehicleId])
+        var entryCount = 0
+
+        for id in vehicleIDs {
+            guard let entries = try? await entryService.fetchRecent(vehicleId: id, limit: 2) else { return }
+            entryCount += entries.count
+            guard entryCount <= 1 else { return }
+        }
+
+        guard entryCount == 1 else { return }
+        analytics.track(.firstEntryAdded(entryType: entryType))
     }
 
     private static func wrap(any: Any) -> AnyCodable {

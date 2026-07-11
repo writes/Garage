@@ -19,10 +19,16 @@ final class PurchaseService {
     private let customerInfoOverride: (@MainActor () async throws -> CustomerInfo)?
     private let purchaseOverride: (@MainActor () async throws -> CustomerInfo)?
     private let restorePurchasesOverride: (@MainActor () async throws -> Bool)?
+    private let analytics: any AnalyticsTracking
 
-    private init(mode: Mode = .live, isPro: Bool = false) {
+    private init(
+        mode: Mode = .live,
+        isPro: Bool = false,
+        analytics: any AnalyticsTracking = AnalyticsService.shared
+    ) {
         self.mode = mode
         self.isPro = isPro
+        self.analytics = analytics
         identityReady = { await AuthService.shared.waitForPurchasesIdentity() }
         customerInfoOverride = nil
         purchaseOverride = nil
@@ -35,7 +41,8 @@ final class PurchaseService {
         restorePurchasesOverride: (@MainActor () async throws -> Bool)? = nil,
         identityReady: (@MainActor () async -> String?)? = nil,
         customerInfoOverride: (@MainActor () async throws -> CustomerInfo)? = nil,
-        purchaseOverride: (@MainActor () async throws -> CustomerInfo)? = nil
+        purchaseOverride: (@MainActor () async throws -> CustomerInfo)? = nil,
+        analytics: any AnalyticsTracking = AnalyticsService.shared
     ) {
         mode = customerInfoOverride == nil && purchaseOverride == nil && restorePurchasesOverride == nil
             ? .uiTest
@@ -45,6 +52,7 @@ final class PurchaseService {
         self.customerInfoOverride = customerInfoOverride
         self.purchaseOverride = purchaseOverride
         self.restorePurchasesOverride = restorePurchasesOverride
+        self.analytics = analytics
     }
 #endif
 
@@ -80,6 +88,9 @@ final class PurchaseService {
             let result = try await Purchases.shared.purchase(package: package)
             return result.customerInfo
         }
+        if let productID = AnalyticsProductID(storeProductIdentifier: package.storeProduct.productIdentifier) {
+            analytics.track(.purchaseCompleted(productID: productID))
+        }
     }
 
     func restorePurchases() async throws {
@@ -92,11 +103,13 @@ final class PurchaseService {
 
         if let restorePurchasesOverride {
             isPro = try await restorePurchasesOverride()
+            analytics.track(.purchaseRestored)
             return
         }
 
         let customerInfo = try await Purchases.shared.restorePurchases()
         apply(customerInfo)
+        analytics.track(.purchaseRestored)
     }
 
     func apply(_ customerInfo: CustomerInfo) {
@@ -115,12 +128,13 @@ final class PurchaseService {
     }
 
 #if DEBUG
-    func purchaseForTesting() async throws {
+    func purchaseForTesting(productID: AnalyticsProductID = .monthly) async throws {
         guard let purchaseOverride else {
             throw AppError.subscriptionRequired("Purchases unavailable in UI tests")
         }
 
         try await performPurchase(purchaseOverride)
+        analytics.track(.purchaseCompleted(productID: productID))
     }
 #endif
 }
