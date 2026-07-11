@@ -5,14 +5,17 @@ import GoogleSignIn
 import Observation
 import RevenueCat
 import UIKit
-
 enum PurchasesIdentityAction: Equatable {
     case logIn(String)
     case logOut
 }
-
-typealias PurchasesIdentitySync = @MainActor (PurchasesIdentityAction) -> Void
-
+enum PurchasesIdentityResult {
+    case customerInfo(CustomerInfo)
+    case loggedOut
+    case failed
+}
+typealias PurchasesIdentitySync = @MainActor (PurchasesIdentityAction) async -> PurchasesIdentityResult
+typealias PurchasesCustomerInfoApply = @MainActor (CustomerInfo) -> Void
 @MainActor
 @Observable
 final class AuthService {
@@ -21,44 +24,51 @@ final class AuthService {
         case localDemo
         case uiTest
     }
-
     static let shared = AuthService()
     static let localDemo = AuthService(mode: .localDemo)
     static let uiTest = AuthService(mode: .uiTest)
-
     private(set) var currentUser: FirebaseAuth.User?
     private(set) var isAuthenticated = false
     private var authListener: AuthStateDidChangeListenerHandle?
     private let mode: Mode
     private let purchasesIdentitySync: PurchasesIdentitySync?
+    private let purchasesCustomerInfoApply: PurchasesCustomerInfoApply?
     private var lastPurchasesIdentity: PurchasesIdentityAction = .logOut
+    private var identityReadyUserID: String?
+    private var purchasesIdentityTask: Task<Void, Never>?
+    private var authenticationStateResolved = false
+    private var authenticationStateWaiters: [CheckedContinuation<Void, Never>] = []
     private var testUID: String?
-
     private init(mode: Mode = .live) {
         self.mode = mode
         purchasesIdentitySync = mode == .live ? Self.syncRevenueCatIdentity : nil
+        purchasesCustomerInfoApply = mode == .live ? PurchaseService.shared.apply : nil
         guard mode == .live else {
             isAuthenticated = mode == .localDemo
+            authenticationStateResolved = true
             return
         }
-
         authListener = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             Task { @MainActor in
                 self?.applyAuthenticationState(user)
             }
         }
     }
-
 #if DEBUG
-    init(testUID: String, purchasesIdentitySync: PurchasesIdentitySync? = nil) {
+    init(
+        testUID: String,
+        purchasesIdentitySync: PurchasesIdentitySync? = nil,
+        purchasesCustomerInfoApply: PurchasesCustomerInfoApply? = nil
+    ) {
         mode = .uiTest
         self.testUID = testUID
         self.purchasesIdentitySync = purchasesIdentitySync
+        self.purchasesCustomerInfoApply = purchasesCustomerInfoApply
         isAuthenticated = true
+        authenticationStateResolved = true
         syncPurchasesIdentity(for: testUID)
     }
 #endif
-
     var uid: String? {
         if mode == .localDemo || AppRuntime.isLocalDemoMode {
             return AppRuntime.demoUserId
@@ -139,6 +149,19 @@ final class AuthService {
         try Auth.auth().signOut()
         applyAuthenticationState(nil)
     }
+
+    /// Returns a UID only after RevenueCat has switched to that Firebase identity.
+    func waitForPurchasesIdentity() async -> String? {
+        await waitForAuthenticationState()
+
+        while true {
+            let expectedUserID = uid
+            await purchasesIdentityTask?.value
+
+            guard expectedUserID == uid else { continue }
+            return expectedUserID.flatMap { identityReadyUserID == $0 ? $0 : nil }
+        }
+    }
 }
 
 private extension AuthService {
@@ -146,6 +169,7 @@ private extension AuthService {
         currentUser = user
         isAuthenticated = user != nil
         syncPurchasesIdentity(for: user?.uid)
+        resolveAuthenticationStateIfNeeded()
     }
 
     func syncPurchasesIdentity(for userID: String?) {
@@ -153,22 +177,53 @@ private extension AuthService {
         guard action != lastPurchasesIdentity else { return }
 
         lastPurchasesIdentity = action
-        purchasesIdentitySync?(action)
+        identityReadyUserID = nil
+
+        guard let purchasesIdentitySync else { return }
+
+        purchasesIdentityTask = Task { [weak self, purchasesCustomerInfoApply] in
+            let result = await purchasesIdentitySync(action)
+            guard let self, action == self.lastPurchasesIdentity else { return }
+            guard case let (.logIn(userID), .customerInfo(customerInfo)) = (action, result) else {
+                self.identityReadyUserID = nil
+                return
+            }
+            purchasesCustomerInfoApply?(customerInfo)
+            self.identityReadyUserID = userID
+        }
     }
 
-    static func syncRevenueCatIdentity(_ action: PurchasesIdentityAction) {
+    func waitForAuthenticationState() async {
+        guard mode == .live, !authenticationStateResolved else { return }
+        await withCheckedContinuation { continuation in
+            authenticationStateWaiters.append(continuation)
+        }
+    }
+
+    func resolveAuthenticationStateIfNeeded() {
+        guard !authenticationStateResolved else { return }
+        authenticationStateResolved = true
+        let waiters = authenticationStateWaiters
+        authenticationStateWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+
+    static func syncRevenueCatIdentity(_ action: PurchasesIdentityAction) async -> PurchasesIdentityResult {
         switch action {
         case .logIn(let userID):
-            Purchases.shared.logIn(userID) { _, _, error in
-                if let error {
-                    AppLogger.purchase.error("RevenueCat logIn failed: \(error.localizedDescription)")
-                }
+            do {
+                return .customerInfo(try await Purchases.shared.logIn(userID).customerInfo)
+            } catch {
+                AppLogger.purchase.error("RevenueCat logIn failed: \(error.localizedDescription)")
+                return .failed
             }
         case .logOut:
-            Purchases.shared.logOut { _, error in
-                if let error {
-                    AppLogger.purchase.error("RevenueCat logOut failed: \(error.localizedDescription)")
-                }
+            do {
+                _ = try await Purchases.shared.logOut()
+                return .loggedOut
+            } catch {
+                AppLogger.purchase.error("RevenueCat logOut failed: \(error.localizedDescription)")
+                return .failed
             }
         }
     }

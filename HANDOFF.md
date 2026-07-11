@@ -2,13 +2,13 @@
 
 <!--CURRENT:START-->
 ## CURRENT STATE
-- updated: 2026-07-10T23:53:17Z by **codex-terra** on `audit/app-hardening` @ `d673a8c`
+- updated: 2026-07-11T00:20:33Z by **codex-terra** on `audit/app-hardening` @ `a8c6466`
 - runtime: (unchanged)
-- last session did: Bound RevenueCat identity to Firebase auth: the live auth listener calls logIn(Firebase UID), sign-out calls logOut, and a test-injected identity seam covers both. Policy, strict SwiftLint, and Release build pass; no Cloud Functions change.
+- last session did: Awaited RevenueCat Firebase identity sync: logIn applies returned CustomerInfo before entitlement reads, and purchases wait for the same readiness signal; hermetic Auth/Purchase ordering tests added. Policy, strict SwiftLint, security, and Release build pass; CloudFunctions unchanged.
 - in-flight (uncommitted/partial): none
-- BLOCKED / operator-gated: Full XCTest verification is blocked: local xcodebuild PIDs 3615 and 3861 remained live after clean erased-simulator attempts, leaving the result bundle unfinalized. No process was terminated without approval.
-- ⚠ contention / landmines: Stale local xcodebuild hosts only; working-tree files are otherwise uncontended.
-- ▶ **NEXT ACTION**: With explicit approval, terminate the stale local xcodebuild PIDs 3615 and 3861, then erase iPhone 17 Pro and rerun one non-overlapping full suite to record its final Executed N tests line.
+- BLOCKED / operator-gated: Full XCTest verification remains unconfirmed: the clean iPhone 17 Pro run built successfully but its local xcodebuild host did not finalize the result bundle. No host was terminated without approval.
+- ⚠ contention / landmines: Stale local xcodebuild result-bundle finalization only; working-tree files are otherwise uncontended.
+- ▶ **NEXT ACTION**: Re-run one full Garage XCTest suite after the local xcodebuild result-bundle host issue is resolved; the 2026-07-10 clean iPhone 17 Pro run compiled/build-succeeded but never finalized an xcresult, so no Executed-N count is valid.
 <!--CURRENT:END-->
 
 ## WHERE THE DEEP STATE LIVES (pointers — do not duplicate content here)
@@ -20,6 +20,7 @@
 
 ## LOG (newest first; keep ~12)
 <!--LOG:START-->
+- 2026-07-11T00:20:33Z **codex-terra** @`a8c6466`: Awaited RevenueCat Firebase identity sync: logIn applies returned CustomerInfo before entitlement reads, and purchases wait for the same readiness signal; hermetic Auth/Purchase ordering tests added. Policy, strict SwiftLint, security, and Release build pass; CloudFunctions unchanged.  — NEXT: Re-run one full Garage XCTest suite after the local xcodebuild result-bundle host issue is resolved; the 2026-07-10 clean iPhone 17 Pro run compiled/build-succeeded but never finalized an xcresult, so no Executed-N count is valid.
 - 2026-07-10T23:53:17Z **codex-terra** @`d673a8c`: Bound RevenueCat identity to Firebase auth: the live auth listener calls logIn(Firebase UID), sign-out calls logOut, and a test-injected identity seam covers both. Policy, strict SwiftLint, and Release build pass; no Cloud Functions change.  — NEXT: With explicit approval, terminate the stale local xcodebuild PIDs 3615 and 3861, then erase iPhone 17 Pro and rerun one non-overlapping full suite to record its final Executed N tests line.
 - 2026-07-10T23:28:20Z **codex-terra** @`36fcef7`: Implemented final hardening pass: Dashboard reload is keyed to current vehicle with a SQ5 switch journey regression; billed HTTP-OK malformed/unrecognized Claude output keeps daily quota while network/5xx refunds; four named test-only service initializers are DEBUG-gated. Cloud 31/31, rules 8/8, TypeScript build, policy/security, SwiftLint, and Release build pass. Full clean iPhone 17 Pro suite is blocked by stale xcodebuild PID 94465 repeatedly restarting the UI runner after signal-kill events; no assertion failure or valid final count.  — NEXT: Obtain approval to terminate local stale xcodebuild PID 94465, then shutdown/erase iPhone 17 Pro and rerun one non-overlapping full xcodebuild test suite; record its final Executed N tests line.
 - 2026-07-10T23:09:22Z **codex-terra** @`c6d7a92`: Fixed the production-critical RevenueCat webhook transaction ordering: standard events now read the idempotency and user documents before any write. The in-memory Firestore transaction fake now rejects reads after a write, with a regression test. Cloud build, 31 unit tests, and 8 rules tests are green.  — NEXT: Run the required tri-provider pre-main review, then human review and merge; no deploy action taken.
@@ -31,5 +32,4 @@
 - 2026-07-10T21:39:17Z **codex-terra** @`e9829ad`: Pass D2 fixed Pro entitlement scope so unrelated RevenueCat events are recorded without changing state, compile-excluded DemoSessionStore and all app call sites from Release, and made UI navigation taps wait for hittability. Cloud 26/26; policy/lint, Release build, clean full suite, and erased UI rerun green.  — NEXT: Operator review and merge candidate audit/app-hardening; no deploy action taken.
 - 2026-07-10T21:05:56Z **codex-terra** @`406a2e4`: Pass D complete: added 10 hermetic LOCAL_DEMO_MODE UI-routing journey files (15 new UI tests), plus demo-only routing/readiness fixes discovered by XCTest. Clean full suite 71/71; GarageUITests 17/17 twice with erase between runs.  — NEXT: Operator review and merge candidate audit/app-hardening; no deploy action taken.
 - 2026-07-10T19:27:40Z **codex-terra** @`de99993`: Pass C2 resolved the five confirmed cross-check defects: upstream quota refunds, RevenueCat fail-safe entitlement ordering/type handling, and CSV injection hardening for leading whitespace/control prefixes and attachments. Cloud 24/24; policy/lint and clean iPhone 17 Pro XCTest 56/56 green.  — NEXT: Operator review and merge candidate audit/app-hardening; no deploy action taken.
-- 2026-07-10T19:17:29Z **codex-terra** @`f9cba16`: Pass C complete: implemented voted TV-A5 demo session overlay, 62 E2E accessibility identifier call sites, debug UI_TEST_PRO entitlement, injected SubscriptionView service, fixed demo sync badge, and TV-A6 dead-view-model removal; policy/lint/XcodeGen/full iPhone 17 Pro tests green (54/54).  — NEXT: Operator review and merge candidate audit/app-hardening; no deploy action taken.
 <!--LOG:END-->

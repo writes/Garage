@@ -1,3 +1,5 @@
+import Foundation
+import RevenueCat
 import Testing
 @testable import Garage
 
@@ -26,26 +28,73 @@ struct AuthServiceTests {
         #expect(service.uid == nil)
     }
 
-    @Test func authenticatedUser_syncsRevenueCatIdentityAndSignOutClearsIt() throws {
+    @Test func authenticatedUser_awaitsRevenueCatIdentityAndAppliesReturnedCustomerInfo() async throws {
         let identityProbe = PurchasesIdentityProbe()
+        let purchaseService = PurchaseService(testIsPro: false)
         let service = AuthService(
             testUID: "firebase-user",
-            purchasesIdentitySync: identityProbe.record
+            purchasesIdentitySync: identityProbe.sync,
+            purchasesCustomerInfoApply: purchaseService.apply
         )
 
+        let readyUserID = Task { await service.waitForPurchasesIdentity() }
+        await Task.yield()
+
         #expect(identityProbe.actions == [.logIn("firebase-user")])
+        #expect(!purchaseService.isPro)
+
+        identityProbe.completeLogIn(with: customerInfo(isPro: true))
+
+        let resolvedUserID = await readyUserID.value
+        #expect(resolvedUserID == "firebase-user")
+        #expect(purchaseService.isPro)
 
         try service.signOut()
+        _ = await service.waitForPurchasesIdentity()
 
         #expect(identityProbe.actions == [.logIn("firebase-user"), .logOut])
+    }
+
+    private func customerInfo(isPro: Bool) -> CustomerInfo {
+        let proEntitlement = EntitlementInfo(
+            identifier: "pro",
+            isActive: isPro,
+            willRenew: true,
+            periodType: .normal,
+            store: .appStore,
+            productIdentifier: "garage.pro",
+            isSandbox: true,
+            ownershipType: .purchased
+        )
+        let now = Date()
+        return CustomerInfo(
+            entitlements: EntitlementInfos(entitlements: ["pro": proEntitlement]),
+            requestDate: now,
+            firstSeen: now,
+            originalAppUserId: "firebase-user"
+        )
     }
 }
 
 @MainActor
 private final class PurchasesIdentityProbe {
     private(set) var actions: [PurchasesIdentityAction] = []
+    private var logInContinuation: CheckedContinuation<PurchasesIdentityResult, Never>?
 
-    func record(_ action: PurchasesIdentityAction) {
+    func sync(_ action: PurchasesIdentityAction) async -> PurchasesIdentityResult {
         actions.append(action)
+        switch action {
+        case .logIn:
+            return await withCheckedContinuation { continuation in
+                logInContinuation = continuation
+            }
+        case .logOut:
+            return .loggedOut
+        }
+    }
+
+    func completeLogIn(with customerInfo: CustomerInfo) {
+        logInContinuation?.resume(returning: .customerInfo(customerInfo))
+        logInContinuation = nil
     }
 }
