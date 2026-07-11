@@ -27,7 +27,7 @@ enum AppError: LocalizedError, Equatable, Sendable {
         case .subscriptionRequired(let feature):
             return "Pro required for \(feature)"
         case .vehicleLimitReached:
-            return "Free accounts are limited to 1 vehicle. Upgrade to Pro for unlimited."
+            return "Free accounts are limited to 1 vehicle. Upgrade to Pro for up to 5 vehicles."
         case .syncConflict(let message):
             return "Sync conflict: \(message)"
         case .unknown(let message):

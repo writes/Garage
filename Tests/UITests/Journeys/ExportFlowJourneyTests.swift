@@ -10,6 +10,7 @@ final class ExportFlowJourneyTests: JourneyTestCase {
         require(app.staticTexts["Raw data export — free forever"])
         require(app.buttons["export.buildCSV"])
         require(app.buttons["export.gate.cta"])
+        require(app.staticTexts["Upgrade to generate PDF report exports."])
         XCTAssertFalse(app.buttons["export.buildPDF"].exists)
 
         revealAndTap(app.buttons["export.buildCSV"], in: app)

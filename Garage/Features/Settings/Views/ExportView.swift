@@ -27,7 +27,7 @@ struct ExportView: View {
                 }
                 .garageCard()
 
-                // WAVE-3: buyer-ready PDF reports remain a Pro entitlement.
+                // WAVE-3: PDF reports remain a Pro entitlement.
                 if appState.isPro {
                     VStack(alignment: .leading, spacing: Theme.Spacing.md) {
                         Text("Report builder")
@@ -69,7 +69,7 @@ struct ExportView: View {
                 } else {
                     ProGateView(
                         title: "PDF reports are part of Pro",
-                        message: "Raw data CSV export is free forever. Upgrade to generate buyer-ready PDF reports.",
+                        message: "Upgrade to generate PDF report exports.",
                         actionIdentifier: "export.gate.cta"
                     ) {
                         router.present(.subscription(.exportPDF))

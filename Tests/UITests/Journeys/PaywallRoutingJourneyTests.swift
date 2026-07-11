@@ -3,7 +3,7 @@ import XCTest
 /// Hermetic UI-routing journey: LOCAL_DEMO_MODE only; no live Firebase or RevenueCat evidence.
 @MainActor
 final class PaywallRoutingJourneyTests: JourneyTestCase {
-    func testFreeGatesRouteFromGarageRemindersAndPDFReportsToSubscription() {
+    func testFreeGatesRouteFromGarageAndPDFReportsToSubscription() {
         let app = launchDemo()
 
         tapTab("Garage", in: app)
@@ -13,8 +13,8 @@ final class PaywallRoutingJourneyTests: JourneyTestCase {
         tapTab("Settings", in: app)
         let reminders = app.buttons["settings.reminders"]
         tapWhenHittable(reminders)
-        routeToSubscription(from: app.buttons["reminder.gate.cta"], in: app)
-        dismissSheet(in: app, waitingFor: app.buttons["subscription.refresh"])
+        require(app.textFields["reminder.form.title"])
+        XCTAssertFalse(app.buttons["reminder.gate.cta"].exists)
 
         let settingsBack = app.navigationBars.buttons["Settings"]
         tapWhenHittable(settingsBack)
@@ -24,7 +24,7 @@ final class PaywallRoutingJourneyTests: JourneyTestCase {
         routeToSubscription(from: app.buttons["export.gate.cta"], in: app)
     }
 
-    func testProDemoLeavesGarageRemindersAndExportUnlocked() {
+    func testProDemoLeavesGarageAndPDFReportsUnlocked() {
         let app = launchDemo(pro: true)
 
         tapTab("Garage", in: app)
@@ -70,6 +70,7 @@ final class PaywallRoutingJourneyTests: JourneyTestCase {
         require(privacy)
         XCTAssertTrue(terms.isHittable, "Terms of Use must be visible before purchase")
         XCTAssertTrue(privacy.isHittable, "Privacy Policy must be visible before purchase")
+        require(app.staticTexts["Pro includes up to 5 vehicles and generous fair-use AI limits."])
     }
 
     private func routeToSubscription(from gate: XCUIElement, in app: XCUIApplication) {

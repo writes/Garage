@@ -3,14 +3,14 @@ import XCTest
 /// Hermetic UI-routing journey: LOCAL_DEMO_MODE only; no live Firebase or RevenueCat evidence.
 @MainActor
 final class RemindersGateJourneyTests: JourneyTestCase {
-    func testFreeDemoShowsReminderProGate() {
+    func testFreeDemoCanConfigureReminders() {
         let app = launchDemo()
         tapTab("Settings", in: app)
         let reminders = app.buttons["settings.reminders"]
         tapWhenHittable(reminders)
 
-        require(app.buttons["reminder.gate.cta"])
-        XCTAssertFalse(app.textFields["reminder.form.title"].exists)
+        require(app.textFields["reminder.form.title"])
+        XCTAssertFalse(app.buttons["reminder.gate.cta"].exists)
     }
 
     func testProDemoCreatesReminderShownOnDashboard() {

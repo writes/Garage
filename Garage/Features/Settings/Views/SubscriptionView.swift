@@ -33,9 +33,8 @@ struct SubscriptionView: View {
     var body: some View {
         BottomSheet(title: "Garage Pro") {
             Text(
-                "Unlimited vehicles, reminders, exports, attachments, gallery, "
-                    + "parts, detailing, warranty, recalls, AI oil analysis, "
-                    + "and full stats."
+                "Up to 5 vehicles, enhanced PDF reports, gallery, parts, detailing, "
+                    + "warranty, recalls, and full stats."
             )
                 .font(Theme.Typography.body)
             PrimaryButton(title: "Refresh Plans") {
@@ -50,6 +49,9 @@ struct SubscriptionView: View {
             // immediately visible at the sheet's medium detent and unambiguously presented
             // before a customer can begin a purchase.
             policyLinks
+            Text("Pro includes up to 5 vehicles and generous fair-use AI limits.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
             if let packages = appState.purchaseService.offerings?.current?.availablePackages {
                 ForEach(Swift.Array(packages.enumerated()), id: \.element.identifier) { package in
                     let product = package.element.storeProduct

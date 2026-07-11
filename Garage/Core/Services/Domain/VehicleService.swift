@@ -199,7 +199,8 @@ final class VehicleService {
     }
 
     static func validateVehicleLimit(existingVehicleCount: Int, isPro: Bool) throws {
-        guard isPro || existingVehicleCount < Constants.maxFreeVehicles else {
+        let vehicleLimit = isPro ? Constants.maxProVehicles : Constants.maxFreeVehicles
+        guard existingVehicleCount < vehicleLimit else {
             throw AppError.vehicleLimitReached
         }
     }

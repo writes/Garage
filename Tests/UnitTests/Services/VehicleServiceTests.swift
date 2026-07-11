@@ -30,18 +30,30 @@ struct VehicleServiceTests {
         #expect(vehicles.map(\.id) == ["first"])
     }
 
-    @Test func proUser_remainsUnlimitedBeyondFreeCap() async throws {
+    @Test func proUser_canCreateVehicleImmediatelyBelowCap() async throws {
         let service = VehicleService(
-            testVehicles: (0 ... 4).map { vehicle(id: "existing-\($0)") },
+            testVehicles: (0..<(Constants.maxProVehicles - 1)).map { vehicle(id: "existing-\($0)") },
             purchaseService: PurchaseService(testIsPro: true)
         )
 
-        _ = try await service.createVehicle(vehicle(id: "sixth"))
+        _ = try await service.createVehicle(vehicle(id: "fifth"))
         let vehicles = try await service.fetchVehicles()
 
-        #expect(vehicles.count == 6)
-        #expect(PurchaseService(testIsPro: true).isPro)
-        #expect(!PurchaseService(testIsPro: false).isPro)
+        #expect(vehicles.count == Constants.maxProVehicles)
+    }
+
+    @Test func proUser_isBlockedAtVehicleCap() async {
+        let service = VehicleService(
+            testVehicles: (0..<Constants.maxProVehicles).map { vehicle(id: "existing-\($0)") },
+            purchaseService: PurchaseService(testIsPro: true)
+        )
+
+        do {
+            _ = try await service.createVehicle(vehicle(id: "sixth"))
+            Issue.record("Expected the Pro vehicle cap to reject the sixth vehicle")
+        } catch {
+            #expect(error as? AppError == .vehicleLimitReached)
+        }
     }
 
     private func vehicle(id: String) -> Vehicle {
