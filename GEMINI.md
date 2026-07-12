@@ -147,7 +147,12 @@ Key landmines: #1 `agy models` hangs · #2 CLIs hang on stdin (always redirect +
 via file content even though the scope check is path-based · #9 verify the *running* image, not
 a "deployed ✅" note · #12 agy `--model` **silently downgrades** to "Gemini 3.5 Flash (Medium)"
 on any unrecognized value — pin the exact roster label and verify via the resolver line in
-`~/.gemini/antigravity-cli/cli.log`, never model self-report.
+`~/.gemini/antigravity-cli/cli.log`, never model self-report · #14 **LLM/build processes LEAK**
+(operator directive 2026-07-12): hung codex/agy/`claude -p`/xcodebuild processes survive their
+tasks and burn quota silently (observed: 27h agy wrappers, a 44h silent codex mine, stale
+xcodebuild runners) — **run `python3 scripts/brain/process_sentinel.py` at session start and
+before/after any unattended or long-running LLM work**; every spawn site carries its own
+timeout; cross-session suspects are reported to the operator, never killed blindly.
 
 ---
 

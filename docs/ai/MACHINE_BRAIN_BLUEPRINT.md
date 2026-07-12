@@ -222,6 +222,7 @@ never an auto-edit beyond appending rows the human confirms (Law 5).
 | 2 | Gemini voter (agy→Vertex→API) | I | `scripts/brain/gemini_consult.py` | §2.I,§4 | LIVE | 2026-06-29 |
 | 3 | Live tri-agent vote runner (concurrent pools) | I | `scripts/brain/tri_agent_vote.py` | §2.I,§4 | LIVE | 2026-06-29 |
 | 4 | Decision ledger (append-only) | I | `DECISION_LEDGER.jsonl` | §2.I,§8 | LIVE | 2026-06-29 |
+| 4b | Process sentinel (LLM/build leak detection) | V | `scripts/brain/process_sentinel.py` | §9 #14 | LIVE (13/13) | 2026-07-12 |
 | 5 | Cross-agent handoff + CLI | III | `HANDOFF.md`, `scripts/brain/session_handoff.py` | §2.III,§8 | LIVE | 2026-06-29 |
 | 6 | SessionStart HANDOFF injection | III | `.claude/hooks/session-handoff-inject.sh` (+ settings) | §2.III,§9 | LIVE (wired since `5679a11`; status truth-up 2026-07-10) | 2026-06-29 |
 | 7 | Cross-session file memory + index | III | `~/.claude/projects/-Users-jt-Code-AppDev/memory/`, `MEMORY.md` | §2.III,§8 | LIVE | 2026-06-29 |
@@ -239,6 +240,16 @@ never an auto-edit beyond appending rows the human confirms (Law 5).
 | 19 | Model routing v3 (lane-split collective) | IV | `docs/research/2026-07-10_MODEL_ROUTING_V3.md` + doctrine §2 + `BRAIN_*` pins in `scripts/brain/*` | §4 | LIVE | 2026-07-10 |
 
 ### 5.4 Changelog (append-only; newest first)
+
+- **2026-07-12** — **Process sentinel installed (Organ V; landmine #14 registered).** Operator
+  directive after observed LLM leaks (27h hung agy wrappers, a 44h silent codex mine in the
+  trading repo): `scripts/brain/process_sentinel.py` classifies codex/agy/`claude -p`/
+  xcodebuild processes, applies per-class age thresholds (env-overridable
+  `SENTINEL_<CLASS>_MAX_MIN`), distinguishes true orphans (ppid==1, reap-able via
+  `--kill-orphans`) from cross-session suspects (report-only — contention rules). 13/13
+  selftest; first live run immediately caught two 27h agy leaks from a sibling session.
+  Ritual: run at session start + before/after unattended LLM runs (doctrine files updated in
+  the same commit per §5.1).
 
 - **2026-07-11** — **Resolver canonicalization defect found live and fixed (landmine #13
   candidate → registered below).** A Law-1 vote (vehicle-limit mechanism) mis-resolved: gemini's
@@ -348,6 +359,7 @@ and `scripts/brain/scope_guard.py`.
 | 11 | Blueprint drifts behind the repo | The maintenance contract (§5.1) + reconciliation ritual (§5.2) |
 | 12 | agy `--model` with an unrecognized value silently downgrades to "Gemini 3.5 Flash (Medium)" — no error | Pin the exact roster label (`"Gemini 3.1 Pro (High)"`); after changing a pin, verify the resolver line in `~/.gemini/antigravity-cli/cli.log`, never model self-report |
 | 13 | Voters answer the same option in different shapes (bare "A" vs "A: full text" vs echoed body) — string-hash grouping splits a real majority and the confidence fallback hands the lone dissenter a veto | Pass the enumerated option roster into `resolve_majority(options=)` (tri_agent_vote does since 2026-07-11); watch any `highest_confidence_no_majority` row whose positions contain bare letters — it may be a mis-resolution, not a true 1/1/1 |
+| 14 | Long-running LLM/build processes LEAK: hung codex/agy/`claude -p`/xcodebuild survive their tasks, burning quota/tokens silently and stalling their lane (observed: 27h-old hung agy wrappers pids 53070/53073, a 44h silent codex mine in the trading repo, stale xcodebuild runner PIDs). ps `etime` is misread easily — `12:48` is mm:ss, not hh:mm | `scripts/brain/process_sentinel.py` (13/13 selftest): classifies provider/build processes, age-thresholds per class (env-overridable), flags orphans vs cross-session; run at session start + before/after unattended runs; `--kill-orphans` reaps ONLY ppid==1 true orphans; cross-session suspects go to the operator (contention rules), never killed blindly. Every spawn site still carries its own timeout (landmine #2) |
 
 ---
 
