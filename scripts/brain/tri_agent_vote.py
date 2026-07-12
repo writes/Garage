@@ -33,6 +33,7 @@ from typing import Dict, List, Optional
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import consensus  # noqa: E402  (local sibling)
+from secret_screen import redact_secret_content, secret_scan  # noqa: E402  (DS-5)
 from gemini_consult import (  # noqa: E402
     ROSTER,
     _extract_json,
@@ -276,6 +277,16 @@ def main(argv=None) -> int:
         return 2
 
     prompt = build_prompt(args.question, args.options)
+    # DS-5 fail-closed outbound screen: a vote question/options containing a
+    # credential must never reach any provider (or agy's argv — landmine #14
+    # sibling). Labels only; never echo matched text.
+    outbound_hits = secret_scan(prompt)
+    if outbound_hits:
+        print(json.dumps({
+            "error": "vote blocked: question/options tripped the secret screen",
+            "labels": outbound_hits,
+        }, indent=2))
+        return 2
     chosen = [v.strip() for v in args.voters.split(",") if v.strip() in VOTERS]
     if len(chosen) < 2:
         print("error: need at least 2 voters", file=sys.stderr)
@@ -289,6 +300,23 @@ def main(argv=None) -> int:
 
     # Order positions deterministically by voter name for stable output.
     positions.sort(key=lambda p: p["agent"])
+
+    # DS-5 inbound redaction: provider output is untrusted and the ledger is
+    # append-only — redact secret-shaped content BEFORE resolution/printing so
+    # a prompt-injected credential can never be persisted. Labels are recorded
+    # per voter; enum-anchored grouping is unaffected by body redaction.
+    for p in positions:
+        redaction_labels: List[str] = []
+        for field in ("decision", "reasoning"):
+            value = p.get(field)
+            if isinstance(value, str) and value:
+                redacted, labels = redact_secret_content(value)
+                if labels:
+                    p[field] = redacted
+                    redaction_labels.extend(labels)
+        if redaction_labels:
+            p["redactions"] = sorted(set(redaction_labels))
+
     live = [p for p in positions if is_live_pinned_voter(p)]
 
     sys.stderr.write("\n# ── RAW POSITIONS ─────────────────────────────\n")

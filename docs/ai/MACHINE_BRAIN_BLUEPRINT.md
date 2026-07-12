@@ -222,7 +222,8 @@ never an auto-edit beyond appending rows the human confirms (Law 5).
 | 2 | Gemini voter (agy→Vertex→API) | I | `scripts/brain/gemini_consult.py` | §2.I,§4 | LIVE | 2026-06-29 |
 | 3 | Live tri-agent vote runner (concurrent pools) | I | `scripts/brain/tri_agent_vote.py` | §2.I,§4 | LIVE | 2026-06-29 |
 | 4 | Decision ledger (append-only) | I | `DECISION_LEDGER.jsonl` | §2.I,§8 | LIVE | 2026-06-29 |
-| 4b | Process sentinel (LLM/build leak detection) | V | `scripts/brain/process_sentinel.py` | §9 #14 | LIVE (13/13) | 2026-07-12 |
+| 4b | Process sentinel (LLM/build leak detection) | V | `scripts/brain/process_sentinel.py` | §9 #14 | LIVE (13/13, SessionStart-hooked) | 2026-07-12 |
+| 4c | Shared secret screen (all provider-bound text) | V | `scripts/brain/secret_screen.py` (re-exported by tri_review; consumed by tri_agent_vote outbound+ledger, gemini_consult argv) | §9 #8 | LIVE (6/6; tri_review 62/62) | 2026-07-12 |
 | 5 | Cross-agent handoff + CLI | III | `HANDOFF.md`, `scripts/brain/session_handoff.py` | §2.III,§8 | LIVE | 2026-06-29 |
 | 6 | SessionStart HANDOFF injection | III | `.claude/hooks/session-handoff-inject.sh` (+ settings) | §2.III,§9 | LIVE (wired since `5679a11`; status truth-up 2026-07-10) | 2026-06-29 |
 | 7 | Cross-session file memory + index | III | `~/.claude/projects/-Users-jt-Code-AppDev/memory/`, `MEMORY.md` | §2.III,§8 | LIVE | 2026-06-29 |
@@ -249,7 +250,17 @@ never an auto-edit beyond appending rows the human confirms (Law 5).
   `--kill-orphans`) from cross-session suspects (report-only — contention rules). 13/13
   selftest; first live run immediately caught two 27h agy leaks from a sibling session.
   Ritual: run at session start + before/after unattended LLM runs (doctrine files updated in
-  the same commit per §5.1).
+  the same commit per §5.1). **Same-day follow-up (DS-5, LLM-leak audit):** sentinel wired
+  into the SessionStart hook (`.claude/settings.json`, non-blocking `|| true`); secret
+  screening extracted to `secret_screen.py` and extended to the two previously-unscreened
+  provider paths — `tri_agent_vote` (fail-closed outbound screen on question/options + inbound
+  redaction of decision/reasoning before the append-only ledger, `redactions` labels recorded
+  per position) and `gemini_consult.try_agy` (prompt screened before it enters argv — argv is
+  `ps`-visible to any local process; agy has no stdin mode, so argv visibility for non-secret
+  text is a documented accepted residual); `session_handoff.py` git call gained a timeout.
+  Verified: secret_screen 6/6, consensus 24/24, sentinel 13/13, tri_review 62/62, import graph
+  cycle-free. Client-side LLM audit (same sweep): CLEAN — no provider keys/endpoints outside
+  CloudFunctions env, no PII decoration, no payload logging.
 
 - **2026-07-11** — **Resolver canonicalization defect found live and fixed (landmine #13
   candidate → registered below).** A Law-1 vote (vehicle-limit mechanism) mis-resolved: gemini's

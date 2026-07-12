@@ -22,7 +22,7 @@ import subprocess
 import sys
 
 ROOT = subprocess.run(
-    ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True
+    ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, timeout=10
 ).stdout.strip() or os.getcwd()
 HANDOFF = os.path.join(ROOT, "HANDOFF.md")
 

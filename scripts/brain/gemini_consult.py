@@ -321,7 +321,18 @@ def try_agy(
     The caller must hold ``agy_resolver_lock`` and capture resolver identity
     before launching this subprocess, then verify and parse before releasing
     that lock.
+
+    DS-5 (2026-07-12): the prompt travels as an argv element, visible in `ps`
+    to every local process while agy runs. agy has no stdin/prompt-file mode
+    (landmine #2: it must not read stdin at all), so argv visibility is an
+    accepted residual for NON-secret text on this single-user machine — but
+    secrets are screened fail-closed here so a credential can never reach a
+    process listing.
     """
+    from secret_screen import secret_scan  # local sibling; deferred import avoids cycles
+    hits = secret_scan(prompt)
+    if hits:
+        return None, f"agy blocked: prompt tripped secret screen ({', '.join(hits)})"
     cmd = ["agy", "--sandbox"]
     if model:
         cmd.extend(["--model", model])
