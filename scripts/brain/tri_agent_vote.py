@@ -10,12 +10,17 @@ Poses ONE enumerated question to three INDEPENDENT voters in parallel:
 Each emits {decision, reasoning, confidence}; we resolve by 2/3 majority (no veto)
 via consensus.py and append one row to DECISION_LEDGER.jsonl.
 
+Security contract: a secret-shaped inbound decision or reasoning is redacted for
+safe diagnostics and invalidates that voter. It cannot count as live toward a
+Law-1 majority or enter the ledger resolution.
+
 The three providers are SEPARATE rate pools, so they may run concurrently (landmine #4).
 
 Usage:
   python3 tri_agent_vote.py --question "..." --options "A: ...|B: ..." \\
       --timestamp 2026-06-29T12:00:00Z [--timeout 150] [--voters claude,codex,gemini] \\
       [--dry-run] [--allow-degraded]
+  python3 tri_agent_vote.py selftest
 """
 from __future__ import annotations
 
@@ -200,6 +205,43 @@ def is_live_pinned_voter(position: Dict) -> bool:
     return agent != "gemini" or position.get("model_verified") is True
 
 
+def redact_and_invalidate_positions(positions: List[Dict]) -> None:
+    """Redact untrusted response fields in place and fail closed on any hit.
+
+    ``redactions`` retains safe pattern labels for RAW POSITIONS diagnostics;
+    the specified error makes ``is_live_pinned_voter`` reject the position.
+    """
+    for position in positions:
+        redaction_labels: List[str] = []
+        for field in ("decision", "reasoning"):
+            value = position.get(field)
+            if isinstance(value, str) and value:
+                redacted, labels = redact_secret_content(value)
+                if labels:
+                    position[field] = redacted
+                    redaction_labels.extend(labels)
+        if redaction_labels:
+            labels = sorted(set(redaction_labels))
+            position["redactions"] = labels
+            position["error"] = (
+                "response invalidated: secret-shaped content redacted "
+                f"({', '.join(labels)})"
+            )
+
+
+def format_raw_position(position: Dict) -> str:
+    """Render one sanitized voter diagnostic line for the RAW POSITIONS section."""
+    tag = "OK " if is_live_pinned_voter(position) else "ERR"
+    labels = position.get("redactions")
+    redactions = f" redactions={labels!r}" if labels else ""
+    error = f" ({position['error']})" if position.get("error") else ""
+    return (
+        f"#  [{tag}] {position['agent']:<7} conf={position.get('confidence', 0):.2f} "
+        f"decision={position.get('decision', '')!r} reasoning={position.get('reasoning', '')!r}"
+        f"{redactions}{error}\n"
+    )
+
+
 def degraded_pair_agrees(positions: List[Dict], options: Optional[List[str]] = None) -> bool:
     """Require exactly two live decisions to share consensus canonical form.
 
@@ -250,7 +292,76 @@ def _report_roster_deviations(
         )
 
 
-def main(argv=None) -> int:
+def _selftest() -> int:
+    """Exercise secret-redaction invalidation without invoking live voter CLIs."""
+    failures = []
+
+    def check(name: str, condition: bool) -> None:
+        print(("  ok    " if condition else "  FAIL  ") + name)
+        if not condition:
+            failures.append(name)
+
+    def position(agent: str, decision: str, reasoning: str, confidence: float) -> Dict:
+        pinned = PINNED_VOTERS[agent]
+        result = {
+            "agent": agent,
+            "decision": decision,
+            "reasoning": reasoning,
+            "confidence": confidence,
+            "model": pinned["model"],
+            "backend": pinned["backend"],
+        }
+        if agent == "gemini":
+            result["model_verified"] = True
+        return result
+
+    # Build at runtime so repository source scanners never see a complete fixture.
+    secret = "sk-ant-" + "a1b2c3d4e5" * 3
+    options = ["A: retain the safe path", "B: reject the safe path"]
+    positions = [
+        position("claude", "A", "contains " + secret, 0.8),
+        position("codex", "A", "independent evidence supports A", 0.7),
+        position("gemini", "A", "independent evidence supports A", 0.9),
+    ]
+    redact_and_invalidate_positions(positions)
+    tainted = positions[0]
+    diagnostics = format_raw_position(tainted)
+    serialized_positions = json.dumps(positions)
+    live = [p for p in positions if is_live_pinned_voter(p)]
+
+    check("secret-shaped response is redacted", secret not in serialized_positions)
+    check("redaction labels are retained", tainted.get("redactions") == ["Anthropic key"])
+    check("redaction invalidates voter",
+          tainted.get("error") == "response invalidated: secret-shaped content redacted (Anthropic key)"
+          and not is_live_pinned_voter(tainted))
+    check("RAW POSITIONS diagnostic keeps safe labels", "Anthropic key" in diagnostics)
+    check("RAW POSITIONS diagnostic omits secret", secret not in diagnostics)
+    check("two untainted voters remain live", [p["agent"] for p in live] == ["codex", "gemini"])
+    check("surviving degraded pair agrees", degraded_pair_agrees(live, options=options))
+
+    with tempfile.TemporaryDirectory(prefix="tri-agent-vote-selftest-") as temp_dir:
+        ledger_path = os.path.join(temp_dir, "ledger.jsonl")
+        row, resolution = consensus.append_ledger_majority(
+            live,
+            topic="selftest redaction invalidation",
+            timestamp="2026-07-12T00:00:00Z",
+            ledger_path=ledger_path,
+            options=options,
+        )
+        check("survivors resolve after invalidation",
+              resolution["decision"] == options[0] and resolution["n_agents"] == 2)
+        check("ledger row contains no raw secret", secret not in json.dumps(row))
+
+    print("SELFTEST " + ("PASSED" if not failures else f"FAILED ({len(failures)})"))
+    return 0 if not failures else 1
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv == ["selftest"]:
+        return _selftest()
+
     ap = argparse.ArgumentParser(description="Live tri-agent consensus vote + ledger append.")
     ap.add_argument("--question", required=True)
     ap.add_argument("--options", required=True, help="Pipe-delimited enumerated options, e.g. 'A: ...|B: ...'")
@@ -301,29 +412,16 @@ def main(argv=None) -> int:
     # Order positions deterministically by voter name for stable output.
     positions.sort(key=lambda p: p["agent"])
 
-    # DS-5 inbound redaction: provider output is untrusted and the ledger is
-    # append-only — redact secret-shaped content BEFORE resolution/printing so
-    # a prompt-injected credential can never be persisted. Labels are recorded
-    # per voter; enum-anchored grouping is unaffected by body redaction.
-    for p in positions:
-        redaction_labels: List[str] = []
-        for field in ("decision", "reasoning"):
-            value = p.get(field)
-            if isinstance(value, str) and value:
-                redacted, labels = redact_secret_content(value)
-                if labels:
-                    p[field] = redacted
-                    redaction_labels.extend(labels)
-        if redaction_labels:
-            p["redactions"] = sorted(set(redaction_labels))
+    # DS-5 inbound screening: provider output is untrusted and the ledger is
+    # append-only. A credential-shaped response is safe to diagnose only after
+    # redaction, and then must be excluded from resolution entirely.
+    redact_and_invalidate_positions(positions)
 
     live = [p for p in positions if is_live_pinned_voter(p)]
 
     sys.stderr.write("\n# ── RAW POSITIONS ─────────────────────────────\n")
     for p in positions:
-        tag = "OK " if is_live_pinned_voter(p) else "ERR"
-        sys.stderr.write(f"#  [{tag}] {p['agent']:<7} conf={p.get('confidence',0):.2f} "
-                         f"decision={p.get('decision','')!r} {('('+p['error']+')') if p.get('error') else ''}\n")
+        sys.stderr.write(format_raw_position(p))
 
     if len(live) < 2:
         print(json.dumps({"error": "fewer than 2 live voters", "positions": positions}, indent=2))

@@ -21,9 +21,16 @@ import re
 import subprocess
 import sys
 
-ROOT = subprocess.run(
-    ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, timeout=10
-).stdout.strip() or os.getcwd()
+_FALLBACK_ROOT = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+try:
+    _root_probe = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, timeout=10
+    )
+except (subprocess.TimeoutExpired, OSError):
+    ROOT = _FALLBACK_ROOT
+else:
+    ROOT = _root_probe.stdout.strip() if _root_probe.returncode == 0 else _FALLBACK_ROOT
+ROOT = ROOT or _FALLBACK_ROOT
 HANDOFF = os.path.join(ROOT, "HANDOFF.md")
 
 CUR_START, CUR_END = "<!--CURRENT:START-->", "<!--CURRENT:END-->"
@@ -61,7 +68,17 @@ def _now() -> str:
 
 
 def _git(*args: str) -> str:
-    return subprocess.run(["git", *args], capture_output=True, text=True, cwd=ROOT).stdout.strip()
+    """Run a bounded git read command and return stdout or raise RuntimeError."""
+    try:
+        proc = subprocess.run(
+            ["git", *args], capture_output=True, text=True, cwd=ROOT, timeout=30
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+        raise RuntimeError(f"git {' '.join(args[:2])}: {exc}") from exc
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout).strip()
+        raise RuntimeError(f"git {' '.join(args[:2])} failed: {detail}")
+    return proc.stdout.strip()
 
 
 def _read() -> str:

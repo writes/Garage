@@ -36,13 +36,21 @@ semantic haptics (prepared generators); keyboard never covers the focused field 
 `performAccessibilityAudit()` in UI tests; Accessibility Nutrition Labels + EAA (June 2025)
 treated as the compliance floor.
 
-### Production engineering (targets adopted)
-Cold launch first frame ≤ ~400ms · scroll hitch rate <5 ms/s (act at ≥10) · hangs ≥250ms are
-defects · **crash-free sessions ≥99.9% floor, 99.95% target** · phased rollout with halt
-criteria + crash-velocity alerts · feature flags as kill switches · snapshot tests as the UI
-regression gate · MetricKit + Xcode Organizer as the free telemetry layer · binary-size diffs
-per PR. (Numbers sourced; where a claim was unverifiable the research lane flagged it — no
-fabricated statistics were adopted.)
+### Production engineering (targets, evidence-classified per Sol round-3 review)
+
+| Target | Class | Source |
+|---|---|---|
+| Cold launch first frame ≤ ~400ms | Platform recommendation | Apple WWDC19-423 |
+| **Hitch time ratio** <5 ms/s good · 5–10 warn · ≥10 act | Platform recommendation | Apple WWDC20-10077 (Apple's term; measures normalized late-frame time, not event frequency) |
+| Main-thread blocks ≥250ms | Platform signal: **potential hang** to investigate — not automatically a defect | Apple Instruments hang guidance |
+| Crash-free sessions ≥99.9% / 99.95% | **Industry benchmark observation** (Luciq/Instabug 2025 median 99.95%) — NOT an Apple floor; becomes a Garage SLO only after session definition, cohort, window, minimum N, and halt action are specified in the observability workstream (DS-8) | Luciq Mobile Stability Outlook 2025 |
+| Phased rollout + halt criteria, flags-as-kill-switches, snapshot regression gate, MetricKit/Organizer telemetry, binary-size diffs | Practice adoption (no numeric claim) | multi-source |
+
+No number above is a Garage SLO yet; DS-8 turns selected rows into SLOs with full gate
+definitions. Accessibility framing (Sol adv. 4): Apple's Accessibility Nutrition Labels are
+storefront metadata/readiness criteria and the EAA's applicability is jurisdiction/product
+dependent — both are drivers for the accessibility backlog, neither phrase alone claims legal
+compliance.
 
 ### Polish
 Springs as default curves; interruptible transitions; matched-geometry list→detail; launch
@@ -96,22 +104,29 @@ documented under landmine #14.
 
 ## 4. Execution backlog (gated, ordered)
 
-| ID | Scope | Sev | Wave |
-|---|---|---|---|
-| **DS-1** | Dark-mode-correct tokens: Dark variants for all 10 colorsets (HIG base/elevated logic), adaptive shadow, verify Increase-Contrast; snapshot both modes | P0 | NOW |
-| **DS-2** | First-run activation surface: zero-vehicle state → designed onboarding empty state (orient/value/one CTA = Add Vehicle), replacing the blank tab landing | P0 | NOW |
-| **DS-3** | State-contract retrofit: error+loading (SkeletonLoader) branches for the 5 Garage sub-screens; StatsView loading+retry; VehicleListView empty CTA; chart empty states | P0/P1 | NOW |
-| **DS-4** | Typography bypass cleanup (G7) + LogView filtered-empty split (G10) | P1 | next |
-| **DS-5** | Brain leak fixes: vote-path secret screening, agy prompt via stdin/temp file (never argv), session_handoff timeout, sentinel SessionStart hook | P1 | NOW (orchestrator lane) |
-| **DS-6** | Toast component + offline chip + sync-failure surfacing (G6, G8) | P1 | next |
-| **DS-7** | Accessibility pass: labels on interactive elements + charts, `performAccessibilityAudit()` in UI tests, Reduce Motion variants | P1 | next |
-| **DS-8** | Perf/observability: MetricKit subscriber + launch/hitch budgets in CI (XCTest metrics), snapshot-test harness adoption | P2 | gated |
-| **DS-9** | Polish: matched-geometry list→detail, haptics map, image downsampling pipeline for gallery | P2 | gated |
+**Sequencing (Sol round-3 blocker #2 disposition):** the 2026-07-11 sequence vote authorized
+the enumerated Wave-1 hardening list "and nothing else." Therefore **iOS-6L and RULES-1
+complete first** (through CI + tri-review); DS-1..3 execute only after that, or after a fresh
+Law-1 sequence vote. DS-5 was executed 2026-07-12 as leak-audit remediation under the standing
+operator directive (its round-3 corrections below). Severity labels G1–G3 are audit priorities,
+not a release-blocking rubric — the release gate remains CI + tri-review + operator.
 
-Promotion: DS-1..3 + DS-5 land now (this branch, tests + CI + tri-review before merge);
-DS-4/6/7 next session; DS-8/9 after the Wave-1 product items (iOS-6L, RULES-1) so design work
-never starves the revenue-protection track. Every item obeys the existing rituals — Terra
-implements, orchestrator independently verifies, protected surfaces untouched.
+| ID | Scope (round-3 hardened) | Sev | Wave |
+|---|---|---|---|
+| **DS-1** | Dark-mode tokens — **no guessed hex**: map roles to Apple semantic neutrals wherever roles match; explicit `onPrimary`/highlight roles for fixed-white content (PrimaryButton/FAB/shimmer); foreground×surface contrast matrix committed with the change; light-mode pixels preserved; **operator visual approval in Dark + Increase Contrast required**; colorsets live under `Garage/Resources` (outside the scope-guard allowlist) → needs a governed, supervised edit like the rules precedent | P0 | after iOS-6L + RULES-1 |
+| **DS-2** | First-run activation — requires an explicit `loading / loaded([Vehicle]) / failed` bootstrap state; activation surface ONLY on successful `loaded([])`; error+Retry on `failed` (never mislabel an outage as first use); DEBUG seed-vehicle path must not mask real zero-vehicle testing; hermetic zero-vehicle launch + CTA→save→refresh→tabs journey test | P0 | after iOS-6L + RULES-1 |
+| **DS-3** | Loading/error/empty **phase 1** (renamed per Sol — not the full five-state contract; offline defers to DS-6): typed mutually-exclusive load states; `.task(id:)` keyed by vehicle/entitlement with stale-completion rejection; skeletons mimic final layout, delayed reveal (immediate interaction feedback always retained), **static fallback under Reduce Motion** (don't wait for DS-7); retry semantics + per-state VM tests + vehicle-switch journey | P0/P1 | after iOS-6L + RULES-1 |
+| **DS-4** | Typography bypass cleanup (G7) + LogView filtered-empty split (G10) | P1 | queued |
+| **DS-5** | Brain leak fixes — **round-3 status**: shipped (screen module, vote-path screening, sentinel hook, one timeout) with corrections required and applied: sentinel output sanitized (no command text — it re-amplified prompts through the hook), redaction-tripped voters invalidated (not counted live), remaining unbounded subprocess calls bounded, argv residual **formally accepted by unanimous vote 2026-07-12T21:45:13Z** (threat model documented; revisit if untrusted local users appear or agy ships file/stdin input) | P1 | DONE + corrected |
+| **DS-6** | Toast component + offline chip + sync-failure surfacing (G6, G8) | P1 | queued |
+| **DS-7** | Accessibility: VoiceOver task-completion measurement (the defensible gap — identifier counts are test hooks, not coverage), labels on charts/controls, `performAccessibilityAudit()` in UI tests, Reduce Motion variants | P1 | queued |
+| **DS-8** | Perf/observability: MetricKit subscriber, launch/hitch-time-ratio budgets in CI, snapshot harness, and the SLO definitions that upgrade §1 benchmarks to Garage gates | P2 | gated |
+| **DS-9** | Polish: matched-geometry list→detail, haptics map, image downsampling pipeline | P2 | gated |
+
+Routing: **Terra writes, orchestrator verifies** — the DS-5 orchestrator-lane deviation is
+logged; future brain fixes route through Terra like everything else. Blueprint Wave-2 "iOS-6"
+is superseded by Wave-1 iOS-6L when it lands (Sol adv. 9). Audit-count clarification (adv. 6):
+"74 identifiers / 2 labels" is the `Garage/Features` count, not app-wide.
 
 ## 5. Sources
 Primary: Apple HIG (Color, Dark Mode, Typography, Accessibility, Launching), Apple TN/WWDC

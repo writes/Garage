@@ -127,8 +127,9 @@ wedge/Passport-premise build stays blocked behind the protocol.
 - **iOS-5 Attachment ingestion pipeline:** bytes → magic/MIME + size validation → checksum
   dedupe → EXIF/metadata strip → private Storage upload → typed `Attachment` linked to entry;
   golden-corpus tests per document type. (Prereq for any dossier claim.)
-- **iOS-6 Wire `ClaudeService`:** oil-analysis import affordance from the maintenance entry
-  flow (or remove the surface — no orphaned marketing claims).
+- **iOS-6 Wire `ClaudeService`:** SUPERSEDED by Wave-1 **iOS-6L** (added via Sol round-2
+  blocker #11 disposition) — this Wave-2 entry is retained only as a tombstone; do not
+  schedule it separately.
 
 ### Wave 3 — the sellable dossier (pre-Passport, still local/portable)
 - **iOS-7 PDF evidence dossier:** real history, embedded photos/receipts, per-event provenance

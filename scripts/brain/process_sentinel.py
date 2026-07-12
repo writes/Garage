@@ -66,6 +66,12 @@ def classify(command: str) -> Optional[str]:
     return None
 
 
+def executable_basename(command: str) -> str:
+    """Return only the basename of a command line's first token, never its argv."""
+    first = command.strip().split(None, 1)[0] if command.strip() else ""
+    return os.path.basename(first)
+
+
 def threshold_minutes(class_name: str) -> float:
     default = next(d for n, _, d in CLASSES if n == class_name)
     env = os.environ.get(f"SENTINEL_{class_name.upper()}_MAX_MIN")
@@ -78,7 +84,8 @@ def threshold_minutes(class_name: str) -> float:
 def evaluate(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Pure: classify + age-check pre-parsed process rows.
 
-    rows: [{pid, ppid, etime, command}] -> suspected leaks with class/age/threshold/orphan.
+    The full ``command`` is inspected only to classify a row. Returned suspects contain
+    safe process metadata plus the executable basename, never command or argument text.
     """
     suspects: List[Dict[str, Any]] = []
     for row in rows:
@@ -97,9 +104,19 @@ def evaluate(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "age_minutes": round(age, 1),
                 "threshold_minutes": limit,
                 "orphan": int(row["ppid"]) == 1,
-                "command": row.get("command", "")[:200],
+                "executable": executable_basename(row.get("command", "")),
             })
     return suspects
+
+
+def format_suspect_line(suspect: Dict[str, Any]) -> str:
+    """Render one safe, command-free human diagnostic line."""
+    tag = " [ORPHAN]" if suspect["orphan"] else " [cross-session — do NOT kill blindly]"
+    return (
+        f"  pid {suspect['pid']} {suspect['class']} age {suspect['age_minutes']}m "
+        f"(limit {suspect['threshold_minutes']}m) ppid {suspect['ppid']} "
+        f"executable {suspect['executable']}{tag}"
+    )
 
 
 def snapshot() -> List[Dict[str, Any]]:
@@ -141,6 +158,29 @@ def _selftest() -> int:
     check("aged codex flagged as orphan", any(s["pid"] == 10 and s["orphan"] for s in suspects))
     check("young codex not flagged", all(s["pid"] != 11 for s in suspects))
     check("aged agy flagged (30m default)", any(s["pid"] == 12 and s["class"] == "agy" for s in suspects))
+
+    canary = "CANARY-SECRET-XYZ"
+    canary_suspects = evaluate([{
+        "pid": "13",
+        "ppid": "9",
+        "etime": "45:00",
+        "command": f'agy -p "{canary}" --print-timeout 60s',
+    }])
+    canary_report = {
+        "suspected_leaks": canary_suspects,
+        "killed_orphans": [],
+        "clean": not canary_suspects,
+    }
+    canary_human = "\n".join(format_suspect_line(s) for s in canary_suspects)
+    canary_suspect = canary_suspects[0] if len(canary_suspects) == 1 else {}
+    check("canary absent from evaluate output", canary not in repr(canary_suspects))
+    check("canary absent from JSON report", canary not in json.dumps(canary_report))
+    check("canary absent from human report", canary not in canary_human)
+    check("safe executable hint is agy",
+          len(canary_suspects) == 1 and canary_suspect.get("executable") == "agy")
+    check("suspect schema contains only safe metadata", set(canary_suspect) == {
+        "pid", "ppid", "class", "age_minutes", "threshold_minutes", "orphan", "executable",
+    })
     print("SELFTEST " + ("PASSED" if not failures else f"FAILED ({len(failures)})"))
     return 0 if not failures else 1
 
@@ -174,9 +214,7 @@ def main() -> int:
         else:
             print(f"process sentinel: {len(suspects)} SUSPECTED LEAK(S)")
             for s in suspects:
-                tag = " [ORPHAN]" if s["orphan"] else " [cross-session — do NOT kill blindly]"
-                print(f"  pid {s['pid']} {s['class']} age {s['age_minutes']}m "
-                      f"(limit {s['threshold_minutes']}m){tag}\n    {s['command']}")
+                print(format_suspect_line(s))
             if killed:
                 print(f"  reaped orphans: {killed}")
             print("  action: verify each against its owning session (HANDOFF/contention rules) before killing.")

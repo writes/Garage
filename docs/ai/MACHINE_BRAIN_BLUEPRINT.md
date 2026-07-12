@@ -261,6 +261,19 @@ never an auto-edit beyond appending rows the human confirms (Law 5).
   Verified: secret_screen 6/6, consensus 24/24, sentinel 13/13, tri_review 62/62, import graph
   cycle-free. Client-side LLM audit (same sweep): CLEAN — no provider keys/endpoints outside
   CloudFunctions env, no PII decoration, no payload logging.
+  **Round-3 corrections (Sol review of the standards doc, same day):** (1) sentinel output
+  sanitized — it previously echoed `command[:200]`, which the new SessionStart hook would have
+  re-injected into model context (a leak amplifier); output now carries pid/class/age/ppid/
+  orphan + executable basename only, with a canary selftest. (2) A redaction hit on a voter's
+  response now INVALIDATES that voter (fail-closed — a tainted response can no longer enter a
+  Law-1 majority as "live"). (3) All remaining brain subprocess calls bounded + import-time
+  failures caught. (4) **Threat model — agy argv residual (unanimous vote
+  2026-07-12T21:45:13Z):** agy prompts are ps-visible to local processes for the call
+  duration; agy has no stdin/file input (landmine #2). Formally ACCEPTED for this single-user
+  machine with the fail-closed secret screen as the control; revisit triggers: untrusted local
+  users appear, or agy ships non-argv prompt input. (5) Process error logged: the DS-5 commit
+  landed while Sol's review was in flight — review-gate ordering violated once; rule restated:
+  strategy-doc execution waits for the co-review verdict.
 
 - **2026-07-11** — **Resolver canonicalization defect found live and fixed (landmine #13
   candidate → registered below).** A Law-1 vote (vehicle-limit mechanism) mis-resolved: gemini's
