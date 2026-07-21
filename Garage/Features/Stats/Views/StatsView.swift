@@ -33,7 +33,7 @@ struct StatsView: View {
                     VehicleSwitcher()
                 }
             }
-            .task(id: appState.currentVehicle?.id) { await load() }
+            .task(id: [appState.currentVehicle?.id, appState.isPro ? "pro" : "free"]) { await load() }
         }
     }
 

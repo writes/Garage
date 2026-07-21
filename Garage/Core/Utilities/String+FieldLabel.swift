@@ -25,3 +25,28 @@ extension String {
             .joined(separator: " ")
     }
 }
+
+extension RawRepresentable where RawValue == String {
+    /// A user-facing label for a string-backed enum case, derived from the CASE NAME rather than the
+    /// raw storage value (often an abbreviated/snake_case code like "fl" or "paint_correction" that
+    /// must never be shown to users). Enums needing special formatting override this.
+    var displayName: String { String(describing: self).humanizedFieldLabel }
+}
+
+extension FuelType {
+    var displayName: String {
+        switch self {
+        case .regular87: "Regular 87"
+        case .premium91: "Premium 91"
+        case .premium93: "Premium 93"
+        case .e85: "E85"
+        case .diesel: "Diesel"
+        }
+    }
+}
+
+extension DetailingType {
+    var displayName: String {
+        self == .ppf ? "PPF" : String(describing: self).humanizedFieldLabel
+    }
+}

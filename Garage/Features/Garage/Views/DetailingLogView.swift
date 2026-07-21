@@ -21,7 +21,7 @@ struct DetailingLogView: View {
                 ForEach(viewModel.records) { record in
                     VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                         Text(record.title).font(Theme.Typography.headline)
-                        Text(record.serviceType.rawValue).font(Theme.Typography.caption)
+                        Text(record.serviceType.displayName).font(Theme.Typography.caption)
                     }
                 }
             }

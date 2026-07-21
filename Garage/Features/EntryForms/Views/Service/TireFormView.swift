@@ -13,12 +13,12 @@ struct TireFormView: View {
     var body: some View {
         EntryFormScaffold(title: "Tire Service", viewModel: form, onSave: save) {
             Picker("Action", selection: $actionType) {
-                ForEach(TireActionType.allCases, id: \.self) { action in Text(action.rawValue).tag(action) }
+                ForEach(TireActionType.allCases, id: \.self) { action in Text(action.displayName).tag(action) }
             }
             TextField("Tire brand", text: $brand).textFieldStyle(.roundedBorder)
             TextField("Tire model", text: $model).textFieldStyle(.roundedBorder)
             Picker("Position", selection: $position) {
-                ForEach(TirePosition.allCases, id: \.self) { position in Text(position.rawValue).tag(position) }
+                ForEach(TirePosition.allCases, id: \.self) { position in Text(position.displayName).tag(position) }
             }
             TextField("Front size", text: $frontSize).textFieldStyle(.roundedBorder)
             TextField("Rear size", text: $rearSize).textFieldStyle(.roundedBorder)

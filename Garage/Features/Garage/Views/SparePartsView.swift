@@ -21,7 +21,7 @@ struct SparePartsView: View {
                 ForEach(viewModel.parts) { part in
                     VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                         Text(part.name).font(Theme.Typography.headline)
-                        Text("\(part.quantity)x • \(part.condition.rawValue)")
+                        Text("\(part.quantity)x • \(part.condition.displayName)")
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.Colors.textSecondary)
                     }

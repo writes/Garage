@@ -12,7 +12,7 @@ struct UpgradeFormView: View {
             TextField("Upgrade name", text: $title).textFieldStyle(.roundedBorder)
             TextField("Brand", text: $brand).textFieldStyle(.roundedBorder)
             Picker("Category", selection: $category) {
-                ForEach(UpgradeCategory.allCases, id: \.self) { category in Text(category.rawValue).tag(category) }
+                ForEach(UpgradeCategory.allCases, id: \.self) { category in Text(category.displayName).tag(category) }
             }
         }
         .task { await prepare() }
