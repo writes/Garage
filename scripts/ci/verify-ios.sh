@@ -18,11 +18,8 @@ fi
 
 SIMULATOR_NAME="$(
   xcrun simctl list devices available |
-    awk -F ' \\(' '/^[[:space:]]+[A-Za-z0-9].*\\((Shutdown|Booted)\\)$/ {
-      gsub(/^[[:space:]]+/, "", $1)
-      print $1
-      exit
-    }'
+    sed -nE 's/^[[:space:]]+(.+) \([0-9A-Fa-f-]+\) \((Shutdown|Booted)\)[[:space:]]*$/\1/p' |
+    head -1
 )"
 
 ./scripts/ci/policy-checks.sh
