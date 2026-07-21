@@ -99,7 +99,7 @@ const coreMetalFields: ReadonlyArray<NumericField> = [
   "titanium",
 ];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -111,7 +111,7 @@ function lifetimeQuotaKey(uid: string): string {
   return `${uid}_lifetime`;
 }
 
-function safeQuotaCount(value: unknown): number {
+export function safeQuotaCount(value: unknown): number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
@@ -157,7 +157,7 @@ function parseMillis(value: unknown): number | undefined {
   return undefined;
 }
 
-function userHasActiveProEntitlement(userData: Record<string, unknown> | undefined, now: Date): boolean {
+export function userHasActiveProEntitlement(userData: Record<string, unknown> | undefined, now: Date): boolean {
   const subscription = userData && isRecord(userData.subscription) ? userData.subscription : undefined;
   const expiresAt = subscription?.expiresAt;
   const expiresAtMillis = parseMillis(expiresAt);
@@ -167,7 +167,7 @@ function userHasActiveProEntitlement(userData: Record<string, unknown> | undefin
     && (expiresAt == null || (expiresAtMillis !== undefined && expiresAtMillis > now.getTime()));
 }
 
-function nextUtcMidnight(now: Date): string {
+export function nextUtcMidnight(now: Date): string {
   return new Date(Date.UTC(
     now.getUTCFullYear(),
     now.getUTCMonth(),
