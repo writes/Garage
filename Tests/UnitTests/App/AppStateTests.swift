@@ -34,6 +34,64 @@ struct AppStateTests {
         #expect(analytics.enabledValues.last == false)
     }
 
+    @Test func unconfiguredFirebaseProfileStore_rejectsEveryOperation() async {
+        let profileStore = ProfileStoreFactory.makeDefault(
+            isLocalDemoMode: false,
+            isFirebaseConfigured: false
+        )
+        let expectedError = AppError.database("Firebase is not configured")
+        let fields: ProfileFields = ["name": .string("Garage")]
+
+        do {
+            _ = try await profileStore.loadProfile(uid: "user")
+            Issue.record("Expected loadProfile to throw \(expectedError).")
+        } catch let error as AppError {
+            #expect(error == expectedError)
+        } catch {
+            Issue.record("Expected \(expectedError), got \(error).")
+        }
+
+        do {
+            try await profileStore.saveProfile(fields, uid: "user")
+            Issue.record("Expected saveProfile to throw \(expectedError).")
+        } catch let error as AppError {
+            #expect(error == expectedError)
+        } catch {
+            Issue.record("Expected \(expectedError), got \(error).")
+        }
+
+        do {
+            try await profileStore.saveProfileFields(fields, uid: "user")
+            Issue.record("Expected saveProfileFields to throw \(expectedError).")
+        } catch let error as AppError {
+            #expect(error == expectedError)
+        } catch {
+            Issue.record("Expected \(expectedError), got \(error).")
+        }
+    }
+
+    @Test func unconfiguredFirebaseProfileStore_keepsBootstrapAndAnalyticsFailClosed() async {
+        let analytics = AnalyticsSpy()
+        let purchaseService = PurchaseService(testIsPro: false)
+        let authService = AuthService(testUID: "user", analytics: analytics)
+        let profileStore = ProfileStoreFactory.makeDefault(
+            isLocalDemoMode: false,
+            isFirebaseConfigured: false
+        )
+        let state = AppState(
+            authService: authService,
+            vehicleService: VehicleService(testVehicles: [], purchaseService: purchaseService),
+            purchaseService: purchaseService,
+            analytics: analytics,
+            profileStore: profileStore
+        )
+
+        await state.bootstrap()
+
+        #expect(state.userProfile == nil)
+        #expect(analytics.enabledValues.last == false)
+    }
+
     @Test func accountSwitchDuringProfileLoad_restartsForTheCurrentAccount() async {
         let analytics = AnalyticsSpy()
         let purchaseService = PurchaseService(testIsPro: false)

@@ -1,3 +1,4 @@
+import FirebaseCore
 import FirebaseFirestore
 import Foundation
 
@@ -5,7 +6,18 @@ import Foundation
 final class FirestoreService {
     static let shared = FirestoreService()
 
-    let db = Firestore.firestore()
+    /// This is Garage's sole Firestore construction and controlled first use. Keeping it lazy
+    /// lets hermetic/local-demo paths exist without resolving Firebase at all.
+    private lazy var controlledDatabase: Firestore = {
+        let database = Firestore.firestore()
+        let settings = FirestoreSettings()
+        settings.cacheSettings = PersistentCacheSettings()
+        database.settings = settings
+        database.persistentCacheIndexManager?.enableIndexAutoCreation()
+        return database
+    }()
+
+    var db: Firestore { controlledDatabase }
     private let encoder = Firestore.Encoder()
     private let decoder = Firestore.Decoder()
 
@@ -18,7 +30,58 @@ final class FirestoreService {
     func decode<T: Decodable>(_ type: T.Type, from data: [String: Any]) throws -> T {
         try decoder.decode(type, from: data)
     }
+
+    /// Submits exactly the entry and vehicle merge writes. `WriteBatch.commit` returns after
+    /// local acceptance; its callback remains backend acknowledgement/rejection evidence.
+    func submitBatch(
+        _ writes: [AtomicBatchWrite],
+        completion: @escaping @Sendable (String?) -> Void
+    ) throws {
+        guard writes.count == 2, writes.allSatisfy(\.merge) else {
+            throw AppError.database("An entry save requires exactly two atomic writes.")
+        }
+
+        let batch = db.batch()
+        for write in writes {
+            batch.setData(write.data, forDocument: db.document(write.path), merge: write.merge)
+        }
+        batch.commit { error in
+            completion(error?.localizedDescription)
+        }
+    }
+
+    /// The callback contains only a pre-converted immutable failure message, so callers can
+    /// safely route the result back to their main-actor sync reducer.
+    func startWriteBarrier(completion: @escaping @Sendable (String?) -> Void) {
+        db.waitForPendingWrites { error in
+            completion(error?.localizedDescription)
+        }
+    }
 }
+
+@MainActor
+struct AtomicBatchWrite {
+    let path: String
+    let data: [String: Any]
+    let merge: Bool
+
+    init(path: String, data: [String: Any], merge: Bool = true) {
+        self.path = path
+        self.data = data
+        self.merge = merge
+    }
+}
+
+/// Firestore dictionaries and write batches intentionally remain main-actor/non-Sendable.
+@MainActor
+protocol AtomicBatchSubmitting: AnyObject {
+    func submitBatch(
+        _ writes: [AtomicBatchWrite],
+        completion: @escaping @Sendable (String?) -> Void
+    ) throws
+}
+
+extension FirestoreService: AtomicBatchSubmitting {}
 
 @MainActor
 protocol ProfileStore {
@@ -115,13 +178,32 @@ private extension ProfileFieldValue {
 }
 
 @MainActor
+private final class UnconfiguredProfileStore: ProfileStore {
+    func loadProfile(uid _: String) async throws -> ProfileFields? {
+        throw AppError.database("Firebase is not configured")
+    }
+
+    func saveProfile(_: ProfileFields, uid _: String) async throws {
+        throw AppError.database("Firebase is not configured")
+    }
+}
+
+@MainActor
 enum ProfileStoreFactory {
-    static func makeDefault() -> any ProfileStore {
+    static func makeDefault(
+        isLocalDemoMode: Bool = AppRuntime.isLocalDemoMode,
+        isFirebaseConfigured: Bool = FirebaseApp.app() != nil
+    ) -> any ProfileStore {
 #if DEBUG
-        if AppRuntime.isLocalDemoMode {
+        if isLocalDemoMode {
             return DemoProfileStore()
         }
 #endif
+
+        guard isFirebaseConfigured else {
+            return UnconfiguredProfileStore()
+        }
+
         return FirestoreProfileStore()
     }
 }

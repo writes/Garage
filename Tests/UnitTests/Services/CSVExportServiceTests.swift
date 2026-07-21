@@ -50,6 +50,32 @@ struct CSVExportServiceTests {
         #expect(csv.contains("'=HYPERLINK(\"\"https://evil.example\"\")|receipt.pdf"))
     }
 
+    @Test func export_preservesOrderedRawAttachmentPaths() {
+        let firstPath = "users/user/entries/entry/receipts/first-receipt.pdf"
+        let secondPath = "users/user/entries/entry/photos/second-photo.jpg"
+        let csv = export(
+            shopName: "Shop",
+            notes: "Notes",
+            cost: 12.5,
+            attachmentPaths: [firstPath, secondPath]
+        )
+
+        let rows = csv.components(separatedBy: "\r\n")
+        guard rows.count >= 2 else {
+            Issue.record("Expected a CSV header and data row.")
+            return
+        }
+        let header = rows[0].components(separatedBy: ",")
+        let row = rows[1].components(separatedBy: ",")
+        guard let attachmentPathsColumn = header.firstIndex(of: "attachmentPaths"),
+              row.indices.contains(attachmentPathsColumn) else {
+            Issue.record("Expected attachmentPaths column in CSV export.")
+            return
+        }
+
+        #expect(row[attachmentPathsColumn] == "\(firstPath)|\(secondPath)")
+    }
+
     @Test func export_usesV2SchemaAndPreservesNullsAsEmptyCells() {
         let entry = FirestoreEntry(
             id: "entry",

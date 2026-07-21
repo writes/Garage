@@ -11,7 +11,7 @@ struct LoginView: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 Text("Garage")
                     .font(Theme.Typography.largeTitle)
-                Text("Track everything that happens to your car without fighting the app.")
+                Text("Keep a clear manual service and maintenance history for your car.")
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Colors.textSecondary)
             }
@@ -56,7 +56,10 @@ struct LoginView: View {
                 ErrorBanner(error: error)
             }
 
-            Text("No passwords. One account keeps your service history across devices.")
+            Text(
+                "Sign in to sync service-log records. Offline entries send when Garage reconnects "
+                    + "while open or after it is reopened."
+            )
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.Colors.textSecondary)
                 .multilineTextAlignment(.center)

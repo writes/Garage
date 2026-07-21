@@ -8,11 +8,33 @@ final class GarageScreensJourneyTests: JourneyTestCase {
         tapTab("Garage", in: app)
 
         open(app.buttons["garage.gallery"], in: app)
-        require(app.staticTexts["No gallery photos yet"])
+        require(app.navigationBars["Gallery Records"])
+        require(app.descendants(matching: .any)["garage.gallery.notice"])
+        require(
+            app.staticTexts[
+                "Record details only. Photo files cannot be added, viewed, " +
+                    "saved, or exported in this beta."
+            ]
+        )
+        require(app.staticTexts["No gallery records yet"])
+        require(app.staticTexts["Existing gallery record details appear here when available."])
+        XCTAssertFalse(app.staticTexts["Included in export"].exists)
+        XCTAssertFalse(app.staticTexts["Hidden from export"].exists)
         returnToGarage(in: app)
 
         open(app.buttons["garage.wheels"], in: app)
-        require(app.navigationBars["Wheel Gallery"])
+        require(app.navigationBars["Wheel Records"])
+        require(app.descendants(matching: .any)["garage.wheels.notice"])
+        require(
+            app.staticTexts[
+                "Record details only. Photo files cannot be added, viewed, " +
+                    "saved, or exported in this beta."
+            ]
+        )
+        require(app.staticTexts["No wheel records yet"])
+        require(app.staticTexts["Existing wheel record details appear here when available."])
+        XCTAssertFalse(app.staticTexts["Included in export"].exists)
+        XCTAssertFalse(app.staticTexts["Hidden from export"].exists)
         returnToGarage(in: app)
 
         open(app.buttons["garage.parts"], in: app)

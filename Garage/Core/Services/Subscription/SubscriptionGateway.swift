@@ -1,0 +1,213 @@
+import Foundation
+
+@MainActor
+final class SubscriptionGateway {
+    let client: any RevenueCatClienting
+    let relay: SubscriptionCommitRelay
+    let state = SubscriptionGatewayState()
+
+    init(client: any RevenueCatClienting, relay: SubscriptionCommitRelay) {
+        self.client = client
+        self.relay = relay
+    }
+
+    @discardableResult
+    func setDesiredFirebaseUID(_ uid: String?) -> OperationTicket<IdentityOutcome>? {
+        let transition = state.setDesiredUID(uid)
+        guard transition.changed else { return transition.ticket }
+        client.invalidatePackageCache()
+        emit(.revokedAll)
+        if transition.appended { scheduleDrain() }
+        return transition.ticket
+    }
+
+    func requestIdentityRetry() -> OperationTicket<IdentityOutcome> {
+        finishRegistration(state.registerIdentityRetry())
+    }
+
+    func registerStatus() -> OperationTicket<StatusOutcome> {
+        finishRegistration(state.registerStatus())
+    }
+
+    func registerOfferings() -> OperationTicket<OfferingsOutcome> {
+        finishRegistration(state.registerOfferings())
+    }
+
+    func registerPurchase(_ selection: PackageSelection) -> OperationTicket<PurchaseOutcome> {
+        finishRegistration(state.registerPurchase(selection))
+    }
+
+    func registerRestore() -> OperationTicket<RestoreOutcome> {
+        finishRegistration(state.registerRestore())
+    }
+
+    func finishRegistration<Value: Sendable>(
+        _ registration: SubscriptionTicketRegistration<Value>
+    ) -> OperationTicket<Value> {
+        if registration.appended { scheduleDrain() }
+        return registration.ticket
+    }
+
+    func scheduleDrain() {
+        guard state.drainTask == nil else { return }
+        state.drainTask = Task { @MainActor [weak self] in await self?.drain() }
+    }
+
+    func drain() async {
+        while let entry = state.operations.popFirst() { await execute(entry.element) }
+        state.drainTask = nil
+    }
+
+    func execute(_ operation: SubscriptionQueuedOperation) async {
+        switch operation {
+        case .identity(let attempt): await executeIdentity(attempt)
+        case let .status(lease, ticket): await executeStatus(lease, ticket)
+        case let .offerings(lease, ticket): await executeOfferings(lease, ticket)
+        case let .purchase(selection, lease, flight, ticket):
+            await executePurchase(selection, lease, flight, ticket)
+        case let .restore(lease, flight, ticket): await executeRestore(lease, flight, ticket)
+        }
+    }
+
+    func executeIdentity(_ attempt: SubscriptionIdentityAttempt) async {
+        guard state.isCurrent(attempt) else { attempt.ticket.resolve(.skippedStale); return }
+        let observed = await client.logIn(uid: attempt.lease.uid)
+        state.appliedRevenueCatUID = observed.observedAppUserID
+        switch SubscriptionOutcomeClassifier.observed(
+            observed,
+            expectedUID: attempt.lease.uid,
+            isCurrent: state.isCurrent(attempt)
+        ) {
+        case .stale: attempt.ticket.resolve(.skippedStale)
+        case .identityMismatch:
+            revokeForMismatch()
+            attempt.ticket.resolve(.failed(.identityMismatch))
+        case .failed(let error):
+            state.currentAttempt = nil
+            attempt.ticket.resolve(.failed(error))
+        case .succeeded(let snapshot):
+            state.currentAttempt = nil
+            state.readyLease = attempt.lease
+            emit(.identityApplied(lease: attempt.lease, snapshot: snapshot))
+            attempt.ticket.resolve(.applied(attempt.lease))
+        }
+    }
+
+    func executeStatus(_ lease: IdentityLease?, _ ticket: OperationTicket<StatusOutcome>) async {
+        guard let lease else { ticket.resolve(.notReady); return }
+        guard lease == state.readyLease, state.isCurrent(lease) else {
+            ticket.resolve(.staleDiscarded)
+            return
+        }
+        let observed = await client.customerInfo()
+        state.appliedRevenueCatUID = observed.observedAppUserID
+        let resolution = SubscriptionOutcomeClassifier.status(
+            observed,
+            lease: lease,
+            isCurrent: lease == state.readyLease && state.isCurrent(lease)
+        )
+        apply(resolution)
+        ticket.resolve(resolution.outcome)
+    }
+
+    func executeOfferings(_ lease: IdentityLease?, _ ticket: OperationTicket<OfferingsOutcome>) async {
+        guard let lease else { ticket.resolve(.notReady); return }
+        guard lease == state.readyLease, state.isCurrent(lease) else {
+            ticket.resolve(.staleDiscarded)
+            return
+        }
+        let observed = await client.offerings()
+        state.appliedRevenueCatUID = observed.observedAppUserID
+        let resolution = SubscriptionOutcomeClassifier.offerings(
+            observed,
+            lease: lease,
+            isCurrent: lease == state.readyLease && state.isCurrent(lease)
+        )
+        apply(resolution)
+        ticket.resolve(resolution.outcome)
+    }
+
+    func executePurchase(
+        _ selection: PackageSelection,
+        _ expectedLease: IdentityLease?,
+        _ flightID: UInt64,
+        _ ticket: OperationTicket<PurchaseOutcome>
+    ) async {
+        defer { state.clearFlight(flightID) }
+        guard selection.lease == state.readyLease,
+              selection.handle.cacheEpoch == state.currentOfferingsEpoch else {
+            ticket.resolve(.selectionInvalidated); return
+        }
+        guard let expectedLease,
+              expectedLease == state.readyLease,
+              state.isCurrent(expectedLease) else {
+            ticket.resolve(.notReady); return
+        }
+        let observed = await client.purchase(
+            handle: selection.handle, offeringID: selection.offeringID,
+            packageID: selection.packageID, productID: selection.productID,
+            analyticsProduct: selection.analyticsProduct
+        )
+        state.appliedRevenueCatUID = observed.observedAppUserID
+        classifyPurchase(observed, selection: selection, ticket: ticket)
+    }
+
+    func classifyPurchase(
+        _ observed: RevenueCatObserved<ClientPurchasePayload>,
+        selection: PackageSelection,
+        ticket: OperationTicket<PurchaseOutcome>
+    ) {
+        let resolution = SubscriptionOutcomeClassifier.purchaseResolution(
+            observed,
+            selection: selection,
+            isCurrent: selection.lease == state.readyLease && state.isCurrent(selection.lease)
+        )
+        apply(resolution)
+        ticket.resolve(resolution.outcome)
+    }
+
+    func executeRestore(
+        _ expectedLease: IdentityLease?,
+        _ flightID: UInt64,
+        _ ticket: OperationTicket<RestoreOutcome>
+    ) async {
+        defer { state.clearFlight(flightID) }
+        guard let lease = expectedLease,
+              lease == state.readyLease,
+              state.isCurrent(lease) else {
+            ticket.resolve(.notReady); return
+        }
+        let observed = await client.restore()
+        state.appliedRevenueCatUID = observed.observedAppUserID
+        let resolution = SubscriptionOutcomeClassifier.restore(
+            observed,
+            lease: lease,
+            isCurrent: lease == state.readyLease && state.isCurrent(lease)
+        )
+        apply(resolution)
+        ticket.resolve(resolution.outcome)
+    }
+
+    func apply<Outcome>(_ resolution: SubscriptionGatewayResolution<Outcome>) {
+        switch resolution.effect {
+        case .none: break
+        case .revoke: revokeForMismatch()
+        case .invalidateCache:
+            client.invalidatePackageCache()
+            state.currentOfferingsEpoch = nil
+        case .offeringsEpoch(let epoch): state.currentOfferingsEpoch = epoch
+        }
+        if let event = resolution.event { emit(event) }
+    }
+
+    func revokeForMismatch() {
+        client.invalidatePackageCache()
+        state.revokeReadiness()
+        emit(.revokedAll)
+    }
+
+    func emit(_ event: SubscriptionCommitEvent) {
+        let stamp = state.nextStamp()
+        relay.deliver(StampedSubscriptionCommit(stamp: stamp, event: event))
+    }
+}
