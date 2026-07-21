@@ -36,16 +36,16 @@ xcodegen generate
 # is a generated ALLOWED-candidate surface; project.yml is the PROTECTED source of truth. The
 # committed project.pbxproj MUST equal `xcodegen generate` output — fail loudly on any drift so
 # nothing non-derivable from the protected project.yml can be promoted.
-canon() { sed -E 's/TEMP_[0-9A-Fa-f-]+/TEMP_X/g' | LC_ALL=C sort; }
 if ! diff -q \
-  <(git show HEAD:Garage.xcodeproj/project.pbxproj | canon) \
-  <(canon < Garage.xcodeproj/project.pbxproj) >/dev/null 2>&1; then
+  <(git show HEAD:Garage.xcodeproj/project.pbxproj | python3 scripts/ci/pbxproj_canon.py) \
+  <(python3 scripts/ci/pbxproj_canon.py < Garage.xcodeproj/project.pbxproj) >/dev/null 2>&1; then
   echo "ERROR: committed Garage.xcodeproj/project.pbxproj differs from 'xcodegen generate' output (beyond SwiftPM placeholders)."
   echo "       Run '.tools/bin/xcodegen generate' and commit the regenerated project (or reconcile project.yml)."
   exit 1
 fi
-# (xcodegen emits non-deterministic TEMP_ UUIDs for link:false SwiftPM product refs; those are
-#  cosmetic placeholders Xcode resolves on open, so they are normalized out of the equality check.)
+# pbxproj_canon.py normalizes xcodegen's non-deterministic TEMP_ SwiftPM placeholder ids and sorts
+# ONLY the XCSwiftPackageProductDependency section; every other line stays order-checked, so a moved
+# or permuted build setting / entitlement (a poisoned Release config) is still caught by the diff.
 
 swiftlint lint --strict
 xcodebuild -project Garage.xcodeproj -scheme Garage -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
