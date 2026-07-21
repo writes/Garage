@@ -174,8 +174,11 @@ final class PurchaseService: SubscriptionCommitSink, SubscriptionFacading {
 
     func restore() async -> RestoreOutcome {
         guard let gateway else { return .notReady }
-        let originUID = state.currentReadyLease?.uid
         let outcome = await gateway.registerRestore().awaitValue()
+        // Capture the identity the restore actually executed under (post-await), NOT a pre-await
+        // snapshot: a restore during identity resolution must not persist a stale/nil-uid
+        // reconciliation. (A nil uid here is additionally rendered non-blocking by the store.)
+        let originUID = state.currentReadyLease?.uid
         let resolved = outcome == .activeEntitlement && !isPro ? .noActiveEntitlement : outcome
         reconciliationStore.observeRestore(resolved, uid: originUID)
         return resolved

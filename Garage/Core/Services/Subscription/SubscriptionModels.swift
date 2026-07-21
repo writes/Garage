@@ -112,6 +112,11 @@ struct PendingSubscriptionReconciliation: Codable, Equatable, Sendable {
         identityDigest = uid.map(Self.digest)
     }
 
+    /// A reconciliation with no identity digest can never be matched or cleared, so it must NEVER
+    /// be allowed to block the purchase path — that would be a permanent, unrecoverable brick.
+    /// Callers treat a non-identity-bound reconciliation as absent.
+    var isIdentityBound: Bool { identityDigest != nil }
+
     func matches(uid: String?) -> Bool {
         guard let uid, let identityDigest else { return false }
         return identityDigest == Self.digest(uid)
@@ -137,11 +142,23 @@ final class SubscriptionReconciliationStore {
         self.defaults = defaults
         self.key = key
         guard let data = defaults?.data(forKey: key) else { return }
-        pending = (try? JSONDecoder().decode(PendingSubscriptionReconciliation.self, from: data))
-            ?? PendingSubscriptionReconciliation(kind: .purchase, uid: nil)
+        // An undecodable (corrupt / future-schema) blob — or a persisted non-identity-bound
+        // reconciliation — is unclearable, so clear it rather than fabricating a nil-uid brick that
+        // permanently blocks purchases.
+        if let decoded = try? JSONDecoder().decode(PendingSubscriptionReconciliation.self, from: data),
+           decoded.isIdentityBound {
+            pending = decoded
+        } else {
+            defaults?.removeObject(forKey: key)
+        }
     }
 
-    var kind: SubscriptionReconciliationKind? { pending?.kind }
+    /// A non-identity-bound reconciliation can never be cleared, so it must not block the purchase
+    /// path — surface it as absent (the stored value is reaped on the next launch).
+    var kind: SubscriptionReconciliationKind? {
+        guard let pending, pending.isIdentityBound else { return nil }
+        return pending.kind
+    }
 
     func observePurchase(_ outcome: PurchaseOutcome, uid: String?) {
         guard outcome == .reconciliationRequired else { return }
