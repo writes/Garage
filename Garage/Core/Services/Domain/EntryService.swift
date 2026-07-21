@@ -192,23 +192,6 @@ struct EntryCursor { fileprivate let document: DocumentSnapshot?
             .order(by: "entryDate", descending: true).limit(to: 1).getDocuments()
         return try snapshot.documents.first.map { try firestore.decode(FirestoreEntry.self, from: $0.data()) }
     }
-    nonisolated static func filter(_ entries: [FirestoreEntry], with searchText: String) -> [FirestoreEntry] {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isNotEmpty else { return entries }
-        let lowered = trimmed.lowercased()
-        return entries.filter { entry in
-            if entry.notes?.lowercased().contains(lowered) == true { return true }
-            if entry.entryType.displayName.lowercased().contains(lowered) { return true }
-            if entry.shopName?.lowercased().contains(lowered) == true { return true }
-            // Match user-visible detail content only — the humanized field labels and clean
-            // values — never the raw dictionary description (which leaks storage keys and the
-            // CodableValue enum, so "value"/"code"/"string" would match every entry).
-            return entry.details.contains { key, value in
-                key.humanizedFieldLabel.lowercased().contains(lowered)
-                    || value.value.displayString.lowercased().contains(lowered)
-            }
-        }
-    }
 }
 extension EntryService {
     private func vehiclePatch(

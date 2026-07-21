@@ -13,7 +13,7 @@ struct EntryDetailFormattingTests {
     @Test func humanizesSnakeAndKebabKeys() {
         #expect("pad_compound".humanizedFieldLabel == "Pad Compound")
         #expect("where-purchased".humanizedFieldLabel == "Where Purchased")
-        #expect("".humanizedFieldLabel == "")
+        #expect("".humanizedFieldLabel.isEmpty)
     }
 
     @Test func rendersValuesForUsersNotDebugDescriptions() {

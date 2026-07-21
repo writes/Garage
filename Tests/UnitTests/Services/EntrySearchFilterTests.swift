@@ -16,22 +16,22 @@ struct EntrySearchFilterTests {
     }
 
     @Test func matchesUserVisibleValuesNotesAndHumanizedKeys() {
-        let e = entry(
+        let sample = entry(
             notes: "HPDE shakedown",
             details: ["venue": AnyCodable("Willow Springs"), "eventType": AnyCodable("HPDE")]
         )
-        #expect(EntryService.filter([e], with: "willow").count == 1)     // detail value
-        #expect(EntryService.filter([e], with: "shakedown").count == 1)  // notes
-        #expect(EntryService.filter([e], with: "event type").count == 1) // humanized key
+        #expect(EntryService.filter([sample], with: "willow").count == 1)     // detail value
+        #expect(EntryService.filter([sample], with: "shakedown").count == 1)  // notes
+        #expect(EntryService.filter([sample], with: "event type").count == 1) // humanized key
     }
 
     @Test func doesNotMatchInternalRepresentationTokens() {
-        let e = entry(details: ["venue": AnyCodable("Willow Springs")])
+        let sample = entry(details: ["venue": AnyCodable("Willow Springs")])
         // These would all match the old `details.description` (raw dict + CodableValue enum).
-        #expect(EntryService.filter([e], with: "AnyCodable").isEmpty)
-        #expect(EntryService.filter([e], with: "CodableValue").isEmpty)
-        #expect(EntryService.filter([e], with: "string").isEmpty)
-        #expect(EntryService.filter([e], with: "venue").count == 1) // humanized "Venue" still matches
+        #expect(EntryService.filter([sample], with: "AnyCodable").isEmpty)
+        #expect(EntryService.filter([sample], with: "CodableValue").isEmpty)
+        #expect(EntryService.filter([sample], with: "string").isEmpty)
+        #expect(EntryService.filter([sample], with: "venue").count == 1) // humanized "Venue" still matches
     }
 
     @Test func emptyOrWhitespaceQueryReturnsAllEntries() {
@@ -41,7 +41,7 @@ struct EntrySearchFilterTests {
     }
 
     @Test func matchesShopName() {
-        let e = entry(shop: "Willow Springs")
-        #expect(EntryService.filter([e], with: "willow").count == 1)
+        let sample = entry(shop: "Willow Springs")
+        #expect(EntryService.filter([sample], with: "willow").count == 1)
     }
 }

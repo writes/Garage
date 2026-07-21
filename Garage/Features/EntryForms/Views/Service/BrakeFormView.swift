@@ -14,7 +14,9 @@ struct BrakeFormView: View {
                 ForEach(BrakeServiceAction.allCases, id: \.self) { action in Text(action.displayName).tag(action) }
             }
             Picker("Position", selection: $position) {
-                ForEach(BrakeServicePosition.allCases, id: \.self) { position in Text(position.displayName).tag(position) }
+                ForEach(BrakeServicePosition.allCases, id: \.self) { position in
+                    Text(position.displayName).tag(position)
+                }
             }
             TextField("Pad brand", text: $padBrand).textFieldStyle(.roundedBorder)
             TextField("Pad compound", text: $padCompound).textFieldStyle(.roundedBorder)

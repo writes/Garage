@@ -25,26 +25,13 @@ final class VehicleFormViewModel {
     }
 
     func save() async -> Bool {
-        // Re-entrancy guard: a double-tap must not race the read-then-write vehicle-count check
-        // and create duplicate vehicles (bypassing the free-tier limit). Mirrors EntryFormViewModel.
+        // Re-entrancy guard: a double-tap must not race the vehicle-count check into a duplicate.
         guard !isSaving else { return false }
         isSaving = true
         defer { isSaving = false }
 
-        guard Validators.nonEmpty(nickname, fieldName: "Nickname") == nil else {
-            error = .validation("Nickname is required.")
-            return false
-        }
-        guard Validators.nonEmpty(make, fieldName: "Make") == nil else {
-            error = .validation("Make is required.")
-            return false
-        }
-        guard Validators.nonEmpty(model, fieldName: "Model") == nil else {
-            error = .validation("Model is required.")
-            return false
-        }
-        guard Validators.positiveInteger(currentOdometer, fieldName: "Odometer") == nil else {
-            error = .validation("Current odometer is required.")
+        if let validationError = firstValidationError() {
+            error = validationError
             return false
         }
 
@@ -70,5 +57,21 @@ final class VehicleFormViewModel {
             self.error = AppError(from: error)
             return false
         }
+    }
+
+    private func firstValidationError() -> AppError? {
+        if Validators.nonEmpty(nickname, fieldName: "Nickname") != nil {
+            return .validation("Nickname is required.")
+        }
+        if Validators.nonEmpty(make, fieldName: "Make") != nil {
+            return .validation("Make is required.")
+        }
+        if Validators.nonEmpty(model, fieldName: "Model") != nil {
+            return .validation("Model is required.")
+        }
+        if Validators.positiveInteger(currentOdometer, fieldName: "Odometer") != nil {
+            return .validation("Current odometer is required.")
+        }
+        return nil
     }
 }

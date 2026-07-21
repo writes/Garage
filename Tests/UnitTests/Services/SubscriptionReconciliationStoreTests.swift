@@ -6,6 +6,7 @@ import Testing
 struct SubscriptionReconciliationStoreTests {
     private func freshDefaults() -> (UserDefaults, String) {
         let suite = "test.recon.\(UUID().uuidString)"
+        // swiftlint:disable:next force_unwrapping
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
         return (defaults, suite)
@@ -37,6 +38,7 @@ struct SubscriptionReconciliationStoreTests {
 
     @Test func corruptStoredBlobIsClearedNotTurnedIntoABrick() {
         let suite = "test.recon.\(UUID().uuidString)"
+        // swiftlint:disable:next force_unwrapping
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
         let key = SubscriptionReconciliationStore.storageKey
