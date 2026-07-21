@@ -4,6 +4,7 @@ enum Constants {
     static let maxFreeVehicles = 1
     static let maxProVehicles = 5
     static let pageSize = 20
+    static let maxLogEntries = 500
     static let dashboardRecentLimit = 10
     static let annualPlanIdentifier = "garage_pro_annual"
     static let monthlyPlanIdentifier = "garage_pro_monthly"

@@ -7,6 +7,7 @@ final class LogViewModel {
 
     var searchText = ""
     var selectedTypes = Set<EntryType>()
+    private(set) var allEntries: [FirestoreEntry] = []
     private(set) var entries: [FirestoreEntry] = []
     private(set) var isLoading = false
     private(set) var error: AppError?
@@ -16,10 +17,10 @@ final class LogViewModel {
         self.entryService = entryService
     }
 
+    /// Fetches the vehicle's history once (up to maxLogEntries), then filters client-side. Search
+    /// and type changes re-filter the cached set without re-fetching, so search covers the full
+    /// history and a keystroke never triggers a Firestore round-trip (nor a reload race).
     func reload(vehicleId: String) async {
-        // Each search keystroke/filter change fires a reload; a slow earlier fetch must not
-        // overwrite a newer one (that is why clearing the search "never reset"). Only the
-        // latest request applies its result.
         reloadToken &+= 1
         let token = reloadToken
         isLoading = true
@@ -27,14 +28,23 @@ final class LogViewModel {
 
         do {
             let fetched = try await entryService.fetchEntries(
-                query: EntryQuery(vehicleId: vehicleId, entryTypes: selectedTypes, searchText: searchText)
+                query: EntryQuery(vehicleId: vehicleId, entryTypes: [], searchText: ""),
+                limit: Constants.maxLogEntries
             )
             guard token == reloadToken else { return }
-            entries = fetched
+            allEntries = fetched
+            applyFilter()
             error = nil
         } catch {
             guard token == reloadToken else { return }
             self.error = AppError(from: error)
         }
+    }
+
+    func applyFilter() {
+        let byType = selectedTypes.isEmpty
+            ? allEntries
+            : allEntries.filter { selectedTypes.contains($0.entryType) }
+        entries = EntryService.filter(byType, with: searchText)
     }
 }
