@@ -30,7 +30,7 @@ struct DetailingLogView: View {
         .toolbar {
             Button("Add Record") { isShowingForm = true }
         }
-        .task { await load() }
+        .task(id: appState.currentVehicle?.id) { await load() }
         .sheet(isPresented: $isShowingForm) { DetailingFormView() }
         .onChange(of: isShowingForm) { _, isPresented in
             guard !isPresented else { return }

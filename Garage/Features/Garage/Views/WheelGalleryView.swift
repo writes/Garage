@@ -39,7 +39,7 @@ struct WheelGalleryView: View {
             .padding(Theme.Spacing.md)
         }
         .navigationTitle("Wheel Records")
-        .task { await load() }
+        .task(id: appState.currentVehicle?.id) { await load() }
     }
 
     private var wheelPhotos: [GalleryPhoto] {

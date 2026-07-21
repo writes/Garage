@@ -43,7 +43,7 @@ struct WarrantyRecallView: View {
             }
         }
         .navigationTitle("Warranty & Recalls")
-        .task { await load() }
+        .task(id: appState.currentVehicle?.id) { await load() }
     }
 
     private func load() async {

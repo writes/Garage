@@ -33,7 +33,7 @@ struct SparePartsView: View {
             Button("Add Part") { isShowingForm = true }
                 .accessibilityIdentifier("parts.add")
         }
-        .task { await load() }
+        .task(id: appState.currentVehicle?.id) { await load() }
         .sheet(isPresented: $isShowingForm) {
             SparePartFormView()
         }

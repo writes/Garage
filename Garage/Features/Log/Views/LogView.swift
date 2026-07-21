@@ -52,7 +52,7 @@ struct LogView: View {
                     .accessibilityIdentifier("log.filter")
                 }
             }
-            .task { await reload() }
+            .task(id: appState.currentVehicle?.id) { await reload() }
             .sheet(item: $selectedEntry) { entry in
                 NavigationStack { EntryDetailView(entry: entry) }
             }
