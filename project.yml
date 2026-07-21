@@ -39,6 +39,11 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "17.0"
+    scheme:
+      testTargets:
+        - GarageUnitTests
+        - GarageUITests
+      gatherCoverageData: false
     info:
       path: Garage/Resources/Info.plist
       properties:
@@ -61,6 +66,7 @@ targets:
           CODE_SIGN_ENTITLEMENTS: GarageDebug.entitlements
           PRODUCT_BUNDLE_IDENTIFIER: com.writes.harrysplayhouse.debug
           ONLY_ACTIVE_ARCH: YES
+          ENABLE_TESTABILITY: YES
         Release:
           CODE_SIGN_ENTITLEMENTS: Garage.entitlements
           PRODUCT_BUNDLE_IDENTIFIER: com.writes.harrysplayhouse
@@ -162,10 +168,49 @@ targets:
     settings:
       base:
         PRODUCT_MODULE_NAME: GarageUnitTests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Garage.app/Garage"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        ONLY_ACTIVE_ARCH: YES
     sources:
       - Tests/UnitTests
     dependencies:
       - target: Garage
+      - package: Firebase
+        product: FirebaseAuth
+        link: false
+      - package: Firebase
+        product: FirebaseFirestore
+        link: false
+      - package: Firebase
+        product: FirebaseFunctions
+        link: false
+      - package: Firebase
+        product: FirebaseStorage
+        link: false
+      - package: Firebase
+        product: FirebaseAnalytics
+        link: false
+      - package: Firebase
+        product: FirebaseAppCheck
+        link: false
+      - package: Firebase
+        product: FirebaseCrashlytics
+        link: false
+      - package: Firebase
+        product: FirebaseMessaging
+        link: false
+      - package: Firebase
+        product: FirebaseCore
+        link: false
+      - package: RevenueCat
+        product: RevenueCat
+        link: false
+      - package: GoogleSignIn
+        product: GoogleSignIn
+        link: false
+      - package: TPPDF
+        product: TPPDF
+        link: false
   GarageUITests:
     type: bundle.ui-testing
     platform: iOS
