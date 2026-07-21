@@ -41,6 +41,7 @@ struct VehicleFormView: View {
                     }
                 }
             }
+            .disabled(viewModel.isSaving)
             .accessibilityIdentifier("vehicle.form.save")
         }
     }

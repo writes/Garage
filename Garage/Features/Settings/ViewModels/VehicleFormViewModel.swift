@@ -14,6 +14,7 @@ final class VehicleFormViewModel {
     var currentOdometer = ""
     var fuelType: FuelType = .premium93
     private(set) var error: AppError?
+    private(set) var isSaving = false
 
     init(
         vehicleService: VehicleService = .shared,
@@ -24,6 +25,12 @@ final class VehicleFormViewModel {
     }
 
     func save() async -> Bool {
+        // Re-entrancy guard: a double-tap must not race the read-then-write vehicle-count check
+        // and create duplicate vehicles (bypassing the free-tier limit). Mirrors EntryFormViewModel.
+        guard !isSaving else { return false }
+        isSaving = true
+        defer { isSaving = false }
+
         guard Validators.nonEmpty(nickname, fieldName: "Nickname") == nil else {
             error = .validation("Nickname is required.")
             return false
