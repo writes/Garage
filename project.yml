@@ -53,6 +53,8 @@ targets:
         NSCameraUsageDescription: Attach receipts and vehicle photos.
         NSPhotoLibraryUsageDescription: Select receipts and vehicle photos.
         NSPhotoLibraryAddUsageDescription: Save generated reports to your photo library.
+        NSMicrophoneUsageDescription: Speak a log entry and Garage drafts it for you to review.
+        NSSpeechRecognitionUsageDescription: Turns your spoken log entry into text you confirm before saving.
         CFBundleDisplayName: Garage
     settings:
       base:

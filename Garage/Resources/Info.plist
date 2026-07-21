@@ -22,10 +22,14 @@
 	<string>1</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Attach receipts and vehicle photos.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Speak a log entry and Garage drafts it for you to review.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Save generated reports to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Select receipts and vehicle photos.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Turns your spoken log entry into text you confirm before saving.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

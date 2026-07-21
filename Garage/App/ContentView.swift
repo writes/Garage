@@ -62,6 +62,8 @@ struct ContentView: View {
         switch sheet {
         case .entryPicker:
             EntryTypePicker()
+        case .voiceQuickAdd:
+            VoiceQuickAddView()
         case .entryForm(let type):
             EntryFormFactoryView(entryType: type)
         case .vehicleForm:

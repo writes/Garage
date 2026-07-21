@@ -161,6 +161,12 @@ struct EntryFormScaffold<Content: View>: View {
             .accessibilityIdentifier("entry.form.save")
         }
         .accessibilityIdentifier("entry.form.sheet")
+        .task {
+            // One-shot: only the form opened straight from voice capture sees a pending prefill.
+            if let prefill = router.consumeVoicePrefill() {
+                viewModel.applyVoicePrefill(prefill)
+            }
+        }
     }
 
     private var isMutationLocked: Bool {
