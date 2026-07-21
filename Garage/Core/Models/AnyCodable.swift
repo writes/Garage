@@ -77,6 +77,32 @@ enum CodableValue: Equatable, Sendable {
 }
 
 extension CodableValue {
+    /// A clean, user-facing rendering of the stored value — never the debug enum-case
+    /// description (`String(describing:)` would show e.g. `string("Dry")` / `double(10.5)`).
+    var displayString: String {
+        switch self {
+        case .string(let value):
+            return value
+        case .int(let value):
+            return String(value)
+        case .double(let value):
+            if value == value.rounded(), abs(value) < 1e15 {
+                return String(Int(value))
+            }
+            return String(value)
+        case .bool(let value):
+            return value ? "Yes" : "No"
+        case .array(let values):
+            return values.map { $0.value.displayString }.joined(separator: ", ")
+        case .dictionary(let dictionary):
+            return dictionary.keys.sorted()
+                .map { "\($0.humanizedFieldLabel): \(dictionary[$0]?.value.displayString ?? "—")" }
+                .joined(separator: ", ")
+        case .null:
+            return "—"
+        }
+    }
+
     var doubleValue: Double? {
         switch self {
         case .double(let value):
