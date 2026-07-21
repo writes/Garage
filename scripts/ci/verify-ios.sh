@@ -27,6 +27,18 @@ SIMULATOR_NAME="$(
 
 ./scripts/ci/policy-checks.sh
 xcodegen generate
+
+# Regenerate-equality gate (DECISION_LEDGER group ea4de5ac0c6fb564, 2026-07-21): Garage.xcodeproj/
+# is a generated ALLOWED-candidate surface; project.yml is the PROTECTED source of truth. The
+# committed project.pbxproj MUST equal `xcodegen generate` output — fail loudly on any drift so
+# nothing non-derivable from the protected project.yml can be promoted.
+if ! git diff --quiet -- Garage.xcodeproj/project.pbxproj; then
+  echo "ERROR: committed Garage.xcodeproj/project.pbxproj differs from 'xcodegen generate' output."
+  echo "       Run '.tools/bin/xcodegen generate' and commit the regenerated project (or reconcile project.yml)."
+  git --no-pager diff --stat -- Garage.xcodeproj/project.pbxproj
+  exit 1
+fi
+
 swiftlint lint --strict
 xcodebuild -project Garage.xcodeproj -scheme Garage -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
 

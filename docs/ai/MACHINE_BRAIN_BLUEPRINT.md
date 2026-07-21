@@ -230,7 +230,7 @@ never an auto-edit beyond appending rows the human confirms (Law 5).
 | 8 | Doctrine (mirrored) + compact state + budget | IV | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `docs/ARCHIVE.md` | §2.IV,§9 | LIVE | 2026-06-29 |
 | 9 | Pre-reg + verdict trial docs | IV | `docs/research/` | §2.IV,§8 | LIVE | 2026-06-29 |
 | 10 | Worktree plan⇄impl⇄review loop | II | `scripts/brain/dual_agent_loop.py` | §2.II | LIVE | 2026-06-29 |
-| 11 | Scope guard (protected/allowed/protocol + auto-revert) | II | `scripts/brain/scope_guard.py` | §2.II,§3 | LIVE | 2026-06-29 |
+| 11 | Scope guard (protected/allowed/protocol + auto-revert) | II | `scripts/brain/scope_guard.py` | §2.II,§3 | LIVE (pbxproj PROTECTED→ALLOWED 2026-07-21, group `ea4de5ac0c6fb564`) | 2026-06-29 |
 | 12 | Immutable promotion gate (build+tests+policy) | II | `scripts/ci/{policy,security,verify-ios}-checks.sh` | §2.II | LIVE (pre-existing) | 2026-06-29 |
 | 13 | Research-assay skeptical intake agent | V | `.claude/agents/research-assay.md` | §2.V,§8 | LIVE | 2026-06-29 |
 | 14 | Intake graveyard (audit DB + schema) | V | `docs/research-assay/audit/{REGISTRY.md,index.jsonl,index.schema.json,tier-*}` | §2.V,§8 | LIVE (1 verdict) | 2026-06-29 |
@@ -242,6 +242,19 @@ never an auto-edit beyond appending rows the human confirms (Law 5).
 
 ### 5.4 Changelog (append-only; newest first)
 
+- **2026-07-21** — **Scope-guard root-cause fix: generated `Garage.xcodeproj/` reclassified
+  PROTECTED→ALLOWED; `project.yml` stays PROTECTED; CI regenerate-equality gate added.** The app
+  target sources are the whole `Garage/` dir, so adding any Swift file regenerates `project.pbxproj`
+  and tripped a protected-surface HALT — structurally blocking ALL autonomous feature work (root
+  cause of a ~10-day stall; ~15 identical `r2-exact-remediation` worktrees on 2026-07-21 alone, 32 GB
+  of worktree thrash). `verify-ios.sh` already runs `xcodegen generate`, so CI already built from a
+  freshly regenerated pbxproj derived from the still-protected `project.yml`; the committed pbxproj
+  was never CI's trust anchor. Changes: `scope_guard.py` moves `Garage.xcodeproj/` to
+  `ALLOWED_CANDIDATE_PREFIXES` (self-test green); `verify-ios.sh` fails after `xcodegen generate` if
+  the committed `project.pbxproj` differs from output (validated green on `6162f49` with pinned
+  xcodegen 2.45.3). Unanimous tri-agent vote — Fable 5 0.86 / GPT-5.6 Sol 0.98 / Gemini 3.1 Pro High
+  0.95 (ledger group `ea4de5ac0c6fb564`) — superseding the 2026-06-29 protect-both decision (group
+  `d09e41f1544ac2e6`). Unblocks every future feature that adds a source file.
 - **2026-07-12** — **Process sentinel installed (Organ V; landmine #14 registered).** Operator
   directive after observed LLM leaks (27h hung agy wrappers, a 44h silent codex mine in the
   trading repo): `scripts/brain/process_sentinel.py` classifies codex/agy/`claude -p`/

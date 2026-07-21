@@ -115,10 +115,14 @@ validation spec in `docs/research/YYYY-MM-DD_*.md` (with a death condition).
 
 - **PROTECTED (never auto-edit; a change → halt + human review):** `Configuration/Secrets.swift`,
   `Garage/Resources/GoogleService-Info.plist`, `CloudFunctions/.env*`, `firebase.firestore.rules`,
-  `firebase.storage.rules`, `firebase.json`, `.firebaserc`, `scripts/ci/`, `Garage.xcodeproj/`,
-  `project.yml` (the XcodeGen generator — PROTECTED by unanimous tri-agent consensus 2026-06-29).
+  `firebase.storage.rules`, `firebase.json`, `.firebaserc`, `scripts/ci/`, `project.yml` (the
+  XcodeGen INPUT — source of truth for targets/signing/bundle IDs; stays PROTECTED. Supersedes the
+  2026-06-29 protect-both decision via unanimous tri-agent consensus 2026-07-21, ledger group
+  `ea4de5ac0c6fb564`).
 - **ALLOWED candidate surface:** `Garage/Features/`, `Garage/Design/`, `Garage/Core/`, `Tests/`,
-  `CloudFunctions/src/`, `reports/`, `results/`, `logs/`, `docs/research/`.
+  `CloudFunctions/src/`, `reports/`, `results/`, `logs/`, `docs/research/`, `Garage.xcodeproj/`
+  (GENERATED from `project.yml` by `xcodegen generate` — agents may regenerate it when adding
+  sources; promotion safety is the `verify-ios.sh` regenerate-equality gate, not a write ban).
 - **Secrets never enter agent prompts or candidate outputs.** The scope check is file-list based,
   so keep protected content out of prompts (landmine #8).
 
