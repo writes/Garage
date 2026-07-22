@@ -159,6 +159,7 @@ final class AppState {
             return
         }
         userProfile = profile
+        AccentStore.shared.apply(themeID: profile.themeID)
     }
 
     private func loadProfile(uid: String, expectedAuthenticationRevision: Int) async {
@@ -170,6 +171,7 @@ final class AppState {
             }
             userProfile = profile
             analytics.setEnabled(!profile.analyticsOptOut)
+            AccentStore.shared.apply(themeID: profile.themeID)
         } catch {
             userProfile = nil
             analytics.setEnabled(false)
@@ -189,6 +191,7 @@ final class AppState {
             userProfile = nil
             vehicles = []
             currentVehicle = nil
+            AccentStore.shared.scheme = .classic
             authenticationRevision += 1
         } catch {
             AppLogger.shared.error("Sign out failed: \(error.localizedDescription)")

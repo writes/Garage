@@ -26,6 +26,8 @@ struct UserProfile: Codable, Identifiable, Sendable, Equatable {
     var insuranceCompany: String?
     var policyNumber: String?
     var analyticsOptOut: Bool
+    /// Selected accent-theme id (AccentScheme.rawValue). nil / empty = the default `.classic`.
+    var themeID: String?
     var createdAt: Date?
     var updatedAt: Date?
 }
@@ -41,6 +43,7 @@ extension UserProfile {
             insuranceCompany: profileFields["insuranceCompany"]?.stringValue,
             policyNumber: profileFields["policyNumber"]?.stringValue,
             analyticsOptOut: profileFields["analyticsOptOut"]?.boolValue ?? true,
+            themeID: profileFields["themeID"]?.stringValue,
             createdAt: nil,
             updatedAt: nil
         )
@@ -53,7 +56,8 @@ extension UserProfile {
             "phone": .string(phone ?? ""),
             "insuranceCompany": .string(insuranceCompany ?? ""),
             "policyNumber": .string(policyNumber ?? ""),
-            "analyticsOptOut": .boolean(analyticsOptOut)
+            "analyticsOptOut": .boolean(analyticsOptOut),
+            "themeID": .string(themeID ?? "")
         ]
     }
 }

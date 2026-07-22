@@ -2,7 +2,14 @@ import SwiftUI
 
 enum Theme {
     enum Colors {
-        static let primary = Color("BrandPrimary")
+        // `primary` is the one themeable accent (Phase-1 in-Pro theming). Reading it inside a
+        // SwiftUI body registers an Observation dependency on AccentStore.shared.scheme, so
+        // changing the scheme live-recolors every accent surface with no relaunch. It reads the
+        // singleton deliberately — a `static` cannot read @Environment — and is @MainActor because
+        // the store is. Only reads inside a SwiftUI body are reactive: do not cache this in a
+        // stored `let`/init or bridge it to UIColor and expect updates. All other tokens stay
+        // `static let`. Default (`.classic`) resolves to Color("BrandPrimary"), unchanged.
+        @MainActor static var primary: Color { AccentStore.shared.scheme.tint }
         static let secondary = Color("BrandSecondary")
         static let accent = Color("Accent")
         static let background = Color("Background")

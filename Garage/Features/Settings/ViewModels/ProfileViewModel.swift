@@ -15,6 +15,7 @@ final class ProfileViewModel {
     var insuranceCompany = ""
     var policyNumber = ""
     var analyticsOptOut = true
+    private(set) var themeID: String?
     private(set) var userProfile: UserProfile?
     private(set) var error: AppError?
     private(set) var hasSuccessfullyLoadedProfile = false
@@ -171,10 +172,12 @@ final class ProfileViewModel {
         return UserProfile(id: uid, profileFields: fields)
     }
     private func makeProfile(uid: String) -> UserProfile {
+        // themeID MUST round-trip here: save() writes the full profileFields dict, so omitting it
+        // would silently wipe the user's selected accent back to default.
         UserProfile(
             id: uid, email: nil, name: name, address: address, phone: phone,
             insuranceCompany: insuranceCompany, policyNumber: policyNumber,
-            analyticsOptOut: analyticsOptOut, createdAt: nil, updatedAt: nil
+            analyticsOptOut: analyticsOptOut, themeID: themeID, createdAt: nil, updatedAt: nil
         )
     }
     private func apply(_ profile: UserProfile) {
@@ -184,7 +187,9 @@ final class ProfileViewModel {
         insuranceCompany = profile.insuranceCompany ?? ""
         policyNumber = profile.policyNumber ?? ""
         analyticsOptOut = profile.analyticsOptOut
+        themeID = profile.themeID
     }
+
     private func resolvedUserID() -> String? {
 #if DEBUG
         if isDemoMode {
@@ -192,5 +197,43 @@ final class ProfileViewModel {
         }
 #endif
         return userID()
+    }
+}
+
+extension ProfileViewModel {
+    /// Writes only the accent-theme id (a partial field write) so untouched profile fields are
+    /// preserved. Optimistically applies the new accent, then rolls back both the id and the live
+    /// scheme on any failure or account mismatch. Mirrors setAnalyticsSharingEnabled.
+    @discardableResult
+    func setThemeID(_ id: String) async -> Bool {
+        guard hasSuccessfullyLoadedProfile, let expectedUserID = resolvedUserID() else {
+            return false
+        }
+        let previousThemeID = themeID
+        let previousScheme = AccentStore.shared.scheme
+        themeID = id
+        AccentStore.shared.apply(themeID: id)
+
+        do {
+            try await store.saveProfileFields(["themeID": .string(id)], uid: expectedUserID)
+            guard resolvedUserID() == expectedUserID else {
+                return rollBackTheme(previousThemeID, previousScheme)
+            }
+            if var profile = userProfile {
+                profile.themeID = id
+                userProfile = profile
+            }
+            error = nil
+            return true
+        } catch {
+            self.error = AppError(from: error)
+            return rollBackTheme(previousThemeID, previousScheme)
+        }
+    }
+
+    private func rollBackTheme(_ previousThemeID: String?, _ previousScheme: AccentScheme) -> Bool {
+        themeID = previousThemeID
+        AccentStore.shared.scheme = previousScheme
+        return false
     }
 }

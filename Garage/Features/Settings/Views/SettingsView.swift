@@ -13,6 +13,8 @@ struct SettingsView: View {
                     .accessibilityIdentifier("settings.profile")
                 NavigationLink("Reminder Settings") { ReminderConfigView() }
                     .accessibilityIdentifier("settings.reminders")
+                NavigationLink("Theme") { ThemePickerView() }
+                    .accessibilityIdentifier("settings.theme")
                 Button("Export History") { router.present(.export) }
                     .accessibilityIdentifier("settings.export")
                 Button(appState.isPro ? "Manage Subscription" : "Upgrade to Pro") {
