@@ -32,14 +32,14 @@ struct DemoSessionStoreTests {
         store.save(reminder)
         store.save(part)
         store.save(record)
-        store.saveProfile(["name": "Session Driver"])
+        store.saveProfile(["name": .string("Session Driver")])
 
         #expect(store.vehicles().contains(vehicle))
         #expect(store.entries(for: vehicle.id).contains(entry))
         #expect(store.reminders(for: vehicle.id).contains(reminder))
         #expect(store.parts(for: vehicle.id).contains(part))
         #expect(store.detailingRecords(for: vehicle.id).contains(record))
-        #expect(store.profile()["name"] == "Session Driver")
+        #expect(store.profile()["name"] == .string("Session Driver"))
         #expect(store.profile()["phone"] == DemoSessionStore.profileFields["phone"])
     }
 
@@ -48,7 +48,7 @@ struct DemoSessionStoreTests {
         let vehicle = testVehicle(id: "relaunch-vehicle")
         firstLaunch.save(vehicle)
         firstLaunch.save(testEntry(id: "relaunch-entry", vehicleId: vehicle.id))
-        firstLaunch.saveProfile(["name": "Changed in prior launch"])
+        firstLaunch.saveProfile(["name": .string("Changed in prior launch")])
 
         let relaunchedStore = DemoSessionStore()
 

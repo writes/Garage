@@ -52,7 +52,7 @@ struct LogView: View {
                     .accessibilityIdentifier("log.filter")
                 }
             }
-            .task { await reload() }
+            .task(id: appState.currentVehicle?.id) { await reload() }
             .sheet(item: $selectedEntry) { entry in
                 NavigationStack { EntryDetailView(entry: entry) }
             }
@@ -60,10 +60,10 @@ struct LogView: View {
                 EntryFilterSheet(selectedTypes: $viewModel.selectedTypes)
             }
             .onChange(of: viewModel.searchText) { _, _ in
-                Task { await reload() }
+                viewModel.applyFilter()
             }
             .onChange(of: viewModel.selectedTypes) { _, _ in
-                Task { await reload() }
+                viewModel.applyFilter()
             }
             .onChange(of: router.activeSheet) { _, activeSheet in
                 guard activeSheet == nil else { return }

@@ -11,7 +11,7 @@ struct DMEReportFormView: View {
         EntryFormScaffold(title: "DME Report", viewModel: form, onSave: save) {
             TextField("Provider", text: $provider).textFieldStyle(.roundedBorder)
             Picker("Report type", selection: $reportType) {
-                ForEach(DMEReportType.allCases, id: \.self) { type in Text(type.rawValue).tag(type) }
+                ForEach(DMEReportType.allCases, id: \.self) { type in Text(type.displayName).tag(type) }
             }
             TextField("Summary", text: $summary).textFieldStyle(.roundedBorder)
         }

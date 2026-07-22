@@ -20,7 +20,7 @@ struct OdometerHeroCard: View {
                 }
                 if let fuelType = vehicle?.fuelType {
                     BadgeView(
-                        title: fuelType.rawValue.replacingOccurrences(of: "_", with: " "),
+                        title: fuelType.displayName,
                         color: Theme.Colors.accent
                     )
                 }

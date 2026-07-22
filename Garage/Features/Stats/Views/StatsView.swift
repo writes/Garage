@@ -15,7 +15,7 @@ struct StatsView: View {
                             message: "Unlock MPG trends, cost breakdowns, and wear history charts for every vehicle.",
                             actionIdentifier: "stats.gate.cta"
                         ) {
-                            router.present(.subscription)
+                            router.present(.subscription(.stats))
                         }
                     } else if let error = viewModel.error {
                         ErrorBanner(error: error)
@@ -33,7 +33,7 @@ struct StatsView: View {
                     VehicleSwitcher()
                 }
             }
-            .task { await load() }
+            .task(id: [appState.currentVehicle?.id, appState.isPro ? "pro" : "free"]) { await load() }
         }
     }
 

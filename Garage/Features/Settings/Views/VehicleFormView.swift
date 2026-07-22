@@ -26,7 +26,7 @@ struct VehicleFormView: View {
                 .accessibilityIdentifier("vehicle.form.odometer")
             Picker("Fuel type", selection: $viewModel.fuelType) {
                 ForEach(FuelType.allCases, id: \.self) { type in
-                    Text(type.rawValue.replacingOccurrences(of: "_", with: " ")).tag(type)
+                    Text(type.displayName).tag(type)
                 }
             }
             if let error = viewModel.error {
@@ -41,6 +41,7 @@ struct VehicleFormView: View {
                     }
                 }
             }
+            .disabled(viewModel.isSaving)
             .accessibilityIdentifier("vehicle.form.save")
         }
     }

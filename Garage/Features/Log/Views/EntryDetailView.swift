@@ -9,11 +9,11 @@ struct EntryDetailView: View {
                 EntryRowView(entry: entry)
                 ForEach(entry.details.keys.sorted(), id: \.self) { key in
                     HStack {
-                        Text(key)
+                        Text(key.humanizedFieldLabel)
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.Colors.textSecondary)
                         Spacer()
-                        Text(String(describing: entry.details[key]?.value ?? .null))
+                        Text((entry.details[key]?.value ?? .null).displayString)
                             .font(Theme.Typography.body)
                     }
                 }

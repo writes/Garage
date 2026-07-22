@@ -82,54 +82,12 @@ ISO8601_Z_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\Z")
 # Import, rather than copy, the protected list: scope_guard remains the sole
 # source of truth if the doctrine changes its protected-path boundary.
 PROTECTED_PREFIXES = scope_guard.PROTECTED_PREFIXES
-# We report pattern labels, not the matching text, so a blocked run cannot
-# accidentally echo a secret into logs or terminal scrollback.
-SECRET_PATTERNS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
-    ("private key block", re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", re.IGNORECASE)),
-    ("AWS access key", re.compile(r"AKIA[0-9A-Z]{16}")),
-    ("Google API key", re.compile(r"AIza[0-9A-Za-z_-]{35}")),
-    ("JWT", re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.")),
-    ("GitHub token", re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}")),
-    ("GitHub fine-grained PAT", re.compile(r"github_pat_[A-Za-z0-9_]{20,}")),
-    ("OpenAI key", re.compile(r"sk-(?!ant-)[A-Za-z0-9_-]{20,}")),
-    ("Anthropic key", re.compile(r"sk-ant-[A-Za-z0-9-]{20,}")),
-    ("Stripe secret key", re.compile(r"[rs]k_(?:live|test)_[A-Za-z0-9]{16,}")),
-    ("Slack token", re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}")),
-    (
-        "quoted JSON credential",
-        re.compile(r'"(?:api_?key|secret|token|password)"\s*:\s*"[^"]{12,}"', re.IGNORECASE),
-    ),
-    (
-        "dotenv credential",
-        re.compile(
-            r"(?m)^(?:\+)?(?:API_?KEY|SECRET|TOKEN|PASSWORD)\s*=\s*(?!['\"])\S{12,}\s*$",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "unquoted dotenv/YAML credential assignment",
-        re.compile(
-            r"(?im)^[A-Z0-9_]*(PASSWORD|SECRET|TOKEN|API_?KEY|PRIVATE_KEY)\s*[:=]\s*\S{8,}$"
-        ),
-    ),
-    (
-        "generic credential assignment",
-        re.compile(
-            r"(?:api[_-]?key|secret|token|password)\s*[:=]\s*['\"][^'\"]{12,}",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Firebase token",
-        re.compile(r"AAAA[0-9A-Za-z_-]{7,}:[0-9A-Za-z_-]{20,}"),
-    ),
-)
-# ``SECRET_PATTERNS`` deliberately detects a PEM header even when a test fixture
-# or truncated artifact lacks its footer. When redacting an actual artifact,
-# consume the whole block (or the remaining excerpt) so its body cannot leak.
-PRIVATE_KEY_REDACTION_RE = re.compile(
-    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)",
-    re.IGNORECASE,
+# Shared fail-closed screening set (DS-5, 2026-07-12): one source of truth in
+# secret_screen.py, consumed here plus by tri_agent_vote (ledger writes) and
+# gemini_consult (argv-bound prompts). Names re-exported for API stability.
+from secret_screen import (  # noqa: E402  (local sibling)
+    PRIVATE_KEY_REDACTION_RE,
+    SECRET_PATTERNS,
 )
 
 
@@ -189,28 +147,10 @@ def _parse_name_status(manifest: str) -> List[Dict[str, Any]]:
     return entries
 
 
-def secret_scan(diff_text: str) -> List[str]:
-    """Return labels for secret-like patterns found in a full diff, never values."""
-    return [label for label, pattern in SECRET_PATTERNS if pattern.search(diff_text)]
-
-
-def redact_secret_content(content: str) -> Tuple[str, List[str]]:
-    """Replace secret-like matches while retaining only their safe pattern labels.
-
-    Provider output is untrusted and can contain prompt-injected credentials.
-    Redaction happens before an artifact is rendered or written, so the brief
-    records the fact of a hit without becoming an exfiltration channel itself.
-    """
-    redacted = content
-    labels: List[str] = []
-    for label, pattern in SECRET_PATTERNS:
-        if pattern.search(redacted):
-            labels.append(label)
-            replacement_pattern = (
-                PRIVATE_KEY_REDACTION_RE if label == "private key block" else pattern
-            )
-            redacted = replacement_pattern.sub(f"[REDACTED: {label}]", redacted)
-    return redacted, labels
+from secret_screen import (  # noqa: E402  (local sibling; API-stable re-export)
+    redact_secret_content,
+    secret_scan,
+)
 
 
 def _redact_reviewer_artifact_fields(results: Sequence[Dict[str, Any]]) -> None:

@@ -24,7 +24,7 @@ final class ReminderConfigViewModel {
                 dueMileage: Int(dueMileage),
                 repeatIntervalMonths: Int(dueMonths),
                 repeatIntervalMiles: Int(dueMileage),
-                isProFeature: true
+                isProFeature: false
             )
             try await reminderService.save(reminder)
             error = nil

@@ -6,6 +6,10 @@
           {
             "type": "command",
             "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-handoff-inject.sh\""
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/brain/process_sentinel.py\" 2>/dev/null || true"
           }
         ]
       }

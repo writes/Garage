@@ -12,7 +12,7 @@ struct TrackDayFormView: View {
         EntryFormScaffold(title: "Track Day", viewModel: form, onSave: save) {
             TextField("Venue", text: $venue).textFieldStyle(.roundedBorder)
             Picker("Event Type", selection: $eventType) {
-                ForEach(TrackEventType.allCases, id: \.self) { type in Text(type.rawValue).tag(type) }
+                ForEach(TrackEventType.allCases, id: \.self) { type in Text(type.displayName).tag(type) }
             }
             TextField("Number of laps", text: $laps).keyboardType(.numberPad).textFieldStyle(.roundedBorder)
             TextField("Best lap time", text: $bestLap).textFieldStyle(.roundedBorder)

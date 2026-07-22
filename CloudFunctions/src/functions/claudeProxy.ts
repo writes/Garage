@@ -57,6 +57,7 @@ export type ParseOilAnalysisDependencies = {
 
 export const MAX_PDF_BASE64_BYTES = 10 * 1024 * 1024;
 export const DAILY_OIL_ANALYSIS_QUOTA = 5;
+export const FREE_LIFETIME_OIL_ANALYSIS_QUOTA = 10;
 
 type NumericField = Exclude<keyof OilAnalysisResponse, "labName" | "pdfPath" | "viscosity" | "labRecommendation">;
 
@@ -98,7 +99,7 @@ const coreMetalFields: ReadonlyArray<NumericField> = [
   "titanium",
 ];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -106,36 +107,132 @@ function dailyQuotaKey(uid: string, date: Date): string {
   return `${uid}_${date.toISOString().slice(0, 10)}`;
 }
 
-function safeQuotaCount(value: unknown): number {
+function lifetimeQuotaKey(uid: string): string {
+  return `${uid}_lifetime`;
+}
+
+export function safeQuotaCount(value: unknown): number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
-export async function consumeDailyOilAnalysisQuota(
+type OilAnalysisEntitlement = "free" | "pro";
+
+export type OilAnalysisQuotaReservation =
+  | {
+    bucketId: string;
+    date: string;
+    entitlementUsed: "pro";
+    uid: string;
+  }
+  | {
+    bucketId: string;
+    entitlementUsed: "free";
+    uid: string;
+  };
+
+function parseMillis(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  }
+
+  if (value instanceof Date) {
+    const parsed = value.getTime();
+    return Number.isNaN(parsed) ? undefined : parsed;
+  }
+
+  if (isRecord(value) && typeof value.toMillis === "function") {
+    try {
+      const parsed = value.toMillis();
+      return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  return undefined;
+}
+
+export function userHasActiveProEntitlement(userData: Record<string, unknown> | undefined, now: Date): boolean {
+  const subscription = userData && isRecord(userData.subscription) ? userData.subscription : undefined;
+  const expiresAt = subscription?.expiresAt;
+  const expiresAtMillis = parseMillis(expiresAt);
+
+  return subscription?.entitlement === "pro"
+    && subscription?.isActive === true
+    && (expiresAt == null || (expiresAtMillis !== undefined && expiresAtMillis > now.getTime()));
+}
+
+export function nextUtcMidnight(now: Date): string {
+  return new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + 1,
+  )).toISOString();
+}
+
+/**
+ * Selects the entitlement bucket and reserves one analysis in a single
+ * transaction so a user-profile change cannot split selection from charging.
+ */
+export async function consumeOilAnalysisQuota(
   db: QuotaFirestore,
   uid: string,
   now: Date,
-): Promise<string> {
+): Promise<OilAnalysisQuotaReservation> {
   const date = now.toISOString().slice(0, 10);
-  const quotaId = dailyQuotaKey(uid, now);
-  const quotaRef = db.collection("usage_quotas").doc(quotaId);
+  const userRef = db.collection("users").doc(uid);
 
-  await db.runTransaction(async (transaction) => {
+  return db.runTransaction(async (transaction) => {
+    const user = await transaction.get(userRef);
+    const entitlementUsed: OilAnalysisEntitlement = userHasActiveProEntitlement(user.data(), now) ? "pro" : "free";
+    const bucketId = entitlementUsed === "pro" ? dailyQuotaKey(uid, now) : lifetimeQuotaKey(uid);
+    const quotaRef = db.collection("usage_quotas").doc(bucketId);
     const current = await transaction.get(quotaRef);
     const count = current.exists ? safeQuotaCount(current.data()?.count) : 0;
 
-    if (count >= DAILY_OIL_ANALYSIS_QUOTA) {
-      throw new HttpsError("resource-exhausted", "Daily oil analysis quota exceeded.");
+    if (entitlementUsed === "pro" && count >= DAILY_OIL_ANALYSIS_QUOTA) {
+      throw new HttpsError("resource-exhausted", "Daily oil analysis quota exceeded.", {
+        reason: "pro_daily_exhausted",
+        entitlementUsed: "pro",
+        resetAt: nextUtcMidnight(now),
+      });
     }
 
-    transaction.set(quotaRef, {
+    if (entitlementUsed === "free" && count >= FREE_LIFETIME_OIL_ANALYSIS_QUOTA) {
+      throw new HttpsError("resource-exhausted", "Free oil analysis quota exhausted.", {
+        reason: "free_lifetime_exhausted",
+        entitlementUsed: "free",
+      });
+    }
+
+    transaction.set(quotaRef, entitlementUsed === "pro" ? {
       uid,
       date,
       count: count + 1,
       updatedAt: now.toISOString(),
+    } : {
+      uid,
+      kind: "oil_analysis_lifetime",
+      count: count + 1,
+      updatedAt: now.toISOString(),
     }, { merge: true });
-  });
 
-  return quotaId;
+    return entitlementUsed === "pro" ? {
+      bucketId,
+      date,
+      entitlementUsed,
+      uid,
+    } : {
+      bucketId,
+      entitlementUsed,
+      uid,
+    };
+  });
 }
 
 /**
@@ -143,21 +240,25 @@ export async function consumeDailyOilAnalysisQuota(
  * infrastructure failure. A completed model response consumes upstream cost,
  * even when its output is malformed or cannot be recognized as an analysis.
  */
-export async function refundDailyOilAnalysisQuota(
+export async function refundOilAnalysisQuota(
   db: QuotaFirestore,
-  uid: string,
+  reservation: OilAnalysisQuotaReservation,
   now: Date,
 ): Promise<void> {
-  const date = now.toISOString().slice(0, 10);
-  const quotaRef = db.collection("usage_quotas").doc(dailyQuotaKey(uid, now));
+  const quotaRef = db.collection("usage_quotas").doc(reservation.bucketId);
 
   await db.runTransaction(async (transaction) => {
     const current = await transaction.get(quotaRef);
     const count = current.exists ? safeQuotaCount(current.data()?.count) : 0;
 
-    transaction.set(quotaRef, {
-      uid,
-      date,
+    transaction.set(quotaRef, reservation.entitlementUsed === "pro" ? {
+      uid: reservation.uid,
+      date: reservation.date,
+      count: Math.max(0, count - 1),
+      updatedAt: now.toISOString(),
+    } : {
+      uid: reservation.uid,
+      kind: "oil_analysis_lifetime",
       count: Math.max(0, count - 1),
       updatedAt: now.toISOString(),
     }, { merge: true });
@@ -257,6 +358,19 @@ function pdfBase64FromData(data: unknown): string | undefined {
     : undefined;
 }
 
+const base64Pattern = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const pdfMagic = Buffer.from("%PDF-", "utf8");
+
+function isStandardBase64(value: string): boolean {
+  return value.length % 4 === 0 && base64Pattern.test(value);
+}
+
+function hasPdfMagic(value: string): boolean {
+  // Five decoded bytes require at most eight base64 characters. Do not decode
+  // the full user-supplied payload merely to validate the file signature.
+  return Buffer.from(value.slice(0, 8), "base64").subarray(0, pdfMagic.length).equals(pdfMagic);
+}
+
 function modelTextFromPayload(payload: unknown): string | undefined {
   if (!isRecord(payload) || !Array.isArray(payload.content)) {
     return undefined;
@@ -285,13 +399,21 @@ export async function parseOilAnalysisRequest(
     throw new HttpsError("invalid-argument", "PDF data exceeds the 10 MB base64 limit.");
   }
 
+  if (!isStandardBase64(pdfBase64)) {
+    throw new HttpsError("invalid-argument", "PDF data must be valid base64.");
+  }
+
+  if (!hasPdfMagic(pdfBase64)) {
+    throw new HttpsError("invalid-argument", "PDF data must begin with a PDF signature.");
+  }
+
   const apiKey = dependencies.apiKey;
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "Anthropic API key is not configured.");
   }
 
   const now = (dependencies.now ?? (() => new Date()))();
-  await consumeDailyOilAnalysisQuota(dependencies.db, request.auth.uid, now);
+  const reservation = await consumeOilAnalysisQuota(dependencies.db, request.auth.uid, now);
 
   let response: Response;
   try {
@@ -327,7 +449,7 @@ export async function parseOilAnalysisRequest(
       }),
     });
   } catch (error) {
-    await refundDailyOilAnalysisQuota(dependencies.db, request.auth.uid, now);
+    await refundOilAnalysisQuota(dependencies.db, reservation, now);
     throw new HttpsError("internal", "Claude request failed.");
   }
 
@@ -335,7 +457,7 @@ export async function parseOilAnalysisRequest(
     // Anthropic did not complete billable inference on a 5xx response. Other
     // HTTP failures and all HTTP-OK model-output errors keep their quota unit.
     if (response.status >= 500) {
-      await refundDailyOilAnalysisQuota(dependencies.db, request.auth.uid, now);
+      await refundOilAnalysisQuota(dependencies.db, reservation, now);
     }
     throw new HttpsError("internal", `Claude request failed with ${response.status}.`);
   }

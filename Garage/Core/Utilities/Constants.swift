@@ -2,7 +2,9 @@ import Foundation
 
 enum Constants {
     static let maxFreeVehicles = 1
+    static let maxProVehicles = 5
     static let pageSize = 20
+    static let maxLogEntries = 500
     static let dashboardRecentLimit = 10
     static let annualPlanIdentifier = "garage_pro_annual"
     static let monthlyPlanIdentifier = "garage_pro_monthly"
@@ -15,6 +17,7 @@ enum Constants {
 
 enum AppRuntime {
     static let localDemoLaunchArgument = "LOCAL_DEMO_MODE"
+    static let uiTestLaunchArgument = "UI_TEST_MODE"
     static let uiTestProLaunchArgument = "UI_TEST_PRO"
     static let demoUserId = "debug-user"
 
@@ -29,6 +32,14 @@ enum AppRuntime {
     static var isUITestPro: Bool {
 #if DEBUG
         isLocalDemoMode && ProcessInfo.processInfo.arguments.contains(uiTestProLaunchArgument)
+#else
+        false
+#endif
+    }
+
+    static var isUITestMode: Bool {
+#if DEBUG
+        ProcessInfo.processInfo.arguments.contains(uiTestLaunchArgument)
 #else
         false
 #endif

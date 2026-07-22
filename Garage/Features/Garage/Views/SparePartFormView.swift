@@ -16,14 +16,14 @@ struct SparePartFormView: View {
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("parts.form.name")
             Picker("Category", selection: $category) {
-                ForEach(PartCategory.allCases, id: \.self) { category in Text(category.rawValue).tag(category) }
+                ForEach(PartCategory.allCases, id: \.self) { category in Text(category.displayName).tag(category) }
             }
             TextField("Quantity", text: $quantity)
                 .keyboardType(.numberPad)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("parts.form.quantity")
             Picker("Condition", selection: $condition) {
-                ForEach(PartCondition.allCases, id: \.self) { condition in Text(condition.rawValue).tag(condition) }
+                ForEach(PartCondition.allCases, id: \.self) { condition in Text(condition.displayName).tag(condition) }
             }
             TextField("Storage location", text: $storageLocation)
                 .textFieldStyle(.roundedBorder)

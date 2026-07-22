@@ -12,7 +12,7 @@ struct ContentView: View {
                 LoginView()
             }
         }
-        .task {
+        .task(id: appState.authenticationStateID) {
             await appState.bootstrap()
         }
         .sheet(item: Binding(
@@ -62,14 +62,16 @@ struct ContentView: View {
         switch sheet {
         case .entryPicker:
             EntryTypePicker()
+        case .voiceQuickAdd:
+            VoiceQuickAddView()
         case .entryForm(let type):
             EntryFormFactoryView(entryType: type)
         case .vehicleForm:
             VehicleFormView()
         case .export:
             ExportView()
-        case .subscription:
-            SubscriptionView()
+        case .subscription(let source):
+            SubscriptionView(source: source)
         }
     }
 }

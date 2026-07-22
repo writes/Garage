@@ -13,7 +13,7 @@ struct DetailingFormView: View {
         BottomSheet(title: "Add Detailing Record") {
             TextField("Title", text: $title).textFieldStyle(.roundedBorder)
             Picker("Type", selection: $serviceType) {
-                ForEach(DetailingType.allCases, id: \.self) { type in Text(type.rawValue).tag(type) }
+                ForEach(DetailingType.allCases, id: \.self) { type in Text(type.displayName).tag(type) }
             }
             TextField("Shop or DIY note", text: $provider).textFieldStyle(.roundedBorder)
             TextEditor(text: $notes).frame(minHeight: 120).garageCard()

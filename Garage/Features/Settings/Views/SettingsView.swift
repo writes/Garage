@@ -15,7 +15,9 @@ struct SettingsView: View {
                     .accessibilityIdentifier("settings.reminders")
                 Button("Export History") { router.present(.export) }
                     .accessibilityIdentifier("settings.export")
-                Button(appState.isPro ? "Manage Subscription" : "Upgrade to Pro") { router.present(.subscription) }
+                Button(appState.isPro ? "Manage Subscription" : "Upgrade to Pro") {
+                    router.present(.subscription(.settings))
+                }
                     .accessibilityIdentifier("settings.subscription")
                 Button("Sign Out") { appState.signOut() }
                     .accessibilityIdentifier("settings.signout")

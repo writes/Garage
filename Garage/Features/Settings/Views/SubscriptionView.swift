@@ -1,83 +1,114 @@
 import SwiftUI
-import RevenueCat
 
 enum SubscriptionDisclosure {
-    static func renewalTerms(localizedPrice: String, period: SubscriptionPeriod?) -> String {
-        guard let period else {
-            return "\(localizedPrice), not an auto-renewing subscription."
+    static func renewalTerms(
+        localizedPrice: String,
+        period: SubscriptionPeriodDTO?
+    ) -> String {
+        guard let period, period.isSupportedRenewal else {
+            return "\(localizedPrice), renewal details unavailable. Purchase is disabled."
         }
-
         let unit: String
         switch period.unit {
-        case .day:
-            unit = "day"
-        case .week:
-            unit = "week"
-        case .month:
-            unit = "month"
-        case .year:
-            unit = "year"
-        @unknown default:
-            unit = "period"
+        case .day: unit = "day"
+        case .week: unit = "week"
+        case .month: unit = "month"
+        case .year: unit = "year"
+        case .unknown: return "\(localizedPrice), renewal details unavailable. Purchase is disabled."
         }
-
         let duration = period.value == 1 ? unit : "\(period.value) \(unit)s"
         return "\(localizedPrice)/\(duration), auto-renews until cancelled."
     }
 }
 
 struct SubscriptionView: View {
+    let source: PaywallSource
     @Environment(AppState.self) private var appState
 
     var body: some View {
+        SubscriptionContentView(service: appState.purchaseService, source: source)
+            .onAppear { appState.paywallDidAppear(source: source) }
+    }
+}
+
+private struct SubscriptionContentView: View {
+    let source: PaywallSource
+    @State private var model: SubscriptionViewModel
+
+    init(service: any SubscriptionFacading, source: PaywallSource) {
+        self.source = source
+        _model = State(initialValue: SubscriptionViewModel(service: service))
+    }
+
+    var body: some View {
         BottomSheet(title: "Garage Pro") {
-            Text(
-                "Unlimited vehicles, reminders, exports, attachments, gallery, "
-                    + "parts, detailing, warranty, recalls, AI oil analysis, "
-                    + "and full stats."
-            )
+            Text("Pro includes up to 5 vehicles, parts, detailing, warranty and recall records, and stats.")
                 .font(Theme.Typography.body)
-            PrimaryButton(title: "Refresh Plans") {
-                Task { await appState.purchaseService.fetchOfferings() }
-            }
-            .accessibilityIdentifier("subscription.refresh")
-            Button("Restore Purchases") {
-                Task { try? await appState.purchaseService.restorePurchases() }
-            }
-            .accessibilityIdentifier("subscription.restore")
-            // Keep the legal disclosures above any package purchase action. This is both
-            // immediately visible at the sheet's medium detent and unambiguously presented
-            // before a customer can begin a purchase.
+            PrimaryButton(title: "Refresh Plans") { Task { await model.refreshTapped() } }
+                .disabled(model.isBusy)
+                .accessibilityIdentifier("subscription.refresh")
+            Button("Restore Purchases") { Task { await model.restoreTapped() } }
+                .disabled(model.isBusy)
+                .accessibilityIdentifier("subscription.restore")
             policyLinks
-            if let packages = appState.purchaseService.offerings?.current?.availablePackages {
-                ForEach(Swift.Array(packages.enumerated()), id: \.element.identifier) { package in
-                    let product = package.element.storeProduct
-                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                        Text(product.localizedTitle)
-                            .font(Theme.Typography.headline)
-                        Text(product.localizedPriceString)
-                            .font(Theme.Typography.body)
-                            .accessibilityIdentifier("subscription.price")
-                        Text(
-                            SubscriptionDisclosure.renewalTerms(
-                                localizedPrice: product.localizedPriceString,
-                                period: product.subscriptionPeriod
-                            )
-                        )
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .accessibilityIdentifier("subscription.renewalTerms")
-                    }
-                    Button("Choose \(product.localizedTitle)") {
-                        Task { try? await appState.purchaseService.purchase(package.element) }
-                    }
-                    .accessibilityIdentifier("subscription.package.\(package.offset)")
-                }
-            } else {
-                Text("Annual should be preselected in the final paywall presentation.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+            Text("Review the current plan and price before purchasing.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+            if model.isBusy {
+                ProgressView().accessibilityIdentifier("subscription.activity")
             }
+            presentationOutput
+            if let plans = model.plans {
+                ForEach(Array(plans.packages.enumerated()), id: \.element.handle) { offset, dto in
+                    packageView(dto, offset: offset)
+                }
+            }
+        }
+        .onChange(of: model.accountRevision, initial: true) { _, revision in
+            model.accountRevisionChanged(to: revision)
+        }
+    }
+
+    @ViewBuilder
+    private func packageView(_ dto: PackageDTO, offset: Int) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            Text(dto.title).font(Theme.Typography.headline)
+            Text(dto.localizedPrice)
+                .font(Theme.Typography.body)
+                .accessibilityIdentifier("subscription.price")
+            Text(SubscriptionDisclosure.renewalTerms(localizedPrice: dto.localizedPrice, period: dto.period))
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .accessibilityIdentifier("subscription.renewalTerms")
+        }
+        Button("Choose \(dto.title)") { Task { await model.choosePackageTapped(dto) } }
+            .disabled(
+                model.isBusy || model.hasPendingReconciliation || dto.period?.isSupportedRenewal != true
+            )
+            .accessibilityIdentifier("subscription.package.\(offset)")
+    }
+
+    @ViewBuilder
+    private var presentationOutput: some View {
+        switch model.presentationOutput {
+        case .none: EmptyView()
+        case .notice(let notice):
+            Text(notice.text).accessibilityIdentifier("subscription.message")
+        case .reconciliation(.purchase):
+            Text(
+                "Your purchase may have completed. Do not purchase again. " +
+                    "Return to the account used for the purchase, then use Restore Purchases."
+            )
+            .accessibilityIdentifier("subscription.result.reconciliation")
+        case .reconciliation(.restore):
+            Text(
+                "Your account changed during restore. Nothing was charged. " +
+                    "Sign in with the account that made the purchase, then use Restore Purchases."
+            )
+            .accessibilityIdentifier("subscription.result.reconciliation")
+        case .failure(let error):
+            ErrorBanner(error: error, retry: nil)
+                .accessibilityIdentifier("subscription.message")
         }
     }
 

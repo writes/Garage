@@ -23,6 +23,7 @@ final class DashboardViewModel {
     private(set) var openRecalls = 0
     private(set) var hasActiveWarranty = false
     private(set) var isLoading = false
+    private var reloadToken = 0
     private(set) var error: AppError?
 
     init(
@@ -40,12 +41,16 @@ final class DashboardViewModel {
     }
 
     func loadDashboard(vehicleId: String) async {
+        reloadToken &+= 1
+        let token = reloadToken
         isLoading = true
-        defer { isLoading = false }
+        defer { if token == reloadToken { isLoading = false } }
 
         do {
             if let contentLoader {
-                apply(try await contentLoader(vehicleId))
+                let content = try await contentLoader(vehicleId)
+                guard token == reloadToken else { return }
+                apply(content)
                 error = nil
                 return
             }
@@ -55,17 +60,18 @@ final class DashboardViewModel {
             async let warranties = warrantyService.fetchWarranties(vehicleId: vehicleId)
             async let recalls = warrantyService.fetchRecalls(vehicleId: vehicleId)
 
-            apply(
-                DashboardContent(
-                    entries: try await entries,
-                    wearItems: try await wear,
-                    reminders: try await reminders,
-                    warranties: try await warranties,
-                    recalls: try await recalls
-                )
+            let content = DashboardContent(
+                entries: try await entries,
+                wearItems: try await wear,
+                reminders: try await reminders,
+                warranties: try await warranties,
+                recalls: try await recalls
             )
+            guard token == reloadToken else { return }
+            apply(content)
             error = nil
         } catch {
+            guard token == reloadToken else { return }
             self.error = AppError(from: error)
         }
     }

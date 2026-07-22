@@ -28,7 +28,7 @@ struct FuelFormView: View {
                 .accessibilityIdentifier("fuel.form.station")
             Picker("Fuel grade", selection: $fuelGrade) {
                 ForEach(FuelType.allCases, id: \.self) { grade in
-                    Text(grade.rawValue.replacingOccurrences(of: "_", with: " ")).tag(grade)
+                    Text(grade.displayName).tag(grade)
                 }
             }
         }

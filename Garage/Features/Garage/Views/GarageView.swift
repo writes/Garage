@@ -11,18 +11,18 @@ struct GarageView: View {
                     ProGateView(
                         title: "Garage tools are part of Pro",
                         message: """
-                        Gallery, wheel photos, spare parts, detailing,
-                        warranty, and recalls are unlocked with Pro.
+                        Spare parts, detailing, warranty, and recalls
+                        are unlocked with Pro.
                         """,
                         actionIdentifier: "garage.gate.cta"
                     ) {
-                        router.present(.subscription)
+                        router.present(.subscription(.garage))
                     }
                     .listRowSeparator(.hidden)
                 } else {
-                    NavigationLink("Photo Gallery") { PhotoGalleryView() }
+                    NavigationLink("Gallery Records") { PhotoGalleryView() }
                         .accessibilityIdentifier("garage.gallery")
-                    NavigationLink("Wheel Gallery") { WheelGalleryView() }
+                    NavigationLink("Wheel Records") { WheelGalleryView() }
                         .accessibilityIdentifier("garage.wheels")
                     NavigationLink("Spare Parts") { SparePartsView() }
                         .accessibilityIdentifier("garage.parts")

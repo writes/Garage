@@ -41,11 +41,81 @@ final class EntryCreateJourneyTests: JourneyTestCase {
         XCTAssertFalse(app.staticTexts["entry.row.odometer.100"].exists)
     }
 
+    func testFuelEntryFormRetainsSaveAndHidesAttachmentPersistenceUI() {
+        let app = launchDemo(pro: true)
+        openFuelForm(in: app)
+
+        let activeForm = app.otherElements["entry.form.sheet"]
+        require(activeForm)
+
+        let save = activeForm.buttons["entry.form.save"]
+        require(save)
+        assertAttachmentPersistenceUIIsAbsent(in: activeForm)
+        revealAndTap(save, in: app)
+    }
+
     private func openFuelForm(in app: XCUIApplication) {
         let addEntry = app.buttons["entry.add"]
         tapWhenHittable(addEntry)
         let fuel = app.buttons["entry.picker.fuel"]
         tapWhenHittable(fuel)
         require(app.textFields["fuel.form.gallons"])
+    }
+
+    private func assertAttachmentPersistenceUIIsAbsent(in activeForm: XCUIElement) {
+        for (description, element) in knownAttachmentElements(in: activeForm) {
+            XCTAssertFalse(element.exists, "Unexpected \(description) in the fuel entry form.")
+        }
+
+        XCTAssertEqual(
+            attachmentPersistenceControls(in: activeForm).count,
+            0,
+            "No attachment-persistence control may be reachable from the fuel entry form."
+        )
+        XCTAssertEqual(
+            attachmentPresentation(in: activeForm).count,
+            0,
+            "No pending attachment heading, description, or filename may be presented in the fuel entry form."
+        )
+    }
+
+    private func knownAttachmentElements(in activeForm: XCUIElement) -> [(String, XCUIElement)] {
+        [
+            ("Add Photo control", activeForm.buttons["Add Photo"]),
+            ("Add PDF control", activeForm.buttons["Add PDF"]),
+            ("Attachments heading", activeForm.staticTexts["Attachments"]),
+            (
+                "pending attachment description",
+                activeForm.staticTexts["Receipts, invoices, and related photos show up here after selection."]
+            ),
+            ("pending photo filename", activeForm.staticTexts["photo-pending.jpg"]),
+            ("pending PDF filename", activeForm.staticTexts["pending-receipt.pdf"])
+        ]
+    }
+
+    private func attachmentPersistenceControls(in activeForm: XCUIElement) -> XCUIElementQuery {
+        activeForm.buttons.matching(
+            NSPredicate(
+                format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@ " +
+                    "OR label CONTAINS[c] %@ OR identifier CONTAINS[c] %@",
+                "attachment",
+                "photo",
+                "pdf",
+                "attachment"
+            )
+        )
+    }
+
+    private func attachmentPresentation(in activeForm: XCUIElement) -> XCUIElementQuery {
+        activeForm.staticTexts.matching(
+            NSPredicate(
+                format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@ " +
+                    "OR label CONTAINS[c] %@ OR label CONTAINS[c] %@",
+                "attachment",
+                "receipt",
+                "photo",
+                "pdf"
+            )
+        )
     }
 }

@@ -115,10 +115,14 @@ validation spec in `docs/research/YYYY-MM-DD_*.md` (with a death condition).
 
 - **PROTECTED (never auto-edit; a change → halt + human review):** `Configuration/Secrets.swift`,
   `Garage/Resources/GoogleService-Info.plist`, `CloudFunctions/.env*`, `firebase.firestore.rules`,
-  `firebase.storage.rules`, `firebase.json`, `.firebaserc`, `scripts/ci/`, `Garage.xcodeproj/`,
-  `project.yml` (the XcodeGen generator — PROTECTED by unanimous tri-agent consensus 2026-06-29).
+  `firebase.storage.rules`, `firebase.json`, `.firebaserc`, `scripts/ci/`, `project.yml` (the
+  XcodeGen INPUT — source of truth for targets/signing/bundle IDs; stays PROTECTED. Supersedes the
+  2026-06-29 protect-both decision via unanimous tri-agent consensus 2026-07-21, ledger group
+  `ea4de5ac0c6fb564`).
 - **ALLOWED candidate surface:** `Garage/Features/`, `Garage/Design/`, `Garage/Core/`, `Tests/`,
-  `CloudFunctions/src/`, `reports/`, `results/`, `logs/`, `docs/research/`.
+  `CloudFunctions/src/`, `reports/`, `results/`, `logs/`, `docs/research/`, `Garage.xcodeproj/`
+  (GENERATED from `project.yml` by `xcodegen generate` — agents may regenerate it when adding
+  sources; promotion safety is the `verify-ios.sh` regenerate-equality gate, not a write ban).
 - **Secrets never enter agent prompts or candidate outputs.** The scope check is file-list based,
   so keep protected content out of prompts (landmine #8).
 
@@ -147,7 +151,12 @@ Key landmines: #1 `agy models` hangs · #2 CLIs hang on stdin (always redirect +
 via file content even though the scope check is path-based · #9 verify the *running* image, not
 a "deployed ✅" note · #12 agy `--model` **silently downgrades** to "Gemini 3.5 Flash (Medium)"
 on any unrecognized value — pin the exact roster label and verify via the resolver line in
-`~/.gemini/antigravity-cli/cli.log`, never model self-report.
+`~/.gemini/antigravity-cli/cli.log`, never model self-report · #14 **LLM/build processes LEAK**
+(operator directive 2026-07-12): hung codex/agy/`claude -p`/xcodebuild processes survive their
+tasks and burn quota silently (observed: 27h agy wrappers, a 44h silent codex mine, stale
+xcodebuild runners) — **run `python3 scripts/brain/process_sentinel.py` at session start and
+before/after any unattended or long-running LLM work**; every spawn site carries its own
+timeout; cross-session suspects are reported to the operator, never killed blindly.
 
 ---
 
@@ -172,3 +181,9 @@ on any unrecognized value — pin the exact roster label and verify via the reso
   "React/PWA/Supabase rewrite" → **Tier D** (doctrine fail: native iOS is locked).
 - **🟢 App baseline** — Garage iOS app builds via XcodeGen; CI gate = `scripts/ci/*`; this brain
   install changed **no** app/product code, only added intelligence-layer surfaces.
+- **🟢 Profit-first blueprint GOVERNING (2026-07-11, operator directive)** — evidence-verified
+  adoption: 12-claim truth table vs live code, 2 new tri-votes (Passport credit REMOVED
+  unanimous; vehicle-limit = rules getAfter counter), Q5 naming WITHDRAWN (Roadfolio hard
+  collision; Motorkeep impaired — motorkeep.ru), Q4 scrape ToS-prohibited → lawful redesign.
+  Consensus resolver enum-grouping defect found+fixed (landmine #13). Plan + P0 waves:
+  `docs/research/2026-07-11_PROFIT_FIRST_BLUEPRINT.md`.

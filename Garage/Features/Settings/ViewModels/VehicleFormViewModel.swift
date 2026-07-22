@@ -5,6 +5,7 @@ import Observation
 @Observable
 final class VehicleFormViewModel {
     private let vehicleService: VehicleService
+    private let analytics: any AnalyticsTracking
 
     var nickname = ""
     var make = ""
@@ -13,26 +14,24 @@ final class VehicleFormViewModel {
     var currentOdometer = ""
     var fuelType: FuelType = .premium93
     private(set) var error: AppError?
+    private(set) var isSaving = false
 
-    init(vehicleService: VehicleService = .shared) {
+    init(
+        vehicleService: VehicleService = .shared,
+        analytics: any AnalyticsTracking = AnalyticsService.shared
+    ) {
         self.vehicleService = vehicleService
+        self.analytics = analytics
     }
 
     func save() async -> Bool {
-        guard Validators.nonEmpty(nickname, fieldName: "Nickname") == nil else {
-            error = .validation("Nickname is required.")
-            return false
-        }
-        guard Validators.nonEmpty(make, fieldName: "Make") == nil else {
-            error = .validation("Make is required.")
-            return false
-        }
-        guard Validators.nonEmpty(model, fieldName: "Model") == nil else {
-            error = .validation("Model is required.")
-            return false
-        }
-        guard Validators.positiveInteger(currentOdometer, fieldName: "Odometer") == nil else {
-            error = .validation("Current odometer is required.")
+        // Re-entrancy guard: a double-tap must not race the vehicle-count check into a duplicate.
+        guard !isSaving else { return false }
+        isSaving = true
+        defer { isSaving = false }
+
+        if let validationError = firstValidationError() {
+            error = validationError
             return false
         }
 
@@ -49,11 +48,30 @@ final class VehicleFormViewModel {
                 displayOrder: 0
             )
             _ = try await vehicleService.createVehicle(vehicle)
+            if let vehicles = try? await vehicleService.fetchVehicles(), vehicles.count == 1 {
+                analytics.track(.firstVehicleAdded)
+            }
             error = nil
             return true
         } catch {
             self.error = AppError(from: error)
             return false
         }
+    }
+
+    private func firstValidationError() -> AppError? {
+        if Validators.nonEmpty(nickname, fieldName: "Nickname") != nil {
+            return .validation("Nickname is required.")
+        }
+        if Validators.nonEmpty(make, fieldName: "Make") != nil {
+            return .validation("Make is required.")
+        }
+        if Validators.nonEmpty(model, fieldName: "Model") != nil {
+            return .validation("Model is required.")
+        }
+        if Validators.positiveInteger(currentOdometer, fieldName: "Odometer") != nil {
+            return .validation("Current odometer is required.")
+        }
+        return nil
     }
 }

@@ -49,7 +49,7 @@ final class VehicleCRUDJourneyTests: JourneyTestCase {
 
         revealAndTap(app.buttons["vehicle.form.save"], in: app)
         require(app.descendants(matching: .any)["vehicle.form.error"])
-        require(app.staticTexts["Free accounts are limited to 1 vehicle. Upgrade to Pro for unlimited."])
+        require(app.staticTexts["Free accounts are limited to 1 vehicle. Upgrade to Pro for up to 5 vehicles."])
     }
 
     private func openVehicleForm(in app: XCUIApplication) {

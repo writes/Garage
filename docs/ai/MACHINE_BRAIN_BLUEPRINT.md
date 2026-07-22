@@ -218,17 +218,19 @@ never an auto-edit beyond appending rows the human confirms (Law 5).
 
 | # | Capability | Organ | Source of truth | § | Status | Added |
 |---|---|:--:|---|---|---|---|
-| 1 | 2/3-majority resolver (no veto) + injective canonicalization | I | `scripts/brain/consensus.py:resolve_majority` | §2.I,§4 | LIVE (17/17) | 2026-06-29 |
+| 1 | 2/3-majority resolver (no veto) + injective + enum-anchored canonicalization | I | `scripts/brain/consensus.py:resolve_majority` (`options=` roster param) | §2.I,§4 | LIVE (24/24) | 2026-06-29 (enum fix 2026-07-11) |
 | 2 | Gemini voter (agy→Vertex→API) | I | `scripts/brain/gemini_consult.py` | §2.I,§4 | LIVE | 2026-06-29 |
 | 3 | Live tri-agent vote runner (concurrent pools) | I | `scripts/brain/tri_agent_vote.py` | §2.I,§4 | LIVE | 2026-06-29 |
 | 4 | Decision ledger (append-only) | I | `DECISION_LEDGER.jsonl` | §2.I,§8 | LIVE | 2026-06-29 |
+| 4b | Process sentinel (LLM/build leak detection) | V | `scripts/brain/process_sentinel.py` | §9 #14 | LIVE (13/13, SessionStart-hooked) | 2026-07-12 |
+| 4c | Shared secret screen (all provider-bound text) | V | `scripts/brain/secret_screen.py` (re-exported by tri_review; consumed by tri_agent_vote outbound+ledger, gemini_consult argv) | §9 #8 | LIVE (6/6; tri_review 62/62) | 2026-07-12 |
 | 5 | Cross-agent handoff + CLI | III | `HANDOFF.md`, `scripts/brain/session_handoff.py` | §2.III,§8 | LIVE | 2026-06-29 |
 | 6 | SessionStart HANDOFF injection | III | `.claude/hooks/session-handoff-inject.sh` (+ settings) | §2.III,§9 | LIVE (wired since `5679a11`; status truth-up 2026-07-10) | 2026-06-29 |
 | 7 | Cross-session file memory + index | III | `~/.claude/projects/-Users-jt-Code-AppDev/memory/`, `MEMORY.md` | §2.III,§8 | LIVE | 2026-06-29 |
 | 8 | Doctrine (mirrored) + compact state + budget | IV | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `docs/ARCHIVE.md` | §2.IV,§9 | LIVE | 2026-06-29 |
 | 9 | Pre-reg + verdict trial docs | IV | `docs/research/` | §2.IV,§8 | LIVE | 2026-06-29 |
 | 10 | Worktree plan⇄impl⇄review loop | II | `scripts/brain/dual_agent_loop.py` | §2.II | LIVE | 2026-06-29 |
-| 11 | Scope guard (protected/allowed/protocol + auto-revert) | II | `scripts/brain/scope_guard.py` | §2.II,§3 | LIVE | 2026-06-29 |
+| 11 | Scope guard (protected/allowed/protocol + auto-revert) | II | `scripts/brain/scope_guard.py` | §2.II,§3 | LIVE (pbxproj PROTECTED→ALLOWED 2026-07-21, group `ea4de5ac0c6fb564`) | 2026-06-29 |
 | 12 | Immutable promotion gate (build+tests+policy) | II | `scripts/ci/{policy,security,verify-ios}-checks.sh` | §2.II | LIVE (pre-existing) | 2026-06-29 |
 | 13 | Research-assay skeptical intake agent | V | `.claude/agents/research-assay.md` | §2.V,§8 | LIVE | 2026-06-29 |
 | 14 | Intake graveyard (audit DB + schema) | V | `docs/research-assay/audit/{REGISTRY.md,index.jsonl,index.schema.json,tier-*}` | §2.V,§8 | LIVE (1 verdict) | 2026-06-29 |
@@ -239,6 +241,65 @@ never an auto-edit beyond appending rows the human confirms (Law 5).
 | 19 | Model routing v3 (lane-split collective) | IV | `docs/research/2026-07-10_MODEL_ROUTING_V3.md` + doctrine §2 + `BRAIN_*` pins in `scripts/brain/*` | §4 | LIVE | 2026-07-10 |
 
 ### 5.4 Changelog (append-only; newest first)
+
+- **2026-07-21** — **Scope-guard root-cause fix: generated `Garage.xcodeproj/` reclassified
+  PROTECTED→ALLOWED; `project.yml` stays PROTECTED; CI regenerate-equality gate added.** The app
+  target sources are the whole `Garage/` dir, so adding any Swift file regenerates `project.pbxproj`
+  and tripped a protected-surface HALT — structurally blocking ALL autonomous feature work (root
+  cause of a ~10-day stall; ~15 identical `r2-exact-remediation` worktrees on 2026-07-21 alone, 32 GB
+  of worktree thrash). `verify-ios.sh` already runs `xcodegen generate`, so CI already built from a
+  freshly regenerated pbxproj derived from the still-protected `project.yml`; the committed pbxproj
+  was never CI's trust anchor. Changes: `scope_guard.py` moves `Garage.xcodeproj/` to
+  `ALLOWED_CANDIDATE_PREFIXES` (self-test green); `verify-ios.sh` fails after `xcodegen generate` if
+  the committed `project.pbxproj` differs from output (validated green on `6162f49` with pinned
+  xcodegen 2.45.3). Unanimous tri-agent vote — Fable 5 0.86 / GPT-5.6 Sol 0.98 / Gemini 3.1 Pro High
+  0.95 (ledger group `ea4de5ac0c6fb564`) — superseding the 2026-06-29 protect-both decision (group
+  `d09e41f1544ac2e6`). Unblocks every future feature that adds a source file.
+- **2026-07-12** — **Process sentinel installed (Organ V; landmine #14 registered).** Operator
+  directive after observed LLM leaks (27h hung agy wrappers, a 44h silent codex mine in the
+  trading repo): `scripts/brain/process_sentinel.py` classifies codex/agy/`claude -p`/
+  xcodebuild processes, applies per-class age thresholds (env-overridable
+  `SENTINEL_<CLASS>_MAX_MIN`), distinguishes true orphans (ppid==1, reap-able via
+  `--kill-orphans`) from cross-session suspects (report-only — contention rules). 13/13
+  selftest; first live run immediately caught two 27h agy leaks from a sibling session.
+  Ritual: run at session start + before/after unattended LLM runs (doctrine files updated in
+  the same commit per §5.1). **Same-day follow-up (DS-5, LLM-leak audit):** sentinel wired
+  into the SessionStart hook (`.claude/settings.json`, non-blocking `|| true`); secret
+  screening extracted to `secret_screen.py` and extended to the two previously-unscreened
+  provider paths — `tri_agent_vote` (fail-closed outbound screen on question/options + inbound
+  redaction of decision/reasoning before the append-only ledger, `redactions` labels recorded
+  per position) and `gemini_consult.try_agy` (prompt screened before it enters argv — argv is
+  `ps`-visible to any local process; agy has no stdin mode, so argv visibility for non-secret
+  text is a documented accepted residual); `session_handoff.py` git call gained a timeout.
+  Verified: secret_screen 6/6, consensus 24/24, sentinel 13/13, tri_review 62/62, import graph
+  cycle-free. Client-side LLM audit (same sweep): CLEAN — no provider keys/endpoints outside
+  CloudFunctions env, no PII decoration, no payload logging.
+  **Round-3 corrections (Sol review of the standards doc, same day):** (1) sentinel output
+  sanitized — it previously echoed `command[:200]`, which the new SessionStart hook would have
+  re-injected into model context (a leak amplifier); output now carries pid/class/age/ppid/
+  orphan + executable basename only, with a canary selftest. (2) A redaction hit on a voter's
+  response now INVALIDATES that voter (fail-closed — a tainted response can no longer enter a
+  Law-1 majority as "live"). (3) All remaining brain subprocess calls bounded + import-time
+  failures caught. (4) **Threat model — agy argv residual (unanimous vote
+  2026-07-12T21:45:13Z):** agy prompts are ps-visible to local processes for the call
+  duration; agy has no stdin/file input (landmine #2). Formally ACCEPTED for this single-user
+  machine with the fail-closed secret screen as the control; revisit triggers: untrusted local
+  users appear, or agy ships non-argv prompt input. (5) Process error logged: the DS-5 commit
+  landed while Sol's review was in flight — review-gate ordering violated once; rule restated:
+  strategy-doc execution waits for the co-review verdict.
+
+- **2026-07-11** — **Resolver canonicalization defect found live and fixed (landmine #13
+  candidate → registered below).** A Law-1 vote (vehicle-limit mechanism) mis-resolved: gemini's
+  bare `"A"` and claude's `"A: <full text>"` hashed to different groups, so a true 2/3 majority
+  fell to the `highest_confidence_no_majority` fallback and the lone dissenter won — a
+  functional veto. Fix: `consensus.py` gained `enum_option_map`/`resolve_enum` and an
+  `options=` roster param on `resolve_majority`/`append_ledger_majority` (letter-anchored
+  grouping: bare letters, `A:`/`b)`/`C -` variants, and echoed option bodies group; hedged
+  "A and B" and out-of-roster letters never map). `tri_agent_vote.py` passes its parsed roster
+  through (incl. `degraded_pair_agrees`). Self-test 17→24 cases, all green; the recorded
+  positions replay to majority A; correction row appended to the ledger (protocol
+  `resolution_correction`, 2026-07-11T17:47:57Z). Ledger audit: 1 flipped vote (corrected),
+  9 understated-consensus rows (decisions unaffected).
 
 - **2026-07-10 (later)** — **Routing v3 hardened through 11 live tri-reviews / 12 Terra passes
   (R1–R56)**; sync note: R17–R56 shipped across several commits during the review loop, squared
@@ -334,6 +395,8 @@ and `scripts/brain/scope_guard.py`.
 | 10 | HANDOFF/doctrine duplicated instead of pointed-to | HANDOFF only points; one fact, one surface; obey the budget |
 | 11 | Blueprint drifts behind the repo | The maintenance contract (§5.1) + reconciliation ritual (§5.2) |
 | 12 | agy `--model` with an unrecognized value silently downgrades to "Gemini 3.5 Flash (Medium)" — no error | Pin the exact roster label (`"Gemini 3.1 Pro (High)"`); after changing a pin, verify the resolver line in `~/.gemini/antigravity-cli/cli.log`, never model self-report |
+| 13 | Voters answer the same option in different shapes (bare "A" vs "A: full text" vs echoed body) — string-hash grouping splits a real majority and the confidence fallback hands the lone dissenter a veto | Pass the enumerated option roster into `resolve_majority(options=)` (tri_agent_vote does since 2026-07-11); watch any `highest_confidence_no_majority` row whose positions contain bare letters — it may be a mis-resolution, not a true 1/1/1 |
+| 14 | Long-running LLM/build processes LEAK: hung codex/agy/`claude -p`/xcodebuild survive their tasks, burning quota/tokens silently and stalling their lane (observed: 27h-old hung agy wrappers pids 53070/53073, a 44h silent codex mine in the trading repo, stale xcodebuild runner PIDs). ps `etime` is misread easily — `12:48` is mm:ss, not hh:mm | `scripts/brain/process_sentinel.py` (13/13 selftest): classifies provider/build processes, age-thresholds per class (env-overridable), flags orphans vs cross-session; run at session start + before/after unattended runs; `--kill-orphans` reaps ONLY ppid==1 true orphans; cross-session suspects go to the operator (contention rules), never killed blindly. Every spawn site still carries its own timeout (landmine #2) |
 
 ---
 

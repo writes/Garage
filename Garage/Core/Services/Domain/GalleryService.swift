@@ -7,8 +7,15 @@ final class GalleryService {
     static let shared = GalleryService()
 
     private var firestore: FirestoreService { .shared }
+    private var testPhotos: [GalleryPhoto]?
 
     private init() {}
+
+#if DEBUG
+    init(testPhotos: [GalleryPhoto]) {
+        self.testPhotos = testPhotos
+    }
+#endif
 
     func save(_ photo: GalleryPhoto) async throws {
         guard !AppRuntime.isLocalDemoMode else { return }
@@ -19,6 +26,9 @@ final class GalleryService {
     }
 
     func fetchPhotos(vehicleId: String) async throws -> [GalleryPhoto] {
+        if let testPhotos {
+            return testPhotos.filter { $0.vehicleId == vehicleId }
+        }
         if AppRuntime.isLocalDemoMode {
             return SeedData.galleryPhotos(for: vehicleId)
         }

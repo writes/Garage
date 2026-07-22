@@ -1,5 +1,35 @@
 import SwiftUI
 
+struct ExportSessionAuthorization: Equatable, Sendable {
+    let authenticationRevision: Int
+    let subscriptionRevision: UInt64
+    let vehicleID: String
+    let vehicleOwnerID: String
+
+    static func resolve(
+        authenticationRevision: Int,
+        subscriptionRevision: UInt64,
+        authenticatedUserID: String?,
+        currentVehicle: Vehicle?,
+        requestedVehicle: Vehicle
+    ) -> Self? {
+        guard let authenticatedUserID,
+              requestedVehicle.userId == authenticatedUserID,
+              currentVehicle?.id == requestedVehicle.id,
+              currentVehicle?.userId == authenticatedUserID else { return nil }
+        return .init(
+            authenticationRevision: authenticationRevision,
+            subscriptionRevision: subscriptionRevision,
+            vehicleID: requestedVehicle.id,
+            vehicleOwnerID: authenticatedUserID
+        )
+    }
+}
+
+struct PDFExportAuthorization: Equatable, Sendable {
+    let session: ExportSessionAuthorization
+}
+
 struct ExportView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppRouter.self) private var router
@@ -7,61 +37,101 @@ struct ExportView: View {
 
     var body: some View {
         BottomSheet(title: "Export History") {
-            if !appState.isPro {
-                ProGateView(
-                    title: "Exports are part of Pro",
-                    message: "Generate buyer-ready PDF reports and full-fidelity CSV exports from one place.",
-                    actionIdentifier: "export.gate.cta"
-                ) {
-                    router.present(.subscription)
-                }
-            } else if let vehicle = appState.currentVehicle {
-                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                    Text("Report builder")
-                        .font(Theme.Typography.title)
-                    DatePicker("Start date", selection: $viewModel.startDate, displayedComponents: .date)
-                        .accessibilityIdentifier("export.range.start")
-                    DatePicker("End date", selection: $viewModel.endDate, displayedComponents: .date)
-                        .accessibilityIdentifier("export.range.end")
-                    Toggle("Include gallery photos", isOn: $viewModel.includeGalleryPhotos)
-                        .accessibilityIdentifier("export.toggle.galleryPhotos")
-                    Toggle("Include receipts and invoices", isOn: $viewModel.includeReceipts)
-                        .accessibilityIdentifier("export.toggle.receipts")
-                }
-                .garageCard()
-
+            if let vehicle = appState.currentVehicle {
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Sections")
-                        .font(Theme.Typography.headline)
-                    ForEach(ReportSection.allCases) { section in
-                        Toggle(section.rawValue, isOn: Binding(
-                            get: { viewModel.selectedSections.contains(section) },
-                            set: { isOn in
-                                if isOn {
-                                    viewModel.selectedSections.insert(section)
-                                } else {
-                                    viewModel.selectedSections.remove(section)
-                                }
-                            }
-                        ))
-                        .accessibilityIdentifier("export.toggle.\(section.id)")
+                    Text("CSV record-data export")
+                        .font(Theme.Typography.title)
+                    Text(
+                        "This CSV contains this vehicle's record history only. " +
+                            "Photo and receipt files are not included."
+                    )
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                    SecondaryButton(title: "Build CSV Export") {
+                        Task {
+                            await viewModel.buildCSV(
+                                vehicle: vehicle,
+                                authorization: { exportSession(for: vehicle) }
+                            )
+                        }
+                    }
+                    .disabled(viewModel.isExporting)
+                    .accessibilityIdentifier("export.buildCSV")
+                    if let url = viewModel.authorizedCSVURL(for: exportSession(for: vehicle)) {
+                        ShareLink(item: url) {
+                            Label("Share CSV Export", systemImage: "square.and.arrow.up")
+                        }
+                        .accessibilityIdentifier("export.shareCSV")
                     }
                 }
                 .garageCard()
 
-                PrimaryButton(title: "Build PDF Report") {
-                    Task { await viewModel.buildPDF(vehicle: vehicle) }
+                // WAVE-3: Record PDF generation remains a Pro entitlement.
+                if appState.isPro {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                        Text("Record PDF")
+                            .font(Theme.Typography.title)
+                        Text(
+                            "This record-only PDF does not include photo, receipt, " +
+                                "or invoice files. Sharing and saving are unavailable in this beta."
+                        )
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                        DatePicker("Start date", selection: $viewModel.startDate, displayedComponents: .date)
+                            .accessibilityIdentifier("export.range.start")
+                        DatePicker("End date", selection: $viewModel.endDate, displayedComponents: .date)
+                            .accessibilityIdentifier("export.range.end")
+                    }
+                    .garageCard()
+
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        Text("Sections")
+                            .font(Theme.Typography.headline)
+                        ForEach(viewModel.recordPDFSections) { section in
+                            Toggle(section.rawValue, isOn: Binding(
+                                get: { viewModel.selectedSections.contains(section) },
+                                set: { isOn in
+                                    if isOn {
+                                        viewModel.selectedSections.insert(section)
+                                    } else {
+                                        viewModel.selectedSections.remove(section)
+                                    }
+                                }
+                            ))
+                            .accessibilityIdentifier("export.toggle.\(section.id)")
+                        }
+                    }
+                    .garageCard()
+
+                    PrimaryButton(title: "Generate Record PDF") {
+                        Task {
+                            await viewModel.buildPDF(
+                                vehicle: vehicle,
+                                authorization: { pdfAuthorization(for: vehicle) }
+                            )
+                        }
+                    }
+                    .disabled(viewModel.isExporting)
+                    .accessibilityIdentifier("export.buildPDF")
+                } else {
+                    ProGateView(
+                        title: "Record PDF is part of Pro",
+                        message: "Upgrade to generate a record PDF. Photo, receipt, and invoice files are not " +
+                            "included, and sharing or saving are unavailable in this beta.",
+                        actionIdentifier: "export.gate.cta"
+                    ) {
+                        router.present(.subscription(.exportPDF))
+                    }
                 }
-                .accessibilityIdentifier("export.buildPDF")
-                SecondaryButton(title: "Build CSV Export") {
-                    Task { await viewModel.buildCSV(vehicle: vehicle) }
-                }
-                .accessibilityIdentifier("export.buildCSV")
-                if let data = viewModel.exportData {
-                    Text("Export ready: \(data.count.formatted()) bytes")
+
+                if let data = viewModel.authorizedPDFData(for: pdfAuthorization(for: vehicle)) {
+                    Text(
+                        "A record PDF was generated in this session. Sharing and saving are unavailable " +
+                            "in this beta. \(data.count.formatted()) bytes"
+                    )
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.Colors.textSecondary)
-                        .accessibilityIdentifier("export.result")
+                        .accessibilityIdentifier("export.pdfResult")
                 }
                 if let error = viewModel.error {
                     ErrorBanner(error: error)
@@ -74,5 +144,37 @@ struct ExportView: View {
                 )
             }
         }
+        .onChange(of: currentExportSession, initial: true) { _, session in
+            viewModel.sessionChanged(to: session)
+        }
+        .onDisappear {
+            viewModel.discardExportArtifacts()
+        }
+    }
+
+    private var currentExportSession: ExportSessionAuthorization? {
+        guard let vehicle = appState.currentVehicle else { return nil }
+        return exportSession(for: vehicle)
+    }
+
+    private func exportSession(for vehicle: Vehicle) -> ExportSessionAuthorization? {
+        guard appState.isAuthenticated else { return nil }
+        return ExportSessionAuthorization.resolve(
+            authenticationRevision: appState.authenticationStateID,
+            subscriptionRevision: appState.purchaseService.accountRevision,
+            authenticatedUserID: activeUserID,
+            currentVehicle: appState.currentVehicle,
+            requestedVehicle: vehicle
+        )
+    }
+
+    private var activeUserID: String? {
+        if AppRuntime.isLocalDemoMode { return AppRuntime.demoUserId }
+        return AuthService.shared.uid
+    }
+
+    private func pdfAuthorization(for vehicle: Vehicle) -> PDFExportAuthorization? {
+        guard appState.isPro, let session = exportSession(for: vehicle) else { return nil }
+        return PDFExportAuthorization(session: session)
     }
 }

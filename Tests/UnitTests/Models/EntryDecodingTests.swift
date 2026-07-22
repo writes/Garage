@@ -15,7 +15,10 @@ struct EntryDecodingTests {
             isDiy: true,
             shopName: nil,
             notes: "Fresh oil",
-            attachmentPaths: ["receipt.pdf"],
+            attachmentPaths: [
+                "users/user/entries/entry/receipts/first-receipt.pdf",
+                "users/user/entries/entry/photos/second-photo.jpg"
+            ],
             isResolved: nil,
             details: ["oilBrand": AnyCodable("Mobil 1")],
             createdAt: .now,
@@ -28,5 +31,6 @@ struct EntryDecodingTests {
         #expect(decoded.id == original.id)
         #expect(decoded.entryType == .oilChange)
         #expect(decoded.odometerReading == 12345)
+        #expect(decoded.attachmentPaths == original.attachmentPaths)
     }
 }

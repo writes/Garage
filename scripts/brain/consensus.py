@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -65,6 +66,64 @@ def _normalize_structure(obj: Any) -> Any:
     return obj
 
 
+# A leading enumerated label: "A: ...", "b) ...", "C - ...", "A." or a bare "A".
+# Deliberately does NOT match "A and B ..." (no separator after the letter), so
+# hedged multi-option answers never silently collapse into one option's group.
+_ENUM_LABEL_RE = re.compile(r"^\s*([A-Za-z])(?:\s*[:.)\-]|\s*$)")
+
+
+def _enum_letter(text: Any) -> Optional[str]:
+    if not isinstance(text, str):
+        return None
+    m = _ENUM_LABEL_RE.match(text)
+    return m.group(1).lower() if m else None
+
+
+def enum_option_map(options: Optional[List[str]]) -> Dict[str, str]:
+    """Map enumerated option letters -> full option text (e.g. {'a': 'A: ...'})."""
+    letters: Dict[str, str] = {}
+    for o in options or []:
+        letter = _enum_letter(o)
+        if letter:
+            letters[letter] = o
+    return letters
+
+
+def resolve_enum(decision: Any, letters: Dict[str, str]) -> Optional[str]:
+    """Resolve a voter's decision to an enumerated option letter, else None.
+
+    Handles the observed grouping failure (2026-07-11 vehicle-limit vote): one
+    voter answers a bare "A" while another answers "A: <full option text>" —
+    string-hash canonicalization put them in different groups, flipping a 2/3
+    majority into a highest-confidence fallback (a Law-1 violation: the loud
+    dissenter effectively vetoed). Matching is anchored to the option roster:
+    (1) an explicit leading letter that exists in the roster wins; (2) otherwise
+    a decision whose normalized text uniquely prefix/substring-matches exactly
+    one option (voters sometimes echo the option body without its letter).
+    Anything ambiguous falls back to plain canonical_key — never guessed.
+    """
+    if not letters or not isinstance(decision, str):
+        return None
+    letter = _enum_letter(decision)
+    if letter is not None:
+        return letter if letter in letters else None
+    dnorm = " ".join(decision.strip().lower().split())
+    if not dnorm:
+        return None
+    matches = []
+    for letter, option in letters.items():
+        onorm = " ".join(option.strip().lower().split())
+        obody = onorm.split(":", 1)[1].strip() if ":" in onorm else onorm
+        if (
+            onorm.startswith(dnorm)
+            or dnorm.startswith(onorm)
+            or obody.startswith(dnorm)
+            or (len(dnorm) >= 16 and dnorm in onorm)
+        ):
+            matches.append(letter)
+    return matches[0] if len(matches) == 1 else None
+
+
 def _clamp_conf(c: Any) -> float:
     try:
         c = float(c)
@@ -76,21 +135,37 @@ def _clamp_conf(c: Any) -> float:
 # ---------------------------------------------------------------------------
 # Resolver
 # ---------------------------------------------------------------------------
-def resolve_majority(positions: List[Dict[str, Any]]) -> Dict[str, Any]:
+def resolve_majority(
+    positions: List[Dict[str, Any]],
+    options: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """Resolve a list of voter positions into a single decision.
 
-    Returns a resolution dict (see DECISION_LEDGER schema). Pure: no I/O.
+    When `options` (the enumerated option strings shown to voters) is provided,
+    decisions are grouped by their resolved option letter first, so "A" and
+    "A: <full text>" and the echoed option body all land in one group; the
+    group label is the full roster text. Returns a resolution dict (see
+    DECISION_LEDGER schema). Pure: no I/O.
     """
     if not positions:
         raise ValueError("resolve_majority requires at least one position")
 
     n = len(positions)
+    letters = enum_option_map(options)
+
+    def _key_label(decision: Any) -> Tuple[str, Any]:
+        letter = resolve_enum(decision, letters)
+        if letter is not None:
+            key = hashlib.sha256(f"enum:{letter}".encode("utf-8")).hexdigest()[:16]
+            return key, letters[letter]
+        return canonical_key(decision), decision
+
     # Group positions by canonical decision key.
     groups: Dict[str, Dict[str, Any]] = {}
     for p in positions:
-        key = canonical_key(p.get("decision"))
+        key, label = _key_label(p.get("decision"))
         g = groups.setdefault(
-            key, {"key": key, "label": p.get("decision"), "votes": [], "conf_sum": 0.0}
+            key, {"key": key, "label": label, "votes": [], "conf_sum": 0.0}
         )
         g["votes"].append(p)
         g["conf_sum"] += _clamp_conf(p.get("confidence"))
@@ -121,11 +196,12 @@ def resolve_majority(positions: List[Dict[str, Any]]) -> Dict[str, Any]:
         # Re-pick the single highest-confidence individual position.
         best = max(
             positions,
-            key=lambda p: (_clamp_conf(p.get("confidence")), canonical_key(p.get("decision"))),
+            key=lambda p: (_clamp_conf(p.get("confidence")), _key_label(p.get("decision"))[0]),
         )
+        best_key, best_label = _key_label(best.get("decision"))
         top = {
-            "key": canonical_key(best.get("decision")),
-            "label": best.get("decision"),
+            "key": best_key,
+            "label": best_label,
             "votes": [best],
             "conf_sum": _clamp_conf(best.get("confidence")),
         }
@@ -158,15 +234,18 @@ def append_ledger_majority(
     ledger_path: str = LEDGER_DEFAULT,
     protocol: str = "tri_agent_majority",
     extra: Optional[Dict[str, Any]] = None,
+    options: Optional[List[str]] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Resolve and append one line to the decision ledger. Returns (row, resolution).
 
     `timestamp` is required and must be passed by the caller (landmine #6 — never
     a null/auto timestamp; explicit timestamps also enable deterministic resume).
+    `options` is the enumerated option roster shown to voters; passing it enables
+    letter-anchored grouping (see resolve_majority).
     """
     if not timestamp:
         raise ValueError("append_ledger_majority requires an explicit ISO8601 timestamp")
-    resolution = resolve_majority(positions)
+    resolution = resolve_majority(positions, options=options)
     row = {
         "timestamp": timestamp,
         "topic": topic,
@@ -250,6 +329,50 @@ def _selftest() -> int:
     k1 = canonical_key({"x": 1, "y": [2, 3]})
     k2 = canonical_key({"y": [2, 3], "x": 1})
     check("structured canonical is order-independent", k1 == k2)
+
+    # 4b. Enum-anchored grouping (regression: 2026-07-11 vehicle-limit vote —
+    # bare "A" vs "A: <full text>" split a true 2/3 majority into a
+    # highest-confidence fallback, letting the lone dissenter win).
+    opts = [
+        "A: Rules + client-maintained counter with getAfter invariants",
+        "B: Cloud Function counter",
+        "C: Callable-only creation",
+    ]
+    r = resolve_majority([
+        {"agent": "claude", "decision": opts[0], "confidence": 0.75},
+        {"agent": "codex", "decision": opts[2], "confidence": 0.97},
+        {"agent": "gemini", "decision": "A", "confidence": 0.95},
+    ], options=opts)
+    check("enum: bare letter joins full-text group (majority A)",
+          r["rule"] == "majority" and r["vote_count"] == 2 and r["decision"] == opts[0])
+    check("enum: dissenter cannot win via confidence fallback",
+          r["needs_second_round"] is False)
+    r = resolve_majority([
+        {"agent": "a", "decision": "b) Cloud Function counter", "confidence": 0.5},
+        {"agent": "b", "decision": "B: Cloud Function counter", "confidence": 0.5},
+        {"agent": "c", "decision": "A", "confidence": 0.9},
+    ], options=opts)
+    check("enum: letter-separator variants group", r["vote_count"] == 2 and r["decision"] == opts[1])
+    r = resolve_majority([
+        {"agent": "a", "decision": "Rules + client-maintained counter with getAfter invariants", "confidence": 0.5},
+        {"agent": "b", "decision": "A", "confidence": 0.5},
+        {"agent": "c", "decision": "C", "confidence": 0.9},
+    ], options=opts)
+    check("enum: echoed option body (no letter) groups with its letter",
+          r["vote_count"] == 2 and r["decision"] == opts[0])
+    # Hedged / out-of-roster answers must NOT be silently mapped to an option.
+    check("enum: hedged 'A and B' never resolves to a letter",
+          resolve_enum("A and B combined", enum_option_map(opts)) is None)
+    check("enum: unknown letter never resolves",
+          resolve_enum("D: something new", enum_option_map(opts)) is None)
+    # Without options, behavior is byte-identical to the old path.
+    r_old = resolve_majority([
+        {"agent": "a", "decision": "A", "confidence": 0.4},
+        {"agent": "b", "decision": "A: full text", "confidence": 0.4},
+        {"agent": "c", "decision": "B", "confidence": 0.9},
+    ])
+    check("no-options path unchanged (documents the old limitation)",
+          r_old["rule"] == "highest_confidence_no_majority")
 
     # 6. Ledger requires explicit timestamp.
     try:

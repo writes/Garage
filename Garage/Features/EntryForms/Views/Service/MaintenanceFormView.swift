@@ -10,10 +10,10 @@ struct MaintenanceFormView: View {
     var body: some View {
         EntryFormScaffold(title: "Maintenance", viewModel: form, onSave: save) {
             Picker("Item", selection: $item) {
-                ForEach(MaintenanceItemKind.allCases, id: \.self) { item in Text(item.rawValue).tag(item) }
+                ForEach(MaintenanceItemKind.allCases, id: \.self) { item in Text(item.displayName).tag(item) }
             }
             Picker("Status", selection: $status) {
-                ForEach(ServiceStatus.allCases, id: \.self) { status in Text(status.rawValue).tag(status) }
+                ForEach(ServiceStatus.allCases, id: \.self) { status in Text(status.displayName).tag(status) }
             }
             TextField("Next due mileage", text: $dueMileage)
                 .keyboardType(.numberPad)

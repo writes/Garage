@@ -7,13 +7,20 @@ struct WheelGalleryView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.md) {
-                if wheelPhotos.isEmpty {
+                Text("Record details only. Photo files cannot be added, viewed, saved, or exported in this beta.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .accessibilityIdentifier("garage.wheels.notice")
+
+                if let error = viewModel.error {
+                    ErrorBanner(error: error) {
+                        Task { await load() }
+                    }
+                    .accessibilityIdentifier("garage.wheels.error")
+                } else if wheelPhotos.isEmpty {
                     EmptyStateView(
-                        title: "No wheel gallery yet",
-                        message: """
-                        Save wheel and tire combo photos here with fitment details
-                        for future reference and exports.
-                        """,
+                        title: "No wheel records yet",
+                        message: "Existing wheel record details appear here when available.",
                         systemImage: "circle.grid.2x2"
                     )
                 } else {
@@ -31,8 +38,8 @@ struct WheelGalleryView: View {
             }
             .padding(Theme.Spacing.md)
         }
-        .navigationTitle("Wheel Gallery")
-        .task { await load() }
+        .navigationTitle("Wheel Records")
+        .task(id: appState.currentVehicle?.id) { await load() }
     }
 
     private var wheelPhotos: [GalleryPhoto] {

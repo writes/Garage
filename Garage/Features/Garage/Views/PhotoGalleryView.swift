@@ -7,13 +7,20 @@ struct PhotoGalleryView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.md) {
-                if mainPhotos.isEmpty {
+                Text("Record details only. Photo files cannot be added, viewed, saved, or exported in this beta.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .accessibilityIdentifier("garage.gallery.notice")
+
+                if let error = viewModel.error {
+                    ErrorBanner(error: error) {
+                        Task { await load() }
+                    }
+                    .accessibilityIdentifier("garage.gallery.error")
+                } else if mainPhotos.isEmpty {
                     EmptyStateView(
-                        title: "No gallery photos yet",
-                        message: """
-                        Use this section for beauty shots, progress photos, and
-                        anything you want in the story of the car.
-                        """,
+                        title: "No gallery records yet",
+                        message: "Existing gallery record details appear here when available.",
                         systemImage: "photo.stack"
                     )
                 } else {
@@ -23,7 +30,6 @@ struct PhotoGalleryView: View {
                             if let caption = photo.caption, caption.isNotEmpty {
                                 Text(caption).font(Theme.Typography.body)
                             }
-                            BadgeView(title: photo.includeInExport ? "Included in export" : "Hidden from export")
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .garageCard()
@@ -32,8 +38,8 @@ struct PhotoGalleryView: View {
             }
             .padding(Theme.Spacing.md)
         }
-        .navigationTitle("Photo Gallery")
-        .task { await load() }
+        .navigationTitle("Gallery Records")
+        .task(id: appState.currentVehicle?.id) { await load() }
     }
 
     private var mainPhotos: [GalleryPhoto] {

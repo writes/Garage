@@ -1,6 +1,6 @@
 import Foundation
 
-enum EntryType: String, Codable, CaseIterable, Sendable {
+enum EntryType: String, Codable, CaseIterable, Equatable, Sendable {
     case oilChange = "oil_change"
     case oilConsumption = "oil_consumption"
     case oilAnalysis = "oil_analysis"

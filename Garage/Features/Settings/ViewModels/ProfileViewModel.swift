@@ -1,162 +1,97 @@
-import FirebaseFirestore
 import Observation
-
-@MainActor
-protocol ProfileStore {
-    func loadProfile(uid: String) async throws -> [String: String]?
-    func saveProfile(_ fields: [String: String], uid: String) async throws
-}
-
-/// The small document seam keeps Firestore's `setData` payload semantics testable.
-@MainActor
-protocol ProfileDocument {
-    func getData() async throws -> [String: Any]?
-    func setData(_ data: [String: Any], merge: Bool) async throws
-}
-
-@MainActor
-private final class FirebaseProfileDocument: ProfileDocument {
-    private let document: DocumentReference
-
-    init(document: DocumentReference) {
-        self.document = document
-    }
-
-    func getData() async throws -> [String: Any]? {
-        try await document.getDocument().data()
-    }
-
-    func setData(_ data: [String: Any], merge: Bool) async throws {
-        try await document.setData(data, merge: merge)
-    }
-}
-
-@MainActor
-final class FirestoreProfileStore: ProfileStore {
-    private let documentForUser: (String) -> any ProfileDocument
-
-    init(firestore: FirestoreService = .shared) {
-        documentForUser = { uid in
-            FirebaseProfileDocument(
-                document: firestore.db.collection(FirestorePaths.users).document(uid)
-            )
-        }
-    }
-
-    init(documentForUser: @escaping (String) -> any ProfileDocument) {
-        self.documentForUser = documentForUser
-    }
-
-    func loadProfile(uid: String) async throws -> [String: String]? {
-        guard let values = try await documentForUser(uid).getData()?["profile"] as? [String: Any] else { return nil }
-        return values.reduce(into: [:]) { fields, value in
-            if let text = value.value as? String {
-                fields[value.key] = text
-            }
-        }
-    }
-
-    func saveProfile(_ fields: [String: String], uid: String) async throws {
-        // `setData(merge: true)` deep-merges this map, preserving unknown keys
-        // added by a newer app version. Dotted keys would be literal top-level
-        // fields here; only Firestore's `updateData` interprets dot paths.
-        try await documentForUser(uid).setData(["profile": fields], merge: true)
-    }
-}
 
 @MainActor
 @Observable
 final class ProfileViewModel {
-    private let store: (any ProfileStore)?
+    private let store: any ProfileStore
     private let userID: () -> String?
+    private let analytics: any AnalyticsTracking
 #if DEBUG
     private let isDemoMode: Bool
-    private let demoStore: DemoSessionStore
 #endif
-
     var name = ""
     var address = ""
     var phone = ""
     var insuranceCompany = ""
     var policyNumber = ""
+    var analyticsOptOut = true
+    private(set) var userProfile: UserProfile?
     private(set) var error: AppError?
-
+    private(set) var hasSuccessfullyLoadedProfile = false
 #if DEBUG
     init(
         store: (any ProfileStore)? = nil,
         userID: @escaping () -> String? = { AuthService.shared.uid },
+        analytics: any AnalyticsTracking = AnalyticsService.shared,
         isDemoMode: Bool = AppRuntime.isLocalDemoMode,
-        demoStore: DemoSessionStore = .shared
+        demoStore: DemoSessionStore = .shared,
+        automaticallyLoad: Bool = true
     ) {
         self.userID = userID
+        self.analytics = analytics
         self.isDemoMode = isDemoMode
-        self.demoStore = demoStore
-        if isDemoMode {
-            self.store = store
-        } else {
-            self.store = store ?? FirestoreProfileStore()
-        }
-        Task { [weak self] in
-            await self?.load()
+        self.store = isDemoMode ? DemoProfileStore(demoStore: demoStore) : (store ?? FirestoreProfileStore())
+        if automaticallyLoad {
+            Task { [weak self] in
+                await self?.load()
+            }
         }
     }
 #else
     init(
         store: (any ProfileStore)? = nil,
-        userID: @escaping () -> String? = { AuthService.shared.uid }
+        userID: @escaping () -> String? = { AuthService.shared.uid },
+        analytics: any AnalyticsTracking = AnalyticsService.shared
     ) {
         self.userID = userID
-        self.store = store ?? FirestoreProfileStore()
+        self.analytics = analytics
+        self.store = store ?? ProfileStoreFactory.makeDefault()
         Task { [weak self] in
             await self?.load()
         }
     }
 #endif
-
     func load() async {
-#if DEBUG
-        if isDemoMode {
-            apply(demoStore.profile())
-            return
-        }
-#endif
-        guard let uid = userID() else {
+        hasSuccessfullyLoadedProfile = false
+        guard let uid = resolvedUserID() else {
             error = .auth("Not authenticated")
+            userProfile = nil
+            analytics.setEnabled(false)
             return
         }
-        guard let store else {
-            error = .database("Profile storage unavailable")
-            return
-        }
-
         do {
-            apply(try await store.loadProfile(uid: uid) ?? [:])
+            let profile = try await Self.loadProfile(uid: uid, store: store)
+            guard resolvedUserID() == uid else {
+                userProfile = nil
+                analytics.setEnabled(false)
+                return
+            }
+            apply(profile)
+            userProfile = profile
+            analytics.setEnabled(!profile.analyticsOptOut)
+            hasSuccessfullyLoadedProfile = true
             error = nil
         } catch {
+            userProfile = nil
+            analytics.setEnabled(false)
             self.error = AppError(from: error)
         }
     }
-
     @discardableResult
     func save() async -> Bool {
-#if DEBUG
-        if isDemoMode {
-            demoStore.saveProfile(fields)
-            error = nil
-            return true
-        }
-#endif
-        guard let uid = userID() else {
+        guard let uid = resolvedUserID() else {
             error = .auth("Not authenticated")
             return false
         }
-        guard let store else {
-            error = .database("Profile storage unavailable")
-            return false
-        }
-
         do {
-            try await store.saveProfile(fields, uid: uid)
+            let profile = makeProfile(uid: uid)
+            try await store.saveProfile(profile.profileFields, uid: uid)
+            guard resolvedUserID() == uid else {
+                userProfile = nil
+                analytics.setEnabled(false)
+                return false
+            }
+            userProfile = profile
             error = nil
             return true
         } catch {
@@ -164,23 +99,98 @@ final class ProfileViewModel {
             return false
         }
     }
+    /// Writes only consent before enabling collection, preserving untouched profile fields.
+    @discardableResult
+    func setAnalyticsSharingEnabled(_ enabled: Bool) async -> Bool {
+        guard hasSuccessfullyLoadedProfile, let expectedUserID = resolvedUserID() else {
+            analytics.setEnabled(false)
+            return false
+        }
 
-    private var fields: [String: String] {
-        [
-            "name": name,
-            "address": address,
-            "phone": phone,
-            "insuranceCompany": insuranceCompany,
-            "policyNumber": policyNumber
-        ]
+        let previousOptOut = analyticsOptOut
+        let previousProfile = userProfile
+        analyticsOptOut = !enabled
+        if !enabled {
+            analytics.setEnabled(false)
+        }
+
+        do {
+            try await store.saveProfileFields(
+                ["analyticsOptOut": .boolean(analyticsOptOut)],
+                uid: expectedUserID
+            )
+            guard resolvedUserID() == expectedUserID else {
+                return failAnalyticsSharingChange(
+                    enabled: enabled,
+                    previousOptOut: previousOptOut,
+                    previousProfile: previousProfile,
+                    clearLoadedProfile: true
+                )
+            }
+
+            if var profile = userProfile {
+                profile.analyticsOptOut = analyticsOptOut
+                userProfile = profile
+            }
+            error = nil
+            analytics.setEnabled(enabled)
+            return true
+        } catch {
+            return failAnalyticsSharingChange(
+                enabled: enabled,
+                previousOptOut: previousOptOut,
+                previousProfile: previousProfile,
+                error: error
+            )
+        }
     }
 
-    private func apply(_ fields: [String: String]) {
-        name = fields["name"] ?? ""
-        address = fields["address"] ?? ""
-        phone = fields["phone"] ?? ""
-        insuranceCompany = fields["insuranceCompany"] ?? ""
-        policyNumber = fields["policyNumber"] ?? ""
+    private func failAnalyticsSharingChange(
+        enabled: Bool,
+        previousOptOut: Bool,
+        previousProfile: UserProfile?,
+        error: Error? = nil,
+        clearLoadedProfile: Bool = false
+    ) -> Bool {
+        analyticsOptOut = previousOptOut
+        userProfile = clearLoadedProfile ? nil : previousProfile
+        hasSuccessfullyLoadedProfile = !clearLoadedProfile
+        if let error {
+            self.error = AppError(from: error)
+        }
+        if enabled {
+            analytics.setEnabled(false)
+        } else {
+            analytics.suppressCollectionForCurrentSession()
+        }
+        return false
     }
 
+    static func loadProfile(uid: String, store: any ProfileStore) async throws -> UserProfile {
+        let fields = try await store.loadProfile(uid: uid) ?? [:]
+        return UserProfile(id: uid, profileFields: fields)
+    }
+    private func makeProfile(uid: String) -> UserProfile {
+        UserProfile(
+            id: uid, email: nil, name: name, address: address, phone: phone,
+            insuranceCompany: insuranceCompany, policyNumber: policyNumber,
+            analyticsOptOut: analyticsOptOut, createdAt: nil, updatedAt: nil
+        )
+    }
+    private func apply(_ profile: UserProfile) {
+        name = profile.name ?? ""
+        address = profile.address ?? ""
+        phone = profile.phone ?? ""
+        insuranceCompany = profile.insuranceCompany ?? ""
+        policyNumber = profile.policyNumber ?? ""
+        analyticsOptOut = profile.analyticsOptOut
+    }
+    private func resolvedUserID() -> String? {
+#if DEBUG
+        if isDemoMode {
+            return AppRuntime.demoUserId
+        }
+#endif
+        return userID()
+    }
 }

@@ -12,7 +12,7 @@ struct WarrantyRecallView: View {
                 } else {
                     ForEach(viewModel.warranties) { warranty in
                         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                            Text(warranty.warrantyType.rawValue.capitalized).font(Theme.Typography.headline)
+                            Text(warranty.warrantyType.displayName).font(Theme.Typography.headline)
                             Text(
                                 warranty.expirationDate?.shortDisplay
                                     ?? warranty.coverageEnd?.shortDisplay
@@ -31,7 +31,7 @@ struct WarrantyRecallView: View {
                     ForEach(viewModel.recalls) { recall in
                         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                             Text(recall.title).font(Theme.Typography.headline)
-                            Text(recall.status.rawValue).font(Theme.Typography.caption)
+                            Text(recall.status.displayName).font(Theme.Typography.caption)
                                 .foregroundStyle(
                                     recall.status == .outstanding
                                         ? Theme.Colors.error
@@ -43,7 +43,7 @@ struct WarrantyRecallView: View {
             }
         }
         .navigationTitle("Warranty & Recalls")
-        .task { await load() }
+        .task(id: appState.currentVehicle?.id) { await load() }
     }
 
     private func load() async {

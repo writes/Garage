@@ -10,7 +10,7 @@ struct RepairFormView: View {
         EntryFormScaffold(title: "Repair", viewModel: form, onSave: save) {
             TextField("Title", text: $title).textFieldStyle(.roundedBorder)
             Picker("Status", selection: $status) {
-                ForEach(ServiceStatus.allCases, id: \.self) { status in Text(status.rawValue).tag(status) }
+                ForEach(ServiceStatus.allCases, id: \.self) { status in Text(status.displayName).tag(status) }
             }
         }
         .task { await prepare() }

@@ -9,7 +9,7 @@
     "build": "tsc",
     "deploy": "firebase deploy --only functions",
     "serve": "firebase emulators:start --only functions",
-    "test": "vitest run tests/revenueCatWebhook.test.ts tests/claudeProxy.test.ts",
+    "test": "vitest run tests/*.test.ts",
     "test:rules": "firebase --config firebase.rules-test.json --project garage-rules-test emulators:exec --only firestore,storage \"vitest run tests/rules\""
   },
   "dependencies": {

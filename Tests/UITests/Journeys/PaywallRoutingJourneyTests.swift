@@ -3,7 +3,7 @@ import XCTest
 /// Hermetic UI-routing journey: LOCAL_DEMO_MODE only; no live Firebase or RevenueCat evidence.
 @MainActor
 final class PaywallRoutingJourneyTests: JourneyTestCase {
-    func testFreeGatesRouteFromGarageRemindersAndExportToSubscription() {
+    func testFreeGatesRouteFromGarageAndRecordPDFToSubscription() {
         let app = launchDemo()
 
         tapTab("Garage", in: app)
@@ -13,21 +13,25 @@ final class PaywallRoutingJourneyTests: JourneyTestCase {
         tapTab("Settings", in: app)
         let reminders = app.buttons["settings.reminders"]
         tapWhenHittable(reminders)
-        routeToSubscription(from: app.buttons["reminder.gate.cta"], in: app)
-        dismissSheet(in: app, waitingFor: app.buttons["subscription.refresh"])
+        require(app.textFields["reminder.form.title"])
+        XCTAssertFalse(app.buttons["reminder.gate.cta"].exists)
 
         let settingsBack = app.navigationBars.buttons["Settings"]
         tapWhenHittable(settingsBack)
         let export = app.buttons["settings.export"]
         tapWhenHittable(export)
+        require(app.buttons["export.buildCSV"])
+        require(app.staticTexts["CSV record-data export"])
+        require(app.buttons["export.gate.cta"])
         routeToSubscription(from: app.buttons["export.gate.cta"], in: app)
     }
 
-    func testProDemoLeavesGarageRemindersAndExportUnlocked() {
+    func testProDemoLeavesGarageAndRecordPDFUnlockedWithoutMediaToggles() {
         let app = launchDemo(pro: true)
 
         tapTab("Garage", in: app)
         require(app.buttons["garage.gallery"])
+        require(app.buttons["garage.wheels"])
         XCTAssertFalse(app.buttons["garage.gate.cta"].exists)
 
         tapTab("Settings", in: app)
@@ -40,7 +44,9 @@ final class PaywallRoutingJourneyTests: JourneyTestCase {
         let export = app.buttons["settings.export"]
         tapWhenHittable(export)
         require(app.buttons["export.buildCSV"])
+        require(app.buttons["export.buildPDF"])
         XCTAssertFalse(app.buttons["export.gate.cta"].exists)
+        assertMediaTogglesAreUnavailable(in: app)
     }
 
     func testSubscriptionOffersRestorePurchasesControl() {
@@ -68,10 +74,23 @@ final class PaywallRoutingJourneyTests: JourneyTestCase {
         require(privacy)
         XCTAssertTrue(terms.isHittable, "Terms of Use must be visible before purchase")
         XCTAssertTrue(privacy.isHittable, "Privacy Policy must be visible before purchase")
+        require(
+            app.staticTexts["Pro includes up to 5 vehicles, parts, detailing, warranty and recall records, and stats."]
+        )
+        require(app.staticTexts["Review the current plan and price before purchasing."])
+        require(app.staticTexts["Plans are unavailable right now. Check your connection, then tap Refresh Plans."])
     }
 
     private func routeToSubscription(from gate: XCUIElement, in app: XCUIApplication) {
-        tapWhenHittable(gate)
+        revealAndTap(gate, in: app)
         require(app.buttons["subscription.refresh"])
+    }
+
+    private func assertMediaTogglesAreUnavailable(in app: XCUIApplication) {
+        XCTAssertFalse(app.switches["Photo gallery"].exists)
+        XCTAssertFalse(app.switches["Receipts & invoices"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["export.toggle.galleryPhotos"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["export.toggle.photoGallery"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["export.toggle.receipts"].exists)
     }
 }
