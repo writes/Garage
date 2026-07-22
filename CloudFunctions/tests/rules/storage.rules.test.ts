@@ -25,22 +25,33 @@ describe("Storage authorization", () => {
     await testEnvironment?.cleanup();
   });
 
-  it("allows an owner to write and read within their own path", async () => {
-    const ownerStorage = testEnvironment.authenticatedContext("owner-1").storage();
-    const ownerFile = ref(ownerStorage, "users/owner-1/reports/report.txt");
+  // The app only ever uploads photos (image/*) and receipts/reports (application/pdf); the rules
+  // constrain writes to those types, so tests use a real content type.
+  const pdfMeta = { contentType: "application/pdf" } as const;
 
-    await assertSucceeds(uploadString(ownerFile, "owner report"));
+  it("allows an owner to write and read image/PDF content within their own path", async () => {
+    const ownerStorage = testEnvironment.authenticatedContext("owner-1").storage();
+    const ownerFile = ref(ownerStorage, "users/owner-1/reports/report.pdf");
+
+    await assertSucceeds(uploadString(ownerFile, "owner report", "raw", pdfMeta));
     await assertSucceeds(getBytes(ownerFile));
   });
 
   it("denies another user reading or writing an owner's path", async () => {
     const ownerStorage = testEnvironment.authenticatedContext("owner-1").storage();
     const otherStorage = testEnvironment.authenticatedContext("other-user").storage();
-    const ownerFile = ref(ownerStorage, "users/owner-1/reports/private.txt");
-    const foreignFile = ref(otherStorage, "users/owner-1/reports/private.txt");
+    const ownerFile = ref(ownerStorage, "users/owner-1/reports/private.pdf");
+    const foreignFile = ref(otherStorage, "users/owner-1/reports/private.pdf");
 
-    await assertSucceeds(uploadString(ownerFile, "private"));
-    await assertFails(uploadString(foreignFile, "intrusion"));
+    await assertSucceeds(uploadString(ownerFile, "private", "raw", pdfMeta));
+    await assertFails(uploadString(foreignFile, "intrusion", "raw", pdfMeta));
     await assertFails(getBytes(foreignFile));
+  });
+
+  it("[RULES-ENFORCED] denies a disallowed content type even for the owner", async () => {
+    const ownerStorage = testEnvironment.authenticatedContext("owner-1").storage();
+    const file = ref(ownerStorage, "users/owner-1/reports/note.txt");
+
+    await assertFails(uploadString(file, "plain text", "raw", { contentType: "text/plain" }));
   });
 });

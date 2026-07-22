@@ -6,7 +6,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc } from "firebase/firestore";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 let testEnvironment: RulesTestEnvironment | undefined;
@@ -96,5 +96,36 @@ describe("Firestore authorization", () => {
       const snapshot = await getDoc(doc(context.firestore(), "users", "owner-1"));
       expect(snapshot.data()?.subscription).toEqual({ entitlement: "pro", isActive: true });
     });
+  });
+
+  async function seedVehicle(vehicleId: string, ownerUid: string): Promise<void> {
+    await testEnvironment?.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "vehicles", vehicleId), { userId: ownerUid, nickname: vehicleId });
+    });
+  }
+
+  it("[RULES-ENFORCED] allows an owner-matched vehicle create and denies a spoofed owner", async () => {
+    const ownerDb = testEnvironment.authenticatedContext("owner-1").firestore();
+    await assertSucceeds(setDoc(doc(ownerDb, "vehicles", "v1"), { userId: "owner-1", nickname: "Viper" }));
+    await assertFails(setDoc(doc(ownerDb, "vehicles", "v2"), { userId: "victim", nickname: "Spoof" }));
+  });
+
+  it("[RULES-ENFORCED] denies an unauthenticated null-owner vehicle create (orphan spam)", async () => {
+    const anonymousDb = testEnvironment.unauthenticatedContext().firestore();
+    await assertFails(setDoc(doc(anonymousDb, "vehicles", "v3"), { userId: null, nickname: "Orphan" }));
+  });
+
+  it("[RULES-ENFORCED] forbids reassigning a vehicle userId to another account (cross-account injection)", async () => {
+    await seedVehicle("v4", "owner-1");
+    const ownerDb = testEnvironment.authenticatedContext("owner-1").firestore();
+    await assertSucceeds(updateDoc(doc(ownerDb, "vehicles", "v4"), { nickname: "Renamed" }));
+    await assertFails(updateDoc(doc(ownerDb, "vehicles", "v4"), { userId: "victim" }));
+  });
+
+  it("[RULES-ENFORCED] denies a non-owner read or write of a vehicle", async () => {
+    await seedVehicle("v5", "owner-1");
+    const otherDb = testEnvironment.authenticatedContext("intruder").firestore();
+    await assertFails(getDoc(doc(otherDb, "vehicles", "v5")));
+    await assertFails(updateDoc(doc(otherDb, "vehicles", "v5"), { nickname: "Hacked" }));
   });
 });

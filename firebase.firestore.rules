@@ -23,14 +23,26 @@ service cloud.firestore {
     match /vehicles/{vehicleId} {
       allow read: if request.auth != null
         && resource.data.userId == request.auth.uid;
-      allow create: if request.auth.uid == request.resource.data.userId;
-      allow update: if resource.data.userId == request.auth.uid;
-      allow delete: if resource.data.userId == request.auth.uid;
+      // Require an authenticated caller and a non-empty owner that matches — the bare
+      // `uid == data.userId` form allowed an unauthenticated write of {userId: null}
+      // (null == null) to create orphan documents.
+      allow create: if request.auth != null
+        && request.auth.uid is string
+        && request.auth.uid == request.resource.data.userId;
+      // Owner is immutable: an owner may not reassign userId to another account
+      // (cross-account data injection). Only the existing owner may update, and the
+      // userId may not change.
+      allow update: if request.auth != null
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId;
+      allow delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
 
       match /{subcollection}/{docId} {
         allow read: if request.auth != null
           && get(/databases/$(database)/documents/vehicles/$(vehicleId)).data.userId == request.auth.uid;
-        allow write: if get(/databases/$(database)/documents/vehicles/$(vehicleId)).data.userId == request.auth.uid;
+        allow write: if request.auth != null
+          && get(/databases/$(database)/documents/vehicles/$(vehicleId)).data.userId == request.auth.uid;
       }
     }
   }
