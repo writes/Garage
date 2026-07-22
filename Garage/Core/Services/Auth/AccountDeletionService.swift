@@ -19,6 +19,10 @@ final class AccountDeletionService: AccountDeleting {
     private init() {}
 
     func deleteAccount() async throws {
-        _ = try await functions.httpsCallable("deleteAccount").call([:])
+        let callable = functions.httpsCallable("deleteAccount")
+        // Match the Cloud Function's 300s budget so a large account doesn't hit the SDK's ~70s
+        // default and surface a spurious timeout while the server is still deleting.
+        callable.timeoutInterval = 300
+        _ = try await callable.call([:])
     }
 }

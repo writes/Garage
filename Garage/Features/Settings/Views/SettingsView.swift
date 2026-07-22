@@ -6,7 +6,10 @@ struct SettingsView: View {
     @State private var showDeleteConfirmation = false
     @State private var deletionError: AppError?
     @State private var isDeleting = false
-    private let deletionService: any AccountDeleting = AccountDeletionService.shared
+    // Computed (not a stored default) so the singleton — which calls Functions.functions() — is
+    // constructed only when deletion actually runs, never at tab-build time. In demo/UI-test mode
+    // Firebase is not configured, and deleteAccount() never touches it, so it must stay lazy.
+    private var deletionService: any AccountDeleting { AccountDeletionService.shared }
 
     var body: some View {
         NavigationStack {

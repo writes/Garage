@@ -1,6 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, FieldPath } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { getStorage } from "firebase-admin/storage";
 
@@ -14,6 +14,8 @@ export interface DeleteAccountDeps {
   listUserVehicleIds(uid: string): Promise<string[]>;
   deleteVehicleCascade(vehicleId: string): Promise<void>;
   deleteUserDoc(uid: string): Promise<void>;
+  deleteUserQuotas(uid: string): Promise<void>;
+  deleteRevenueCatEvents(uid: string): Promise<void>;
   deleteUserStorage(uid: string): Promise<void>;
   deleteAuthUser(uid: string): Promise<void>;
 }
@@ -39,6 +41,8 @@ export async function deleteAccountRequest(
     await deps.deleteVehicleCascade(vehicleId);
   }
   await deps.deleteUserDoc(uid);
+  await deps.deleteUserQuotas(uid);
+  await deps.deleteRevenueCatEvents(uid);
   await deps.deleteUserStorage(uid);
   await deps.deleteAuthUser(uid);
 
@@ -67,11 +71,31 @@ export const deleteAccount = onCall(
         async deleteUserDoc(uid) {
           await db.collection("users").doc(uid).delete();
         },
+        async deleteUserQuotas(uid) {
+          // usage_quotas doc ids are all prefixed `${uid}_` (daily `${uid}_${date}`,
+          // `${uid}_lifetime`, `${uid}_voice_${date}`). Firebase uids are fixed-length, so no uid
+          // is a prefix of another — this range never touches another user's rows.
+          const snapshot = await db.collection("usage_quotas")
+            .where(FieldPath.documentId(), ">=", `${uid}_`)
+            .where(FieldPath.documentId(), "<", `${uid}_`)
+            .get();
+          await Promise.all(snapshot.docs.map((quotaDoc) => quotaDoc.ref.delete()));
+        },
+        async deleteRevenueCatEvents(uid) {
+          const snapshot = await db.collection("revenuecat_events").where("appUserId", "==", uid).get();
+          await Promise.all(snapshot.docs.map((eventDoc) => eventDoc.ref.delete()));
+        },
         async deleteUserStorage(uid) {
           await bucket.deleteFiles({ prefix: `users/${uid}/` });
         },
         async deleteAuthUser(uid) {
-          await auth.deleteUser(uid);
+          try {
+            await auth.deleteUser(uid);
+          } catch (error) {
+            // Idempotent: if a prior attempt already removed the auth user (e.g. the HTTP response
+            // was lost and the client retried), treat 'not found' as success.
+            if ((error as { code?: string }).code !== "auth/user-not-found") throw error;
+          }
         },
       },
     );
