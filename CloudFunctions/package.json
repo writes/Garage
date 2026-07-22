@@ -13,8 +13,8 @@
     "test:rules": "firebase --config firebase.rules-test.json --project garage-rules-test emulators:exec --only firestore,storage \"vitest run tests/rules\""
   },
   "dependencies": {
-    "firebase-admin": "^12.1.0",
-    "firebase-functions": "^5.0.1"
+    "firebase-admin": "^13.10.0",
+    "firebase-functions": "^6.6.0"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",
