@@ -84,4 +84,6 @@ struct EntryQuery: Sendable, Equatable {
     var vehicleId: String
     var entryTypes: Set<EntryType> = []
     var searchText: String = ""
+    var startDate: Date?
+    var endDate: Date?
 }

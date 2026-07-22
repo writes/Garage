@@ -113,7 +113,11 @@ private extension GarageApp {
             vehicleService: .uiTest,
             purchaseService: .uiTest,
             syncService: .shared,
-            analytics: NoopAnalyticsService()
+            analytics: NoopAnalyticsService(),
+            // Explicit noop: these modes run before (or without) FirebaseApp.configure, and
+            // FirebaseCrashReporter touches Crashlytics.crashlytics() on setEnabled — the same
+            // pre-configure launch-crash class the deleteAccount service hit.
+            crashReporter: NoopCrashReporter()
         )
     }
 

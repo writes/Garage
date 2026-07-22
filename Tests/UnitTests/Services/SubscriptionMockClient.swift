@@ -42,6 +42,12 @@ final class SubscriptionMockClient: RevenueCatClienting {
         return observed(.success(.inactive), uid: uid)
     }
 
+    func logOut() async -> RevenueCatObserved<EntitlementSnapshot> {
+        callLog.append("logout")
+        appUserID = "anonymous"
+        return observed(.success(.inactive), uid: "anonymous")
+    }
+
     func customerInfo() async -> RevenueCatObserved<EntitlementSnapshot> {
         statusCalls += 1
         callLog.append("status")

@@ -47,6 +47,37 @@ Verification: full `verify-ios.sh` gate + CF `tsc`/52 tests + `test:rules` 13 te
 - **Legal drafts** — `docs/legal/{PRIVACY_POLICY,TERMS_OF_USE}_DRAFT.md` (grounded in real data
   flows) for you to review + host.
 
+## ✅ Also fixed in the 3rd pass (follow-up PRs from the list below — 2026-07-22 evening)
+
+- **#4 MAJOR vehicle cap server-authoritative** — RULES-1 / Mechanism A′ implemented in full:
+  counted-create rules (batch-bound `vehicleCount == prior+1 ≤ tierCap` + `lastVehicleOp`
+  binding; counter keys server-authoritative like `subscription`), client batch create
+  (`FieldValue.increment` + binding, permission-denied mapped to `vehicleLimitReached`),
+  soft-delete tombstone + new `deleteVehicle` CF (transactional decrement + recursiveDelete,
+  idempotent) + swipe-to-delete UI + bootstrap purge sweep, backfill script + mandated
+  rollout order (backfill → rules → binary) in `DEPLOY_RUNBOOK.md`. Rules tests 13 → 23.
+  Also closes **#15** (hard-coded `limit(to: 5)` → cap+1 bound).
+- **#8 MAJOR PDF export truncation** — date-bounded, cursor-paginated fetch (CSV-style);
+  no more silent drop past 200 entries.
+- **#9 MAJOR live vehicle listener** — `AppState.vehicles/currentVehicle` now driven by the
+  existing snapshot listener (envelopes were previously discarded by the sync reducer).
+- **#11 MINOR webhook gaps** — verified against RevenueCat's official docs: renewable grant
+  with no expiration fails closed (perpetual-Pro leak closed); refund = `CANCELLATION` with
+  `cancel_reason CUSTOMER_SUPPORT` revokes immediately; `REFUND_REVERSED` re-grants;
+  `SUBSCRIPTION_EXTENDED` extends; `BILLING_ISSUE`/`SUBSCRIPTION_PAUSED` stay no-ops per
+  RevenueCat guidance (grace period / revoke-on-EXPIRATION).
+- **#13/#14/#19/#23 observability** — structured `firebase-functions/logger` on every
+  money/AI CF path (webhook rejections+outcomes, Anthropic failure causes, per-step
+  deleteAccount cascade); Crashlytics wired for the first time: consent-gated
+  (`FirebaseCrashlyticsCollectionEnabled=false` + AppState lifecycle mirror of Analytics),
+  Release-only fail-soft dSYM upload phase, non-fatal recording; vehicle decode is now
+  per-document tolerant (one corrupt doc no longer blanks the garage) and recorded.
+- **#25/#26 a11y** — VoiceOver labels/values on the MPG + cost charts; theme rows gained
+  `.isSelected` + 44pt tap targets.
+- **Client `Purchases.logOut()` on sign-out** — implemented as a QUEUED gateway op (serializes
+  behind in-flight logIn, generation-guarded against superseding sign-ins; skipped when
+  anonymous). The RevenueCat-side `deleteSubscriber` REST call still needs the secret key.
+
 ## 🚧 Remaining — OPERATOR-ONLY (cannot be done by an agent)
 
 1. **[BLOCKER] Real Privacy Policy + Terms URLs** — `Constants.swift` ships
@@ -57,31 +88,13 @@ Verification: full `verify-ios.sh` gate + CF `tsc`/52 tests + `test:rules` 13 te
    `deleteAccount`) + rules, App Check backend enforcement, real `Secrets.swift`, RevenueCat webhook
    URL+token, ASC metadata + privacy labels. Full steps: `docs/DEPLOY_RUNBOOK.md`.
 
-## 🔨 Remaining — CODE (recommended next PRs, not done this session)
+## 🔨 Remaining — CODE (recommended next PRs)
 
-- **#4 MAJOR — Vehicle cap is client-only** (primary Pro upsell bypass). Needs a server-authoritative
-  `getAfter()` counter (blueprint RULES-1 / Mechanism A′): maintain `users/{uid}.vehicleCount`,
-  write it in the same batch as vehicle create, and gate the create rule on
-  `count <= limitFrom(subscription)`. Client + rules + tests; deferred because a wrong rule can lock
-  out legit users — deserves its own reviewed PR. (Client also hard-codes `limit(to: 5)` = #15.)
-- **#8 MAJOR — Record PDF export** fetches only the 200 newest entries then date-filters client-side
-  → silently drops entries for vehicles with >200 logs. Push the date range into the Firestore query
-  or cursor-paginate (like CSV).
-- **#9 MAJOR — `appState.vehicles/currentVehicle`** are not driven by the live snapshot listener
-  (only bootstrap + post-add). Drive them from the listener stream, or refresh after entry saves.
-- **#11 MINOR — Webhook perpetual-Pro** when a renewable grant/transfer omits `expiration_at_ms`
-  (null-expiry=lifetime should be NON_RENEWING only). Also: REFUND/CHARGEBACK/BILLING_ISSUE/PAUSED
-  events unhandled (gap).
-- **#13/#14/#19/#23 — Observability**: CFs have zero server logging on money/AI paths; Crashlytics
-  has no dSYM upload phase (unsymbolicated crashes) and records no non-fatals; vehicle decode
-  failures are silent; Crashlytics runs without the consent gate Analytics has.
-- **#12 MINOR — `ITSAppUsesNonExemptEncryption`** absent (every upload → "Missing Compliance").
-  One line in `project.yml` (PROTECTED).
 - **#18/#20/#22 — Perf/scale**: Stats over newest 100, Log search over newest 500 (comment claims
   full history); Dashboard re-runs 5 Firestore fetches on every tab switch; up to 500 docs decoded
   on the main actor.
-- **#24/#25/#26 — Accessibility**: wear health is color-only (WCAG 1.4.1); charts have no VoiceOver
-  labels; theme rows lack `.isSelected` + are sub-44pt.
+- ~~#4/#15, #8, #9, #11, #12, #13/#14/#19/#23, #24, #25/#26~~ — all closed (3rd pass above +
+  earlier passes).
 - **Completeness gaps** to schedule: no Firestore cascade delete; no push-notification delivery
   wired (Messaging linked, unused) so reminders/recalls never fire; Dynamic Type unaudited; photo
   downsampling/caching unmeasured; currency/rounding unaudited; client StoreKit purchase lifecycle

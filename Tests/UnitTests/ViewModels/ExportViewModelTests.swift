@@ -58,7 +58,7 @@ struct ExportViewModelTests {
         ])
     }
     @Test func deniedBeforeFetchProducesNoPDFAndNoAnalytics() async {
-        let fetch = PDFEntryFetchProbe()
+        let fetch = EntryPageFetchProbe()
         let analytics = AnalyticsSpy()
         analytics.setEnabled(true)
         let viewModel = ExportViewModel(analytics: analytics, pdfEntryFetch: fetch.load)
@@ -68,7 +68,7 @@ struct ExportViewModelTests {
         #expect(analytics.events.isEmpty)
     }
     @Test func revocationDuringFetchProducesNoPDFAndNoAnalytics() async {
-        let fetch = PDFEntryFetchProbe()
+        let fetch = EntryPageFetchProbe()
         let analytics = AnalyticsSpy()
         analytics.setEnabled(true)
         var authorization: PDFExportAuthorization? = pdfAuthorizationA
@@ -123,7 +123,7 @@ struct ExportSessionIsolationTests {
             currentVehicle: vehicleA, requestedVehicle: vehicleA) == sessionA)
     }
     @Test func paidAccountSwitchDuringPDFFetchPublishesNothing() async {
-        let fetch = PDFEntryFetchProbe()
+        let fetch = EntryPageFetchProbe()
         let analytics = AnalyticsSpy()
         analytics.setEnabled(true)
         var authorization: PDFExportAuthorization? = .init(session: sessionA)
@@ -140,7 +140,7 @@ struct ExportSessionIsolationTests {
         #expect(analytics.events.isEmpty)
     }
     @Test func accountSwitchAfterWrittenCSVPageDeletesPartialOutput() async throws {
-        let fetch = CSVPageFetchProbe()
+        let fetch = EntryPageFetchProbe()
         let analytics = AnalyticsSpy()
         analytics.setEnabled(true)
         var authorization: ExportSessionAuthorization? = sessionA
@@ -186,7 +186,7 @@ struct ExportSessionIsolationTests {
         #expect(viewModel.csvExportURL == nil && !FileManager.default.fileExists(atPath: url.path))
     }
     @Test func concurrentCSVBuildIsRejectedWithoutOpeningAnotherFile() async {
-        let fetch = CSVPageFetchProbe()
+        let fetch = EntryPageFetchProbe()
         let analytics = AnalyticsSpy(); analytics.setEnabled(true)
         let firstURL = tempCSVURL("first"), secondURL = tempCSVURL("second")
         let urls = CSVURLSequence([firstURL, secondURL])
@@ -206,7 +206,7 @@ struct ExportSessionIsolationTests {
         #expect(!FileManager.default.fileExists(atPath: firstURL.path))
     }
     @Test func teardownDuringCSVFetchDeletesLateOutput() async {
-        let fetch = CSVPageFetchProbe()
+        let fetch = EntryPageFetchProbe()
         let analytics = AnalyticsSpy(); analytics.setEnabled(true)
         let url = tempCSVURL("teardown")
         let viewModel = ExportViewModel(

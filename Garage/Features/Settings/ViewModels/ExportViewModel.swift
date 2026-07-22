@@ -4,9 +4,8 @@ import Observation
 @MainActor
 @Observable
 final class ExportViewModel {
-    typealias PDFEntryFetch = @MainActor (EntryQuery, Int) async throws -> [FirestoreEntry]
-    typealias CSVPageFetch = @MainActor (EntryQuery, Int, EntryCursor?) async throws -> EntryPage
-    private static let csvPageSize = 500
+    typealias EntryPageFetch = @MainActor (EntryQuery, Int, EntryCursor?) async throws -> EntryPage
+    private static let exportPageSize = 500
     private static let csvFilenamePrefix = "garage-raw-export-"
     private static var liveCSVURLs: Set<URL> = []
     private struct ActiveCSVArtifact {
@@ -18,8 +17,8 @@ final class ExportViewModel {
     private let pdfExportService: PDFExportService
     private let csvExportService: CSVExportService
     private let analytics: any AnalyticsTracking
-    private let pdfEntryFetch: PDFEntryFetch
-    private let csvPageFetch: CSVPageFetch
+    private let pdfEntryFetch: EntryPageFetch
+    private let csvPageFetch: EntryPageFetch
     private let csvURLFactory: () -> URL
     private var pdfAuthorization: PDFExportAuthorization?
     private var csvAuthorization: ExportSessionAuthorization?
@@ -42,8 +41,8 @@ final class ExportViewModel {
         pdfExportService: PDFExportService = .shared,
         csvExportService: CSVExportService = .shared,
         analytics: any AnalyticsTracking = AnalyticsService.shared,
-        pdfEntryFetch: PDFEntryFetch? = nil,
-        csvPageFetch: CSVPageFetch? = nil,
+        pdfEntryFetch: EntryPageFetch? = nil,
+        csvPageFetch: EntryPageFetch? = nil,
         csvURLFactory: @escaping () -> URL = {
             FileManager.default.temporaryDirectory
                 .appending(path: "garage-raw-export-\(UUID().uuidString).csv")
@@ -53,8 +52,8 @@ final class ExportViewModel {
         self.pdfExportService = pdfExportService
         self.csvExportService = csvExportService
         self.analytics = analytics
-        self.pdfEntryFetch = pdfEntryFetch ?? { query, limit in
-            try await entryService.fetchEntries(query: query, limit: limit)
+        self.pdfEntryFetch = pdfEntryFetch ?? { query, limit, cursor in
+            try await entryService.fetchEntries(query: query, limit: limit, after: cursor)
         }
         self.csvPageFetch = csvPageFetch ?? { query, limit, cursor in
             try await entryService.fetchEntries(query: query, limit: limit, after: cursor)
@@ -75,10 +74,16 @@ final class ExportViewModel {
         activeExportOperationID = operationID
         defer { finishOperation(ifCurrent: operationID) }
         do {
-            let entries = try await pdfEntryFetch(EntryQuery(vehicleId: vehicle.id), 200)
+            let query = EntryQuery(vehicleId: vehicle.id, startDate: startDate, endDate: endDate)
+            var cursor: EntryCursor?, entries: [FirestoreEntry] = []
+            repeat {
+                guard operationIsCurrent(operationID), authorization() == expectedAuthorization else { return }
+                let page = try await pdfEntryFetch(query, Self.exportPageSize, cursor)
+                entries += page.entries
+                cursor = page.nextCursor
+            } while cursor != nil
             let resolvedEntries = filterByDate(entries)
-            guard operationIsCurrent(operationID),
-                  authorization() == expectedAuthorization else { return }
+            guard operationIsCurrent(operationID), authorization() == expectedAuthorization else { return }
             exportData = try pdfExportService.buildReport(
                 vehicle: vehicle,
                 entries: resolvedEntries,
@@ -89,8 +94,7 @@ final class ExportViewModel {
             pdfAuthorization = expectedAuthorization
             analytics.track(.exportPDF(entryCount: resolvedEntries.count))
         } catch {
-            guard operationIsCurrent(operationID),
-                  authorization() == expectedAuthorization else { return }
+            guard operationIsCurrent(operationID), authorization() == expectedAuthorization else { return }
             self.error = AppError(from: error)
         }
     }
@@ -161,19 +165,16 @@ final class ExportViewModel {
 }
 
 private extension ExportViewModel {
-
     private func operationIsCurrent(_ operationID: UUID) -> Bool {
         activeExportOperationID == operationID
     }
     private func finishOperation(ifCurrent operationID: UUID) {
         if operationIsCurrent(operationID) { activeExportOperationID = nil }
     }
-
     private func trackCSV(writer: CSVExportService.RawExportWriter, url: URL, operationID: UUID) {
         activeCSVArtifact = .init(operationID: operationID, writer: writer, url: url)
         Self.liveCSVURLs.insert(url)
     }
-
     private func releaseActiveCSV(ifCurrent operationID: UUID) {
         if activeCSVArtifact?.operationID == operationID { activeCSVArtifact = nil }
     }
@@ -205,7 +206,7 @@ private extension ExportViewModel {
             guard operationIsCurrent(operationID),
                   authorization() == expectedAuthorization else { return nil }
             let page = try await csvPageFetch(
-                EntryQuery(vehicleId: vehicleID), Self.csvPageSize, cursor
+                EntryQuery(vehicleId: vehicleID), Self.exportPageSize, cursor
             )
             guard operationIsCurrent(operationID),
                   authorization() == expectedAuthorization else { return nil }
@@ -243,8 +244,6 @@ private extension ExportViewModel {
     }
 
     private func filterByDate(_ entries: [FirestoreEntry]) -> [FirestoreEntry] {
-        entries.filter { entry in
-            entry.entryDate >= startDate && entry.entryDate <= endDate
-        }
+        entries.filter { $0.entryDate >= startDate && $0.entryDate <= endDate }
     }
 }

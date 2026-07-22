@@ -24,6 +24,9 @@ struct Vehicle: Codable, Identifiable, Sendable, Equatable {
     var displayOrder: Int = 0
     var createdAt: Date?
     var updatedAt: Date?
+    /// Soft-delete tombstone (RULES-1): set by the client, purged (with the counter decrement)
+    /// by the deleteVehicle Cloud Function. Tombstoned vehicles are hidden everywhere.
+    var deletedAt: Date?
 
     static let empty = Vehicle(
         id: UUID().uuidString,

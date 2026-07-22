@@ -34,6 +34,44 @@ struct AppStateTests {
         #expect(analytics.enabledValues.last == false)
     }
 
+    @Test func applyVehicleSnapshot_keepsSelectionAndFallsBackWhenRemoved() {
+        let purchaseService = PurchaseService(testIsPro: false)
+        let state = AppState(
+            authService: AuthService(testUID: "user", analytics: AnalyticsSpy()),
+            vehicleService: VehicleService(testVehicles: [], purchaseService: purchaseService),
+            purchaseService: purchaseService,
+            analytics: AnalyticsSpy(),
+            crashReporter: NoopCrashReporter(),
+            profileStore: AppStateProfileStore(fields: [:])
+        )
+        let first = snapshotVehicle(id: "first", displayOrder: 0)
+        let second = snapshotVehicle(id: "second", displayOrder: 1)
+
+        state.applyVehicleSnapshot(envelope([first, second]))
+        #expect(state.vehicles.map(\.id) == ["first", "second"])
+        #expect(state.currentVehicle?.id == "first")
+
+        state.selectVehicle(second)
+        var renamed = second
+        renamed.nickname = "Renamed"
+        state.applyVehicleSnapshot(envelope([first, renamed]))
+        #expect(state.currentVehicle?.nickname == "Renamed")
+
+        state.applyVehicleSnapshot(envelope([first]))
+        #expect(state.currentVehicle?.id == "first")
+    }
+
+    private func envelope(_ vehicles: [Vehicle]) -> VehicleSnapshotEnvelope {
+        VehicleSnapshotEnvelope(vehicles: vehicles, isFromCache: false, hasPendingWrites: false)
+    }
+
+    private func snapshotVehicle(id: String, displayOrder: Int) -> Vehicle {
+        Vehicle(
+            id: id, userId: "user", nickname: id, make: "Garage", model: "Test", year: 2026,
+            currentOdometer: 1, displayOrder: displayOrder
+        )
+    }
+
     @Test func unconfiguredFirebaseProfileStore_rejectsEveryOperation() async {
         let profileStore = ProfileStoreFactory.makeDefault(
             isLocalDemoMode: false,

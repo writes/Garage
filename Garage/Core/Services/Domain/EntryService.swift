@@ -152,7 +152,11 @@ struct EntryCursor { fileprivate let document: DocumentSnapshot?
         }
 #endif
         var request: Query = firestore.db.collection(FirestorePaths.vehicleEntries(vehicleId: query.vehicleId))
-            .order(by: "entryDate", descending: true).limit(to: limit)
+        // Date-range filters and the order share one field ("entryDate"), so no composite index is needed;
+        // combining them with the "entryType" `in` filter below WOULD require one — exports pass no entryTypes.
+        request = query.startDate.map { request.whereField("entryDate", isGreaterThanOrEqualTo: $0) } ?? request
+        request = query.endDate.map { request.whereField("entryDate", isLessThanOrEqualTo: $0) } ?? request
+        request = request.order(by: "entryDate", descending: true).limit(to: limit)
         if !query.entryTypes.isEmpty && query.entryTypes.count < EntryType.allCases.count {
             request = request.whereField("entryType", in: query.entryTypes.map(\.rawValue))
         }
@@ -208,8 +212,9 @@ extension EntryService {
     static func page(_ entries: [FirestoreEntry], matching query: EntryQuery,
                      limit: Int, after cursor: EntryCursor?) -> EntryPage {
         let forVehicle = entries.filter { $0.vehicleId == query.vehicleId }
-        let matching = query.entryTypes.isEmpty
+        let typed = query.entryTypes.isEmpty
             ? forVehicle : forVehicle.filter { query.entryTypes.contains($0.entryType) }
+        let matching = typed.filter { Self.isWithinDateBounds($0.entryDate, query: query) }
         let ordered = matching.sorted(by: Self.isOrderedBefore)
         let remaining = cursor.map { cursor in ordered.filter { Self.isAfter($0, cursor: cursor) } } ?? ordered
         let page = Array(remaining.prefix(limit))
@@ -225,6 +230,9 @@ extension EntryService {
     static func cursor(for entry: FirestoreEntry?) -> EntryCursor? {
         guard let entry else { return nil }
         return EntryCursor(document: nil, entryDate: entry.entryDate, documentID: entry.id)
+    }
+    static func isWithinDateBounds(_ entryDate: Date, query: EntryQuery) -> Bool {
+        entryDate >= (query.startDate ?? .distantPast) && entryDate <= (query.endDate ?? .distantFuture)
     }
     static func isOrderedBefore(_ lhs: FirestoreEntry, _ rhs: FirestoreEntry) -> Bool {
         lhs.entryDate != rhs.entryDate ? lhs.entryDate > rhs.entryDate : lhs.id > rhs.id

@@ -6,6 +6,7 @@ protocol RevenueCatClienting: AnyObject {
     var appUserID: String { get }
     func invalidatePackageCache()
     func logIn(uid: String) async -> RevenueCatObserved<EntitlementSnapshot>
+    func logOut() async -> RevenueCatObserved<EntitlementSnapshot>
     func customerInfo() async -> RevenueCatObserved<EntitlementSnapshot>
     func offerings() async -> RevenueCatObserved<ClientOfferingsPayload>
     func purchase(

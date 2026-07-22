@@ -27,6 +27,13 @@ struct VehicleServiceTests {
             Issue.record("Expected the Pro vehicle cap to reject the sixth vehicle")
         } catch { #expect(error as? AppError == .vehicleLimitReached) }
     }
+    @Test func deleteVehicle_removesItAndFreesTheCap() async throws {
+        let service = hermeticService([vehicle(id: "existing")])
+        try await service.deleteVehicle(vehicle(id: "existing"))
+        #expect(try await service.fetchVehicles().isEmpty)
+        _ = try await service.createVehicle(vehicle(id: "replacement"))
+        #expect(try await service.fetchVehicles().map(\.id) == ["replacement"])
+    }
     @Test func listenerEnvelopePreservesCacheAndPendingMetadata() async throws {
         let factory = VehicleListenerFactorySpy(), service = listenerService(factory, uidProvider: factory.resolveUID)
         let stream = service.listenToVehicles()

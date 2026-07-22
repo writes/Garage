@@ -71,8 +71,10 @@ struct ThemePickerView: View {
             }
             .contentShape(Rectangle())
             .padding(.vertical, Theme.Spacing.xs)
+            .frame(minHeight: 44)
         }
         .disabled(isWriting)
         .accessibilityIdentifier("theme.option.\(scheme.rawValue)")
+        .accessibilityAddTraits(AccentStore.shared.scheme == scheme ? .isSelected : [])
     }
 }
