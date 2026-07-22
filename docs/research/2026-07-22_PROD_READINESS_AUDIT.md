@@ -29,20 +29,33 @@ Verification: full `verify-ios.sh` gate + CF `tsc`/52 tests + `test:rules` 13 te
 
 ---
 
+## ✅ Also fixed in the 2nd hardening pass (account/compliance)
+
+- **[was BLOCKER] In-app account deletion** — BUILT + adversarially reviewed (verdict FIX_THEN_SHIP;
+  all review fixes applied) + gated green (311u/21ui/archive). CF `deleteAccount` cascade
+  (data-first/auth-last, DI-tested, idempotent on retry) + iOS Settings destructive flow with
+  confirmation. Cascade covers `users/{uid}`, all `vehicles` (9 subcollections via recursiveDelete),
+  `usage_quotas` (uid-prefixed), `revenuecat_events` (appUserId==uid), and Storage `users/{uid}/**`.
+  Review caught + fixed a launch crash (the service was eagerly constructed at tab-build →
+  Functions.functions() before Firebase config in demo). **Remaining (needs your RevenueCat secret
+  key):** server-side RevenueCat `deleteSubscriber` REST call + client `Purchases.logOut()` on
+  sign-out, so the RevenueCat subscriber record is also erased. Deploy the CF.
+- **[was VERIFY] Restore Purchases** — ALREADY EXISTS (`SubscriptionView` "Restore Purchases" →
+  `PurchaseService.restore()` → `Purchases.shared.restorePurchases()`). The audit gap was wrong.
+- **#12 export compliance** — `ITSAppUsesNonExemptEncryption=false` added to `project.yml`.
+- **#24 wear a11y** — non-color status + VoiceOver value on `WearItemBar`.
+- **Legal drafts** — `docs/legal/{PRIVACY_POLICY,TERMS_OF_USE}_DRAFT.md` (grounded in real data
+  flows) for you to review + host.
+
 ## 🚧 Remaining — OPERATOR-ONLY (cannot be done by an agent)
 
 1. **[BLOCKER] Real Privacy Policy + Terms URLs** — `Constants.swift` ships
    `https://OPERATOR-REPLACE-*.invalid`; they render as live Links in the subscription sheet →
-   guaranteed **App Store 3.1.2 rejection**. Publish the pages, set the constants. `release-checks.sh`
-   enforces this.
-2. **[BLOCKER] In-app account deletion** — the app has Apple/Google sign-up but **no delete-account
-   flow** (Apple Guideline 5.1.1(v), required). Needs a Settings action → reauth → `user.delete()` +
-   a Cloud Function to cascade-delete the user's Firestore/Storage data (see gap: no cascade).
-3. **[VERIFY] Restore Purchases** — grep finds no `restorePurchases`; StoreKit apps MUST expose one.
-   Confirm it exists (RevenueCat `restorePurchases`) or add it to the paywall.
-4. **Deploy wiring** — `firebase login`, set the two secrets, deploy functions/rules, App Check
-   backend enforcement, real `Secrets.swift`, RevenueCat webhook URL+token, ASC metadata + privacy
-   labels + `ITSAppUsesNonExemptEncryption`. Full steps: `docs/DEPLOY_RUNBOOK.md`.
+   guaranteed **App Store 3.1.2 rejection**. Review the drafts in `docs/legal/`, host them, set the
+   constants. `release-checks.sh` enforces this.
+2. **Deploy wiring** — `firebase login`, set the two secrets, deploy functions (incl. the new
+   `deleteAccount`) + rules, App Check backend enforcement, real `Secrets.swift`, RevenueCat webhook
+   URL+token, ASC metadata + privacy labels. Full steps: `docs/DEPLOY_RUNBOOK.md`.
 
 ## 🔨 Remaining — CODE (recommended next PRs, not done this session)
 
