@@ -27,18 +27,35 @@ and the webhook returns 503.
 ## 2. Cloud Functions — build + deploy
 ```bash
 cd CloudFunctions
-npm ci && npm run build && npm test          # tsc clean + 48 tests
+npm ci && npm run build && npm test          # tsc clean + 69 tests
 firebase deploy --only functions --project dev     # dev first
 # smoke-test dev, then:
 firebase deploy --only functions --project prod
 ```
-Functions: `parseOilAnalysis`, `voiceQuickAdd`, `handleRevenueCatWebhook`, `lookupRecalls`
-(all region `us-central1`; callables enforce App Check).
+Functions: `parseOilAnalysis`, `voiceQuickAdd`, `handleRevenueCatWebhook`, `lookupRecalls`,
+`deleteAccount`, `deleteVehicle` (all region `us-central1`; callables enforce App Check).
 
 ## 3. Firestore + Storage rules
+
+**RULES-1 rollout order is mandatory: backfill → rules → app binary.** The counted-create rules
+read `users/{uid}.vehicleCount`; deploying them before the backfill would let legacy users
+undercount (missing counter reads as 0), and shipping the counted-create app binary before the
+rules is fine (the batch also satisfies the old rules), but the reverse order breaks vehicle
+creation for old binaries — so rules go live only after the backfill, and ideally with the new
+binary already in review.
+
 ```bash
+# 1. Backfill per-user vehicle counters (dry-run first, then --apply):
+cd CloudFunctions
+GOOGLE_APPLICATION_CREDENTIALS=<svc.json> npx tsx scripts/backfillVehicleCounts.ts          # inventory + anomaly report
+GOOGLE_APPLICATION_CREDENTIALS=<svc.json> npx tsx scripts/backfillVehicleCounts.ts --apply
+# Review the anomaly report (orphan vehicles / over-cap users) before proceeding.
+
+# 2. Deploy the rules:
 firebase deploy --only firestore:rules,firestore:indexes,storage --project prod
 ```
+Rollback: redeploy the previous rules file from git (`git show <sha>:firebase.firestore.rules`);
+the counter fields are inert under the old rules.
 
 ## 4. App Check
 - Register the iOS app for **App Check** (App Attest) in the Firebase console.

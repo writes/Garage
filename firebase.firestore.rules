@@ -5,18 +5,91 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ---- Vehicle-count cap (RULES-1 / Mechanism A', tri-vote ledger 2026-07-11) ----
+    // Tier caps mirror Constants.swift maxFreeVehicles/maxProVehicles — change both together.
+    function maxFreeVehicles() { return 1; }
+    function maxProVehicles() { return 5; }
+
+    // subscription is written exclusively by the RevenueCat webhook (Admin SDK). Rules read
+    // isActive only: expiresAt is an ISO string and cannot be compared to request.time here.
+    // Expiry is enforced by webhook EXPIRATION events flipping isActive to false.
+    function isProUser(userData) {
+      return userData.get("subscription", {}) is map
+        && userData.get("subscription", {}).get("entitlement", "") == "pro"
+        && userData.get("subscription", {}).get("isActive", false) == true;
+    }
+
+    function tierCap(userData) {
+      return isProUser(userData) ? maxProVehicles() : maxFreeVehicles();
+    }
+
+    function userAfter(userId) {
+      return getAfter(/databases/$(database)/documents/users/$(userId)).data;
+    }
+
+    // Missing user doc / missing counter reads as 0. The deploy runbook mandates the
+    // vehicle-count backfill BEFORE these rules go live, so a legacy user doc without a counter
+    // only ever means "no vehicles yet". A corrupt (non-int) stored counter makes the arithmetic
+    // below error out, which denies the write — recovery is the admin backfill script.
+    function priorVehicleCount(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId))
+        ? get(/databases/$(database)/documents/users/$(userId)).data.get("vehicleCount", 0)
+        : 0;
+    }
+
+    // A vehicle create is legal only when the SAME batch moves users/{uid}.vehicleCount to
+    // exactly prior+1 (within the tier cap) and binds lastVehicleOp to THIS vehicle id. Because
+    // the post-batch user doc is a single value, two creates can never both match — one create
+    // per batch by construction.
+    function vehicleCreateIsCounted(userId, vehicleId) {
+      return userAfter(userId).lastVehicleOp == {"id": vehicleId, "op": "create"}
+        && userAfter(userId).vehicleCount is int
+        && userAfter(userId).vehicleCount == priorVehicleCount(userId) + 1
+        && userAfter(userId).vehicleCount <= tierCap(userAfter(userId));
+    }
+
+    // A counter write on users/{uid} is legal only when THIS batch actually creates the vehicle
+    // named by lastVehicleOp, owned by the same user. !exists + existsAfter = created in this
+    // batch, which also blocks replaying the binding against an already-existing vehicle.
+    function boundVehicleCreate(userId, requestData) {
+      return requestData.lastVehicleOp is map
+        && requestData.lastVehicleOp.get("op", "") == "create"
+        && requestData.lastVehicleOp.get("id", "") is string
+        && requestData.lastVehicleOp.get("id", "") != ""
+        && !exists(/databases/$(database)/documents/vehicles/$(requestData.lastVehicleOp.id))
+        && existsAfter(/databases/$(database)/documents/vehicles/$(requestData.lastVehicleOp.id))
+        && getAfter(/databases/$(database)/documents/vehicles/$(requestData.lastVehicleOp.id)).data.userId == userId;
+    }
+
     match /users/{userId} {
       allow read: if request.auth != null && request.auth.uid == userId;
       // Entitlements are written exclusively by trusted server code (the
       // RevenueCat webhook through the Admin SDK). Clients may own the rest
       // of their user document, but can never create, modify, or remove the
-      // server-authoritative subscription map.
+      // server-authoritative subscription map. vehicleCount/lastVehicleOp are
+      // server-authoritative too: writable only through the batch-bound vehicle
+      // create transition above (the deleteVehicle CF maintains the decrement).
       allow create: if request.auth != null
         && request.auth.uid == userId
-        && !("subscription" in request.resource.data);
+        && !("subscription" in request.resource.data)
+        && (
+          !request.resource.data.keys().hasAny(["vehicleCount", "lastVehicleOp"])
+          || (
+            boundVehicleCreate(userId, request.resource.data)
+            && request.resource.data.vehicleCount == 1
+          )
+        );
       allow update: if request.auth != null
         && request.auth.uid == userId
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["subscription"]);
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["subscription"])
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(["vehicleCount", "lastVehicleOp"])
+          || (
+            boundVehicleCreate(userId, request.resource.data)
+            && request.resource.data.vehicleCount is int
+            && request.resource.data.vehicleCount == resource.data.get("vehicleCount", 0) + 1
+          )
+        );
       allow delete: if false;
     }
 
@@ -25,18 +98,23 @@ service cloud.firestore {
         && resource.data.userId == request.auth.uid;
       // Require an authenticated caller and a non-empty owner that matches — the bare
       // `uid == data.userId` form allowed an unauthenticated write of {userId: null}
-      // (null == null) to create orphan documents.
+      // (null == null) to create orphan documents. The counted-create bound enforces the
+      // server-authoritative vehicle cap (RULES-1).
       allow create: if request.auth != null
         && request.auth.uid is string
-        && request.auth.uid == request.resource.data.userId;
+        && request.auth.uid == request.resource.data.userId
+        && vehicleCreateIsCounted(request.auth.uid, vehicleId);
       // Owner is immutable: an owner may not reassign userId to another account
       // (cross-account data injection). Only the existing owner may update, and the
-      // userId may not change.
+      // userId may not change. Updates are count-neutral by construction (the counter
+      // lives on users/{uid}); the soft-delete tombstone (`deletedAt`) rides this rule.
       allow update: if request.auth != null
         && resource.data.userId == request.auth.uid
         && request.resource.data.userId == resource.data.userId;
-      allow delete: if request.auth != null
-        && resource.data.userId == request.auth.uid;
+      // Clients never hard-delete: a direct delete would leak the vehicle's subcollections
+      // (Firestore doc-delete is not recursive) and desync the counter. Deletion is
+      // tombstone-then-purge via the deleteVehicle CF (Admin SDK bypasses these rules).
+      allow delete: if false;
 
       match /{subcollection}/{docId} {
         allow read: if request.auth != null

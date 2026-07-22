@@ -25,6 +25,7 @@ export interface DeleteAccountResult {
   vehiclesDeleted: number;
 }
 
+
 export async function deleteAccountRequest(
   request: DeleteAccountRequest,
   deps: DeleteAccountDeps,
@@ -36,17 +37,34 @@ export async function deleteAccountRequest(
 
   // Data FIRST, auth LAST. If any step fails the user can still sign in and retry, and we never
   // orphan Firestore/Storage data behind a deleted auth user (which nothing could then reach).
-  const vehicleIds = await deps.listUserVehicleIds(uid);
-  for (const vehicleId of vehicleIds) {
-    await deps.deleteVehicleCascade(vehicleId);
-  }
-  await deps.deleteUserDoc(uid);
-  await deps.deleteUserQuotas(uid);
-  await deps.deleteRevenueCatEvents(uid);
-  await deps.deleteUserStorage(uid);
-  await deps.deleteAuthUser(uid);
+  // Per-step logging: on a mid-cascade failure the log shows exactly how far deletion got.
+  let step = "listUserVehicleIds";
+  try {
+    const vehicleIds = await deps.listUserVehicleIds(uid);
+    step = "deleteVehicleCascade";
+    for (const vehicleId of vehicleIds) {
+      await deps.deleteVehicleCascade(vehicleId);
+    }
+    step = "deleteUserDoc";
+    await deps.deleteUserDoc(uid);
+    step = "deleteUserQuotas";
+    await deps.deleteUserQuotas(uid);
+    step = "deleteRevenueCatEvents";
+    await deps.deleteRevenueCatEvents(uid);
+    step = "deleteUserStorage";
+    await deps.deleteUserStorage(uid);
+    step = "deleteAuthUser";
+    await deps.deleteAuthUser(uid);
 
-  return { deleted: true, vehiclesDeleted: vehicleIds.length };
+    return { deleted: true, vehiclesDeleted: vehicleIds.length };
+  } catch (error) {
+    logger.error("account deletion failed", {
+      uid,
+      step,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
 
 export const deleteAccount = onCall(
@@ -77,7 +95,7 @@ export const deleteAccount = onCall(
           // is a prefix of another — this range never touches another user's rows.
           const snapshot = await db.collection("usage_quotas")
             .where(FieldPath.documentId(), ">=", `${uid}_`)
-            .where(FieldPath.documentId(), "<", `${uid}_`)
+            .where(FieldPath.documentId(), "<", `${uid}_\uf8ff`)
             .get();
           await Promise.all(snapshot.docs.map((quotaDoc) => quotaDoc.ref.delete()));
         },

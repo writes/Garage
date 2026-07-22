@@ -4,11 +4,13 @@ import { voiceQuickAdd } from "./functions/voiceQuickAdd";
 import { handleRevenueCatWebhook } from "./functions/revenueCatWebhook";
 import { lookupRecalls } from "./functions/nhtsaRecalls";
 import { deleteAccount } from "./functions/deleteAccount";
+import { deleteVehicle } from "./functions/deleteVehicle";
 
 initializeApp();
 
 export {
   deleteAccount,
+  deleteVehicle,
   handleRevenueCatWebhook,
   lookupRecalls,
   parseOilAnalysis,

@@ -1,5 +1,6 @@
 import { getFirestore } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import * as logger from "firebase-functions/logger";
 import { anthropicApiKey } from "../params";
 import {
   QuotaFirestore,
@@ -167,36 +168,63 @@ export async function voiceQuickAddRequest(
         }],
       }),
     });
-  } catch {
+  } catch (error) {
+    logger.error("voice-quickadd anthropic request failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
     throw new HttpsError("internal", "Claude request failed.");
   }
 
-  if (!response.ok) throw new HttpsError("internal", `Claude request failed with ${response.status}.`);
+  if (!response.ok) {
+    logger.error("voice-quickadd anthropic request rejected", { status: response.status });
+    throw new HttpsError("internal", `Claude request failed with ${response.status}.`);
+  }
 
   let payload: unknown;
   try {
     payload = await response.json();
-  } catch {
+  } catch (error) {
+    logger.error("voice-quickadd anthropic response body unreadable", {
+      message: error instanceof Error ? error.message : String(error),
+    });
     throw new HttpsError("internal", "Claude returned malformed JSON.");
   }
 
   const text = modelTextFromPayload(payload);
-  if (!text) throw new HttpsError("internal", "Claude returned malformed JSON.");
+  if (!text) {
+    logger.error("voice-quickadd anthropic response had no text block");
+    throw new HttpsError("internal", "Claude returned malformed JSON.");
+  }
 
   try {
     const parsed = JSON.parse(text.replace(/```json|```/g, "").trim()) as unknown;
     return sanitizeVoiceProposal(parsed, now);
   } catch (error) {
     if (error instanceof HttpsError) throw error;
+    // The transcript and model output are never logged (spoken content is user PII).
+    logger.error("voice-quickadd model output unparseable", {
+      message: error instanceof Error ? error.message : String(error),
+    });
     throw new HttpsError("internal", "Claude returned malformed JSON.");
   }
 }
 
 export const voiceQuickAdd = onCall(
   { region: "us-central1", enforceAppCheck: true, secrets: [anthropicApiKey] },
-  async (request): Promise<VoiceEntryProposal> => voiceQuickAddRequest(request, {
-    apiKey: anthropicApiKey.value(),
-    db: getFirestore() as unknown as QuotaFirestore,
-    fetchImpl: fetch,
-  }),
+  async (request): Promise<VoiceEntryProposal> => {
+    try {
+      return await voiceQuickAddRequest(request, {
+        apiKey: anthropicApiKey.value(),
+        db: getFirestore() as unknown as QuotaFirestore,
+        fetchImpl: fetch,
+      });
+    } catch (error) {
+      logger.error("voiceQuickAdd failed", {
+        uid: request.auth?.uid,
+        code: error instanceof HttpsError ? error.code : "internal",
+        message: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  },
 );

@@ -1,10 +1,12 @@
 import { timingSafeEqual } from "node:crypto";
 import { getFirestore } from "firebase-admin/firestore";
 import { onRequest } from "firebase-functions/v2/https";
+import * as logger from "firebase-functions/logger";
 import { revenueCatWebhookAuth } from "../params";
 
 type StandardRevenueCatEvent = {
   appUserId: string;
+  cancelReason?: string;
   entitlementIds: string[];
   eventTimestampMs: number;
   expirationAtMs?: number;
@@ -67,6 +69,19 @@ const grantEventTypes = new Set<StandardRevenueCatEvent["type"]>([
   "RENEWAL",
   "UNCANCELLATION",
   "PRODUCT_CHANGE",
+  "NON_RENEWING_PURCHASE",
+  // A refund was reversed by the store — the entitlement is paid for again.
+  "REFUND_REVERSED",
+  // The store extended the current period; carries the new expiration.
+  "SUBSCRIPTION_EXTENDED",
+]);
+
+/**
+ * Only a lifetime/consumable purchase legitimately has no expiration. Every other grant type is
+ * a renewable subscription whose expiration RevenueCat documents as present; treating a missing
+ * expiration as "never expires" would hand out perpetual server-side Pro (the audit-#11 bug).
+ */
+const lifetimeGrantEventTypes = new Set<StandardRevenueCatEvent["type"]>([
   "NON_RENEWING_PURCHASE",
 ]);
 
@@ -143,6 +158,7 @@ function parseRevenueCatEvent(body: unknown): RevenueCatEvent | undefined {
 
   return {
     appUserId: event.app_user_id,
+    ...(isNonEmptyString(event.cancel_reason) ? { cancelReason: event.cancel_reason } : {}),
     entitlementIds,
     eventTimestampMs: event.event_timestamp_ms,
     ...(rawExpirationAtMs != null ? { expirationAtMs: rawExpirationAtMs } : {}),
@@ -213,9 +229,12 @@ function isStaleSubscriptionEvent(
 }
 
 /**
- * A cancellation only disables auto-renewal; the existing entitlement remains
- * valid until RevenueCat sends an EXPIRATION. Unknown events are recorded but
- * intentionally do not change access.
+ * A voluntary cancellation only disables auto-renewal; the existing entitlement remains valid
+ * until RevenueCat sends an EXPIRATION. A refund, however, arrives as CANCELLATION with
+ * cancel_reason CUSTOMER_SUPPORT (RevenueCat has no REFUND event type) and revokes immediately —
+ * the money was clawed back. BILLING_ISSUE and SUBSCRIPTION_PAUSED intentionally do not change
+ * access (RevenueCat: keep access through the grace period / until the follow-up EXPIRATION).
+ * Unknown events are recorded but do not change access.
  */
 function entitlementActivityForEvent(event: StandardRevenueCatEvent): boolean | undefined {
   if (grantEventTypes.has(event.type)) {
@@ -223,6 +242,10 @@ function entitlementActivityForEvent(event: StandardRevenueCatEvent): boolean | 
   }
 
   if (event.type === "EXPIRATION") {
+    return event.entitlementIds.includes("pro") ? false : undefined;
+  }
+
+  if (event.type === "CANCELLATION" && event.cancelReason === "CUSTOMER_SUPPORT") {
     return event.entitlementIds.includes("pro") ? false : undefined;
   }
 
@@ -261,6 +284,7 @@ export async function handleRevenueCatWebhookRequest(
   const expectedAuthorization = dependencies.expectedAuthorization;
 
   if (!expectedAuthorization || expectedAuthorization.trim().length === 0) {
+    logger.error("revenuecat webhook rejected: authorization secret not configured");
     response.status(503).send("RevenueCat webhook authorization is not configured.");
     return;
   }
@@ -268,12 +292,22 @@ export async function handleRevenueCatWebhookRequest(
   const authorizationHeader = request.header("Authorization");
 
   if (!isAuthorizedRequest(authorizationHeader, expectedAuthorization)) {
+    // Config drift or a probe. Never log the header value itself.
+    logger.warn("revenuecat webhook rejected: bad authorization", {
+      hasAuthorizationHeader: authorizationHeader !== undefined,
+    });
     response.status(401).send("Unauthorized.");
     return;
   }
 
   const event = parseRevenueCatEvent(request.body);
   if (!event) {
+    const body = request.body;
+    const rawEvent = isRecord(body) && isRecord(body.event) ? body.event : undefined;
+    logger.warn("revenuecat webhook rejected: unparseable event", {
+      eventId: rawEvent && isNonEmptyString(rawEvent.id) ? rawEvent.id : undefined,
+      eventType: rawEvent && isNonEmptyString(rawEvent.type) ? rawEvent.type : undefined,
+    });
     response.status(400).send("Invalid RevenueCat event.");
     return;
   }
@@ -295,13 +329,14 @@ export async function handleRevenueCatWebhookRequest(
     const users = Array.from(transferTargets, ([userId, isActive]) => ({
       isActive,
       ref: dependencies.db.collection("users").doc(userId),
+      userId,
     }));
 
-    await dependencies.db.runTransaction(async (transaction) => {
+    const transferResult = await dependencies.db.runTransaction(async (transaction) => {
       const existingEvent = await transaction.get(eventRef);
 
       if (existingEvent.exists) {
-        return "duplicate";
+        return { outcome: "duplicate", skippedUserIds: [] as string[] };
       }
 
       // Firestore transactions require all reads to finish before the first
@@ -313,6 +348,7 @@ export async function handleRevenueCatWebhookRequest(
 
       transaction.set(eventRef, eventRecord(event, receivedAt, updatedAt));
 
+      const skippedUserIds: string[] = [];
       for (const user of userSnapshots) {
         const userData = user.snapshot.data();
         if (isStaleSubscriptionEvent(userData, event.eventTimestampMs, user.isActive)) {
@@ -325,6 +361,14 @@ export async function handleRevenueCatWebhookRequest(
           ? new Date(event.expirationAtMs).toISOString()
           : priorExpiresAt;
 
+        // TRANSFER events document no expiration. Granting a destination open-ended access would
+        // be perpetual server-side Pro; fail closed instead. The client keeps its RevenueCat-SDK
+        // entitlement, and the next expiry-bearing event (e.g. RENEWAL) restores the server grant.
+        if (user.isActive && expiresAt === undefined) {
+          skippedUserIds.push(user.userId);
+          continue;
+        }
+
         transaction.set(user.ref, {
           subscription: {
             entitlement: "pro",
@@ -335,16 +379,27 @@ export async function handleRevenueCatWebhookRequest(
         }, { merge: true });
       }
 
-      return "processed";
+      return { outcome: "processed", skippedUserIds };
     });
 
+    if (transferResult.skippedUserIds.length > 0) {
+      logger.warn("revenuecat transfer grant skipped: no expiration available", {
+        eventId: event.id,
+        skippedUserIds: transferResult.skippedUserIds,
+      });
+    }
+    logger.info("revenuecat webhook handled", {
+      eventId: event.id,
+      eventType: event.type,
+      outcome: transferResult.outcome,
+    });
     response.status(200).send("ok");
     return;
   }
 
   const userRef = dependencies.db.collection("users").doc(event.appUserId);
 
-  await dependencies.db.runTransaction(async (transaction) => {
+  const outcome = await dependencies.db.runTransaction(async (transaction) => {
     // Firestore requires every transaction read to complete before its first
     // write. Read both documents up front so the idempotency record cannot
     // make the entitlement read fail in production.
@@ -374,6 +429,14 @@ export async function handleRevenueCatWebhookRequest(
       ? new Date(event.expirationAtMs).toISOString()
       : priorExpiresAt;
 
+    // A renewable grant with no expiration anywhere would become perpetual server-side Pro
+    // (userHasActiveProEntitlement treats a missing expiresAt as lifetime). Only
+    // NON_RENEWING_PURCHASE legitimately has no expiration; everything else fails closed and
+    // waits for an expiry-bearing event.
+    if (isActive === true && expiresAt === undefined && !lifetimeGrantEventTypes.has(event.type)) {
+      return "skipped_no_expiration";
+    }
+
     transaction.set(userRef, {
       subscription: {
         entitlement: "pro",
@@ -386,6 +449,19 @@ export async function handleRevenueCatWebhookRequest(
     return "processed";
   });
 
+  if (outcome === "skipped_no_expiration") {
+    logger.warn("revenuecat grant skipped: renewable grant carried no expiration", {
+      appUserId: event.appUserId,
+      eventId: event.id,
+      eventType: event.type,
+    });
+  }
+  logger.info("revenuecat webhook handled", {
+    appUserId: event.appUserId,
+    eventId: event.id,
+    eventType: event.type,
+    outcome,
+  });
   response.status(200).send("ok");
 }
 
