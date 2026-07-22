@@ -1,5 +1,6 @@
 import { getFirestore } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { anthropicApiKey } from "../params";
 
 export type OilAnalysisResponse = {
   labName: string;
@@ -490,9 +491,9 @@ export async function parseOilAnalysisRequest(
 }
 
 export const parseOilAnalysis = onCall(
-  { region: "us-central1", enforceAppCheck: true },
+  { region: "us-central1", enforceAppCheck: true, secrets: [anthropicApiKey] },
   async (request): Promise<OilAnalysisResponse> => parseOilAnalysisRequest(request, {
-    apiKey: process.env.ANTHROPIC_API_KEY,
+    apiKey: anthropicApiKey.value(),
     db: getFirestore() as unknown as QuotaFirestore,
     fetchImpl: fetch,
   }),

@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { getFirestore } from "firebase-admin/firestore";
 import { onRequest } from "firebase-functions/v2/https";
+import { revenueCatWebhookAuth } from "../params";
 
 type StandardRevenueCatEvent = {
   appUserId: string;
@@ -388,13 +389,16 @@ export async function handleRevenueCatWebhookRequest(
   response.status(200).send("ok");
 }
 
-export const handleRevenueCatWebhook = onRequest({ region: "us-central1" }, async (request, response) => {
-  await handleRevenueCatWebhookRequest(
-    request,
-    response,
-    {
-      db: getFirestore() as unknown as RevenueCatFirestore,
-      expectedAuthorization: process.env.REVENUECAT_WEBHOOK_AUTH,
-    },
-  );
-});
+export const handleRevenueCatWebhook = onRequest(
+  { region: "us-central1", secrets: [revenueCatWebhookAuth] },
+  async (request, response) => {
+    await handleRevenueCatWebhookRequest(
+      request,
+      response,
+      {
+        db: getFirestore() as unknown as RevenueCatFirestore,
+        expectedAuthorization: revenueCatWebhookAuth.value(),
+      },
+    );
+  },
+);

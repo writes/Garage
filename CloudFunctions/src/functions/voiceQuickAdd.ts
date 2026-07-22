@@ -1,5 +1,6 @@
 import { getFirestore } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { anthropicApiKey } from "../params";
 import {
   QuotaFirestore,
   isRecord,
@@ -192,9 +193,9 @@ export async function voiceQuickAddRequest(
 }
 
 export const voiceQuickAdd = onCall(
-  { region: "us-central1", enforceAppCheck: true },
+  { region: "us-central1", enforceAppCheck: true, secrets: [anthropicApiKey] },
   async (request): Promise<VoiceEntryProposal> => voiceQuickAddRequest(request, {
-    apiKey: process.env.ANTHROPIC_API_KEY,
+    apiKey: anthropicApiKey.value(),
     db: getFirestore() as unknown as QuotaFirestore,
     fetchImpl: fetch,
   }),
