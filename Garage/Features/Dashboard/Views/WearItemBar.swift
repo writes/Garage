@@ -16,10 +16,12 @@ struct WearItemBar: View {
             HStack {
                 Text(label)
                     .font(Theme.Typography.caption)
-                Spacer()
+                Spacer(minLength: Theme.Spacing.sm)
                 if let rawValue {
                     Text(rawValue)
-                        .font(Theme.Typography.mono)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .lineLimit(1)
                 }
                 Text("\(Int(percentage))%")
                     .foregroundStyle(color)

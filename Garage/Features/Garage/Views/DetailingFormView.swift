@@ -7,6 +7,8 @@ struct DetailingFormView: View {
     @State private var serviceType: DetailingType = .paintCorrection
     @State private var provider = ""
     @State private var notes = ""
+    @State private var error: AppError?
+    @State private var isSaving = false
     private let service = DetailingService.shared
 
     var body: some View {
@@ -17,14 +19,19 @@ struct DetailingFormView: View {
             }
             TextField("Shop or DIY note", text: $provider).textFieldStyle(.roundedBorder)
             TextEditor(text: $notes).frame(minHeight: 120).garageCard()
-            PrimaryButton(title: "Save Record") {
+            if let error {
+                ErrorBanner(error: error)
+                    .accessibilityIdentifier("detailing.form.error")
+            }
+            PrimaryButton(title: isSaving ? "Saving..." : "Save Record") {
                 Task { await save() }
             }
+            .disabled(isSaving)
         }
     }
 
     private func save() async {
-        guard let vehicleId = appState.currentVehicle?.id else { return }
+        guard !isSaving, let vehicleId = appState.currentVehicle?.id else { return }
         let record = DetailingRecord(
             id: UUID().uuidString,
             vehicleId: vehicleId,
@@ -42,7 +49,13 @@ struct DetailingFormView: View {
             notes: notes.isEmpty ? nil : notes,
             attachmentPaths: []
         )
-        try? await service.save(record)
-        dismiss()
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await service.save(record)
+            dismiss()
+        } catch {
+            self.error = AppError(from: error)
+        }
     }
 }

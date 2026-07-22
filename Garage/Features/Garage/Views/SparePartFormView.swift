@@ -8,6 +8,8 @@ struct SparePartFormView: View {
     @State private var quantity = "1"
     @State private var condition: PartCondition = .new
     @State private var storageLocation = ""
+    @State private var error: AppError?
+    @State private var isSaving = false
     private let service = PartsService.shared
 
     var body: some View {
@@ -28,15 +30,20 @@ struct SparePartFormView: View {
             TextField("Storage location", text: $storageLocation)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("parts.form.location")
-            PrimaryButton(title: "Save Part") {
+            if let error {
+                ErrorBanner(error: error)
+                    .accessibilityIdentifier("parts.form.error")
+            }
+            PrimaryButton(title: isSaving ? "Saving..." : "Save Part") {
                 Task { await save() }
             }
+            .disabled(isSaving)
             .accessibilityIdentifier("parts.form.save")
         }
     }
 
     private func save() async {
-        guard let vehicleId = appState.currentVehicle?.id else { return }
+        guard !isSaving, let vehicleId = appState.currentVehicle?.id else { return }
         let part = SparePart(
             id: UUID().uuidString,
             vehicleId: vehicleId,
@@ -56,7 +63,13 @@ struct SparePartFormView: View {
             consumedAtEntryId: nil,
             notes: nil
         )
-        try? await service.save(part)
-        dismiss()
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await service.save(part)
+            dismiss()
+        } catch {
+            self.error = AppError(from: error)
+        }
     }
 }

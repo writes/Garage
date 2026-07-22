@@ -24,7 +24,7 @@ struct LogView: View {
                     )
                 } else {
                     ScrollView {
-                        VStack(spacing: Theme.Spacing.md) {
+                        LazyVStack(spacing: Theme.Spacing.md) {
                             ForEach(viewModel.entries) { entry in
                                 Button {
                                     selectedEntry = entry
