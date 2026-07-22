@@ -43,29 +43,35 @@ struct GarageApp: App {
 
     var body: some Scene {
         WindowGroup {
-            switch bootstrapMode {
-            case .uiTest:
-                UITestHarnessView()
-            case .localDemo:
-                ContentView()
-                    .environment(appState)
-                    .environment(router)
-                    .modelContainer(modelContainer)
-            case .localSetupRequired:
-                LocalSetupRequiredView()
-            case .production:
-                ContentView()
-                    .environment(appState)
-                    .environment(router)
-                    .modelContainer(modelContainer)
-                    .onOpenURL { url in
-                        if GIDSignIn.sharedInstance.handle(url) {
-                            return
-                        }
+            // The design system defines no dark-appearance asset variants, so dark mode renders
+            // broken (white text on white surfaces). Lock the app to light until a real dark
+            // palette is designed. This covers presented sheets too.
+            Group {
+                switch bootstrapMode {
+                case .uiTest:
+                    UITestHarnessView()
+                case .localDemo:
+                    ContentView()
+                        .environment(appState)
+                        .environment(router)
+                        .modelContainer(modelContainer)
+                case .localSetupRequired:
+                    LocalSetupRequiredView()
+                case .production:
+                    ContentView()
+                        .environment(appState)
+                        .environment(router)
+                        .modelContainer(modelContainer)
+                        .onOpenURL { url in
+                            if GIDSignIn.sharedInstance.handle(url) {
+                                return
+                            }
 
-                        _ = Auth.auth().canHandle(url)
-                    }
+                            _ = Auth.auth().canHandle(url)
+                        }
+                }
             }
+            .preferredColorScheme(.light)
         }
     }
 }

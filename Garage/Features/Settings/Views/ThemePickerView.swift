@@ -36,7 +36,7 @@ struct ThemePickerView: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text("Accent")
                 .font(Theme.Typography.headline)
-            Text("Applies everywhere instantly.")
+            Text("Recolors buttons and highlights across the app, instantly.")
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.Colors.textSecondary)
             ForEach(AccentScheme.allCases) { scheme in
