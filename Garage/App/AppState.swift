@@ -103,6 +103,9 @@ final class AppState {
             userProfile = nil
             vehicles = []
             currentVehicle = nil
+            // Defense-in-depth: an account switch must not carry the prior user's accent even if
+            // the new profile load fails before applying its own themeID.
+            AccentStore.shared.scheme = .classic
         }
 
         await loadProfile(uid: uid, expectedAuthenticationRevision: expectedAuthenticationRevision)
@@ -175,6 +178,7 @@ final class AppState {
         } catch {
             userProfile = nil
             analytics.setEnabled(false)
+            AccentStore.shared.scheme = .classic
             AppLogger.shared.error("Profile bootstrap failed: \(error.localizedDescription)")
         }
     }

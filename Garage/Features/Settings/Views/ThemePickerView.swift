@@ -6,7 +6,11 @@ import SwiftUI
 struct ThemePickerView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppRouter.self) private var router
+    // This screen owns its own ProfileViewModel. It must stay a STANDALONE Settings destination:
+    // do not embed it alongside UserProfileView (which has its own VM) or the two instances can
+    // race a full-profile save() against this partial themeID write and lose the update.
     @State private var profileViewModel = ProfileViewModel()
+    @State private var isWriting = false
 
     var body: some View {
         ScrollView {
@@ -44,7 +48,13 @@ struct ThemePickerView: View {
 
     private func schemeRow(_ scheme: AccentScheme) -> some View {
         Button {
-            Task { await profileViewModel.setThemeID(scheme.rawValue) }
+            // Serialize writes: a second tap while one is in flight could roll the live accent
+            // back to a stale "previous" on a slow/failed earlier write.
+            Task {
+                isWriting = true
+                await profileViewModel.setThemeID(scheme.rawValue)
+                isWriting = false
+            }
         } label: {
             HStack(spacing: Theme.Spacing.md) {
                 Circle()
@@ -62,6 +72,7 @@ struct ThemePickerView: View {
             .contentShape(Rectangle())
             .padding(.vertical, Theme.Spacing.xs)
         }
+        .disabled(isWriting)
         .accessibilityIdentifier("theme.option.\(scheme.rawValue)")
     }
 }
