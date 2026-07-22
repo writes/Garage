@@ -1,0 +1,91 @@
+# Garage — Production Deploy Runbook
+
+> Operator-only steps. Everything here needs YOUR credentials (Firebase, Apple, RevenueCat,
+> Anthropic) and cannot be run by an agent. The app + Cloud Functions are code-complete and gated
+> green; this is the wiring to production. Do **dev** first, verify, then **prod**.
+
+Projects (`.firebaserc`): `dev = harrys-playhouse-dev`, `prod = harrys-playhouse-prod`.
+
+---
+
+## 0. Prerequisites
+- `firebase login` (currently **not authenticated** — `firebase login:list` shows none).
+- Apple Developer account + App Store Connect access for the bundle id **`com.writes.harrysplayhouse`** (debug builds use `.debug`).
+- The real **Anthropic API key**, **RevenueCat prod SDK key**, and a chosen **RevenueCat webhook auth token**.
+
+## 1. Cloud Functions — secrets (REQUIRED, or functions fail at runtime)
+The v2 functions now declare Secret Manager secrets (`src/params.ts`). Set them before deploy:
+```bash
+cd CloudFunctions
+firebase functions:secrets:set ANTHROPIC_API_KEY      --project prod   # paste the Anthropic key
+firebase functions:secrets:set REVENUECAT_WEBHOOK_AUTH --project prod   # a strong shared token
+```
+Bound to: `parseOilAnalysis`, `voiceQuickAdd` (ANTHROPIC_API_KEY) and `handleRevenueCatWebhook`
+(REVENUECAT_WEBHOOK_AUTH). Without these, voice/oil-analysis throw "API key is not configured"
+and the webhook returns 503.
+
+## 2. Cloud Functions — build + deploy
+```bash
+cd CloudFunctions
+npm ci && npm run build && npm test          # tsc clean + 48 tests
+firebase deploy --only functions --project dev     # dev first
+# smoke-test dev, then:
+firebase deploy --only functions --project prod
+```
+Functions: `parseOilAnalysis`, `voiceQuickAdd`, `handleRevenueCatWebhook`, `lookupRecalls`
+(all region `us-central1`; callables enforce App Check).
+
+## 3. Firestore + Storage rules
+```bash
+firebase deploy --only firestore:rules,firestore:indexes,storage --project prod
+```
+
+## 4. App Check
+- Register the iOS app for **App Check** (App Attest) in the Firebase console.
+- The callables set `enforceAppCheck: true`, so real devices need a valid App Check token.
+  Configure the App Attest provider + (optionally) a debug token for TestFlight.
+
+## 5. iOS `Configuration/Secrets.swift` (PROTECTED — not in git)
+Create from `Secrets.template.swift` with real values:
+```swift
+enum Secrets {
+    static let revenueCatAPIKey = "appl_...real prod key..."
+    static let anthroProxyRegion = "us-central1"
+}
+```
+`verify-ios.sh` bootstraps a placeholder for CI; the real file is gitignored.
+
+## 6. RevenueCat
+- Products: `garage_pro_monthly`, `garage_pro_annual` (see `AnalyticsProductID`).
+- Webhook: point RevenueCat at the deployed `handleRevenueCatWebhook` URL; set the
+  `Authorization` header to the exact `REVENUECAT_WEBHOOK_AUTH` value from step 1 (the function
+  compares it with a timing-safe check).
+
+## 7. App Store Connect / TestFlight
+- Version/build from `project.yml` (`CFBundleShortVersionString` / bundle version).
+- **Privacy manifest** (`Garage/Resources/PrivacyInfo.xcprivacy` EXISTS but is likely incomplete):
+  `NSPrivacyAccessedAPITypes` is empty, but the app uses `UserDefaults` directly
+  (SubscriptionReconciliationStore) → add category `NSPrivacyAccessedAPICategoryUserDefaults`
+  with reason `CA92.1`. Data types declared: UserID, Email, OtherUserContent, ProductInteraction
+  — consider adding **Purchases** (RevenueCat) and **Crash/Diagnostics** (Crashlytics). Verify
+  against the audit's appstore-compliance findings before submission.
+- App Privacy "nutrition label": declare data collected (account, purchases, diagnostics via
+  Crashlytics/Analytics).
+- Export compliance (uses standard encryption only → usually exempt; declare it).
+- Policy + Terms URLs (required for a subscription app).
+- Screenshots, description, subscription group + localized pricing.
+- Confirm the **restore-purchases** path is reachable (Settings → Manage/Upgrade).
+
+## 8. Pre-flight gates (run before each release)
+```bash
+./scripts/ci/verify-ios.sh                       # policy + build + tests + Release archive
+./scripts/ci/release-checks.sh                   # BLOCKS on .invalid URLs + missing export-compliance key
+node .claude/workflows/instrument-audit.js       # 4-lens GO/NO-GO brief (advisory)
+cd CloudFunctions && npm run test:rules          # Firestore + Storage security-rules tests (emulator)
+```
+`release-checks.sh` currently FAILS (by design) until you (a) replace the `.invalid` Privacy/Terms
+URLs in `Constants.swift` and (b) add `ITSAppUsesNonExemptEncryption` to `project.yml`.
+
+## 9. Verify the RUNNING image (landmine #9)
+After deploy, hit each function once from a real device build and confirm success — never trust a
+"deployed ✅" log line. Watch Crashlytics + Functions logs for the first hour.
