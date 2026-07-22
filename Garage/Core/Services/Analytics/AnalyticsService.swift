@@ -99,6 +99,7 @@ enum PaywallSource: String, CaseIterable, Equatable, Sendable {
     case reminders
     case exportPDF = "export_pdf"
     case stats
+    case themePicker = "theme_picker"
 }
 
 enum AnalyticsProductID: String, CaseIterable, Equatable, Sendable {

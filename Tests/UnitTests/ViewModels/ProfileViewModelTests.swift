@@ -37,7 +37,7 @@ struct ProfileViewModelTests {
         #expect(second.analyticsOptOut)
         #expect(store.savedUIDs == ["user"])
         #expect(Set(store.savedPayloads[0].keys) == Set([
-            "name", "address", "phone", "insuranceCompany", "policyNumber", "analyticsOptOut"
+            "name", "address", "phone", "insuranceCompany", "policyNumber", "analyticsOptOut", "themeID"
         ]))
     }
 
