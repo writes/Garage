@@ -94,6 +94,11 @@ final class VehicleService {
         // not a magic 5, so an at-cap account stays detectable if the caps ever grow (#15).
         let snapshot = try await collection.whereField("userId", isEqualTo: uid)
             .limit(to: Constants.maxProVehicles + 1).getDocuments()
+        // A tombstoned doc still holds a server counter slot until its purge lands; heal it NOW
+        // so the counted create below isn't denied by a stale counter right after a deletion.
+        for document in snapshot.documents where document.data()["deletedAt"] != nil {
+            try? await purgeInvoker(document.documentID)
+        }
         let existingCount = snapshot.documents.filter { $0.data()["deletedAt"] == nil }.count
         try Self.validateVehicleLimit(existingVehicleCount: existingCount, isPro: purchaseService.isPro)
         var vehicle = vehicle
@@ -130,8 +135,7 @@ final class VehicleService {
         let firestore = firestoreProvider()
         let query = firestore.db.collection(FirestorePaths.vehicles).whereField("userId", isEqualTo: uid)
         let snapshot = try await query.order(by: "displayOrder").limit(to: 20).getDocuments()
-        // Tolerant decode (#19): one corrupt document must not blank the whole garage — decode
-        // failures are recorded as non-fatals instead of aborting the fetch silently.
+        // Tolerant decode (#19): one corrupt doc must not blank the garage; failures are non-fatals.
         var vehicles: [Vehicle] = []
         for document in snapshot.documents {
             do {
@@ -179,9 +183,9 @@ final class VehicleService {
 // MARK: - Deletion (RULES-1 soft delete + trusted purge)
 
 extension VehicleService {
-    /// Tombstone first (offline-safe — the vehicle disappears immediately, even from the local
-    /// cache), then the deleteVehicle CF purges subcollections and decrements the server
-    /// counter. A failed purge self-heals via retryPendingPurges().
+    /// Tombstone first (client timestamp, fire-and-forget: lands in the local cache immediately
+    /// and decodes as a real Date — a pending serverTimestamp reads as nil and would dodge the
+    /// filter), then the purge CF runs detached. Failed purges self-heal via retryPendingPurges().
     func deleteVehicle(_ vehicle: Vehicle) async throws {
         if var testVehicles {
             testVehicles[vehicle.id] = nil
@@ -199,19 +203,30 @@ extension VehicleService {
         guard mode == .live else { return }
         let firestore = firestoreProvider()
         let document = firestore.db.collection(FirestorePaths.vehicles).document(vehicle.id)
-        try await document.setData(["deletedAt": FieldValue.serverTimestamp()], merge: true)
-        do {
-            try await purgeInvoker(vehicle.id)
-        } catch {
-            // The tombstone already hides the vehicle; the purge (subcollections + counter
-            // decrement) converges on the next bootstrap sweep. Not rethrown by design.
-            AppLogger.shared.error("Vehicle purge failed for \(vehicle.id): \(error.localizedDescription)")
-            CrashReporter.shared.record(error, context: "vehicle-purge")
+        writeTombstone(on: document)
+        Task { [purgeInvoker] in
+            do {
+                try await purgeInvoker(vehicle.id)
+            } catch {
+                // The tombstone already hides the vehicle; the purge (subcollections + counter
+                // decrement) converges on the next sweep. Not surfaced by design.
+                AppLogger.shared.error("Vehicle purge failed for \(vehicle.id): \(error.localizedDescription)")
+                CrashReporter.shared.record(error, context: "vehicle-purge")
+            }
         }
     }
 
-    /// Best-effort self-heal: re-invokes the purge CF for any vehicle still tombstoned
-    /// (an offline delete whose purge call never reached the server).
+    /// Non-async on purpose: Swift 6 forbids the completion-handler overload inside async
+    /// contexts, and the async variant is ack-gated (it would suspend forever offline).
+    private func writeTombstone(on document: DocumentReference) {
+        document.setData(["deletedAt": Timestamp(date: .now)], merge: true) { error in
+            if let error {
+                AppLogger.shared.error("Vehicle tombstone rejected: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Best-effort self-heal: re-purges any still-tombstoned vehicle (e.g. an offline delete).
     func retryPendingPurges() async {
         guard mode == .live, testVehicles == nil, !AppRuntime.isLocalDemoMode,
               let uid = uidProvider() else { return }

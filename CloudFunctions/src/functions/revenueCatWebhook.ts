@@ -335,7 +335,13 @@ export async function handleRevenueCatWebhookRequest(
     const transferResult = await dependencies.db.runTransaction(async (transaction) => {
       const existingEvent = await transaction.get(eventRef);
 
-      if (existingEvent.exists) {
+      // A recorded event whose destination grant was SKIPPED (no expiration available) stays
+      // retryable: a RevenueCat-dashboard re-send can repair the grant once the destination has
+      // an expiry source (e.g. a support-granted entitlement), instead of dead-ending on
+      // "duplicate" while a paying subscriber has no server-side Pro.
+      const priorSkips = existingEvent.exists ? existingEvent.data()?.grantSkippedUserIds : undefined;
+      const retryableSkip = Array.isArray(priorSkips) && priorSkips.length > 0;
+      if (existingEvent.exists && !retryableSkip) {
         return { outcome: "duplicate", skippedUserIds: [] as string[] };
       }
 
@@ -346,9 +352,8 @@ export async function handleRevenueCatWebhookRequest(
         snapshot: await transaction.get(user.ref),
       })));
 
-      transaction.set(eventRef, eventRecord(event, receivedAt, updatedAt));
-
       const skippedUserIds: string[] = [];
+      const userWrites: Array<{ ref: DocumentReferenceLike; data: Record<string, unknown> }> = [];
       for (const user of userSnapshots) {
         const userData = user.snapshot.data();
         if (isStaleSubscriptionEvent(userData, event.eventTimestampMs, user.isActive)) {
@@ -362,28 +367,42 @@ export async function handleRevenueCatWebhookRequest(
           : priorExpiresAt;
 
         // TRANSFER events document no expiration. Granting a destination open-ended access would
-        // be perpetual server-side Pro; fail closed instead. The client keeps its RevenueCat-SDK
-        // entitlement, and the next expiry-bearing event (e.g. RENEWAL) restores the server grant.
+        // be perpetual server-side Pro; fail closed instead. The skip marker above keeps the
+        // event retryable, and the operator follow-up (RevenueCat REST lookup with the secret
+        // key) is the durable heal; until then the next expiry-bearing event restores the grant.
         if (user.isActive && expiresAt === undefined) {
           skippedUserIds.push(user.userId);
           continue;
         }
 
-        transaction.set(user.ref, {
-          subscription: {
-            entitlement: "pro",
-            isActive: user.isActive,
-            updatedAt,
-            ...(expiresAt !== undefined ? { expiresAt } : {}),
+        userWrites.push({
+          ref: user.ref,
+          data: {
+            subscription: {
+              entitlement: "pro",
+              isActive: user.isActive,
+              updatedAt,
+              ...(expiresAt !== undefined ? { expiresAt } : {}),
+            },
           },
-        }, { merge: true });
+        });
       }
 
-      return { outcome: "processed", skippedUserIds };
+      transaction.set(eventRef, {
+        ...eventRecord(event, receivedAt, updatedAt),
+        ...(skippedUserIds.length > 0 ? { grantSkippedUserIds: skippedUserIds } : {}),
+      });
+      for (const write of userWrites) {
+        transaction.set(write.ref, write.data, { merge: true });
+      }
+
+      return { outcome: retryableSkip ? "reprocessed_after_skip" : "processed", skippedUserIds };
     });
 
     if (transferResult.skippedUserIds.length > 0) {
-      logger.warn("revenuecat transfer grant skipped: no expiration available", {
+      // error (not warn): a paying subscriber just lost server-side Pro until an expiry-bearing
+      // event arrives — this should page whoever watches the logs.
+      logger.error("revenuecat transfer grant skipped: no expiration available", {
         eventId: event.id,
         skippedUserIds: transferResult.skippedUserIds,
       });

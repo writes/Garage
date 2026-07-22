@@ -694,6 +694,47 @@ describe("handleRevenueCatWebhookRequest", () => {
     });
   });
 
+  it("repairs a skipped transfer destination on re-send once an expiry source exists", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/old-owner", {
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        updatedAt: "2026-07-09T10:00:00.000Z",
+        expiresAt: "2026-07-31T10:00:00.000Z",
+      },
+    });
+
+    await send(db, transferEvent({ expiration_at_ms: undefined, id: "retryable-transfer" }));
+    expect(db.data("users/new-owner")).toBeUndefined();
+    expect(db.data("revenuecat_events/retryable-transfer")).toMatchObject({
+      grantSkippedUserIds: ["new-owner"],
+    });
+
+    // Support heals the destination with an expiry-bearing grant; the SAME event id re-sent
+    // from the RevenueCat dashboard must now reprocess instead of dead-ending on "duplicate".
+    db.seed("users/new-owner", {
+      subscription: {
+        entitlement: "pro",
+        isActive: false,
+        updatedAt: "2026-07-01T10:00:00.000Z",
+        expiresAt: "2026-09-01T10:00:00.000Z",
+      },
+    });
+    const resend = await send(db, transferEvent({ expiration_at_ms: undefined, id: "retryable-transfer" }));
+
+    expect(resend.statusCode).toBe(200);
+    expect(db.data("users/new-owner")).toMatchObject({
+      subscription: { isActive: true, expiresAt: "2026-09-01T10:00:00.000Z" },
+    });
+    expect(db.data("revenuecat_events/retryable-transfer")).not.toHaveProperty("grantSkippedUserIds");
+
+    // With the skip marker cleared, a further re-send is a plain duplicate again.
+    const third = await send(db, transferEvent({ expiration_at_ms: undefined, id: "retryable-transfer" }));
+    expect(third.statusCode).toBe(200);
+    expect(db.transactionTraces()[2].writes).toEqual([]);
+  });
+
   it("skips a transfer destination grant when the event has no expiration (fail closed)", async () => {
     const db = new InMemoryFirestore();
     db.seed("users/old-owner", {

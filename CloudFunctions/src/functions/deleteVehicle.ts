@@ -1,6 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, Timestamp } from "firebase-admin/firestore";
 
 export interface DeleteVehicleRequest {
   auth: { uid: string } | null;
@@ -11,13 +11,16 @@ export interface DeleteVehicleRequest {
 /// purge ordering, idempotency) is unit-tested without touching real Firestore.
 export interface DeleteVehicleDeps {
   /**
-   * Transactionally verify ownership, delete the vehicle document, and decrement
-   * users/{uid}.vehicleCount (floored at 0, RULES-1 Mechanism A′). Returns "not-found" when the
-   * document no longer exists (a retried call), "claimed" when this call deleted it. Must throw
-   * permission-denied when the document exists but is owned by another uid.
+   * Transactionally verify ownership, mark the vehicle purging (server tombstone), and decrement
+   * users/{uid}.vehicleCount exactly once (floored at 0, RULES-1 Mechanism A′). The vehicle DOC
+   * MUST SURVIVE this step: it is the only key that lets a retry, the client sweep, and
+   * deleteAccount's vehicle query find still-unpurged subcollections. Returns "claimed" on the
+   * first call, "already-claimed" when a prior call already decremented (purge retry), and
+   * "not-found" when the document is fully gone. Must throw permission-denied when the document
+   * exists but is owned by another uid.
    */
-  claimVehicle(uid: string, vehicleId: string): Promise<"claimed" | "not-found">;
-  /** Recursively delete the vehicle's subcollections (safe on an already-deleted parent doc). */
+  claimVehicle(uid: string, vehicleId: string): Promise<"claimed" | "already-claimed" | "not-found">;
+  /** Recursively delete the vehicle doc AND its subcollections (safe on an already-deleted doc). */
   purgeSubcollections(vehicleId: string): Promise<void>;
 }
 
@@ -48,9 +51,11 @@ export async function deleteVehicleRequest(
     throw new HttpsError("invalid-argument", "A vehicleId is required.");
   }
 
-  // Claim FIRST (doc delete + counter decrement are transactional, so the decrement can never
-  // happen twice), then purge subcollections. Purge also runs on the retry path so a call that
-  // died mid-purge still converges to fully-deleted.
+  // Claim FIRST (tombstone + one-time counter decrement, transactional), then purge. Because the
+  // claim leaves the vehicle doc in place, a purge that dies midway keeps the doc discoverable —
+  // by a retried call (claim returns "already-claimed", no double decrement), by the client's
+  // tombstone sweep, and by deleteAccount's userId query — so orphaned subcollections always
+  // converge to deleted. Only a fully successful purge removes the doc itself.
   const claim = await deps.claimVehicle(uid, vehicleId);
   await deps.purgeSubcollections(vehicleId);
 
@@ -75,10 +80,19 @@ export const deleteVehicle = onCall(
               if (vehicle.data()?.userId !== ownerUid) {
                 throw new HttpsError("permission-denied", "You do not own this vehicle.");
               }
+              // A client CAN write purgeState on its own doc, but that only skips the decrement
+              // of its own counter (self-inflicted); the security-relevant ownership and counter
+              // invariants are unaffected.
+              if (vehicle.data()?.purgeState === "purging") return "already-claimed";
               const user = await transaction.get(userRef);
               const rawCount = user.data()?.vehicleCount;
               const priorCount = typeof rawCount === "number" && Number.isFinite(rawCount) ? rawCount : 0;
-              transaction.delete(vehicleRef);
+              // Timestamp, not an ISO string: the iOS client decodes deletedAt as a Date and a
+              // string would fail the whole vehicle decode.
+              transaction.set(vehicleRef, {
+                deletedAt: Timestamp.now(),
+                purgeState: "purging",
+              }, { merge: true });
               transaction.set(userRef, {
                 vehicleCount: Math.max(0, Math.floor(priorCount) - 1),
                 lastVehicleOp: { id: vehicleId, op: "purge" },
@@ -87,8 +101,8 @@ export const deleteVehicle = onCall(
             });
           },
           async purgeSubcollections(vehicleId) {
-            // recursiveDelete removes any remaining subcollection documents even when the parent
-            // vehicle doc is already gone (same guarantee deleteAccount relies on).
+            // recursiveDelete removes the vehicle doc and all subcollection documents; it also
+            // cleans orphaned subcollections when the parent doc is already gone.
             await db.recursiveDelete(db.collection("vehicles").doc(vehicleId));
           },
         },

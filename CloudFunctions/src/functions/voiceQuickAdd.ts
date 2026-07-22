@@ -184,8 +184,9 @@ export async function voiceQuickAddRequest(
   try {
     payload = await response.json();
   } catch (error) {
+    // Classified reason only: V8 parse errors embed source snippets of the content.
     logger.error("voice-quickadd anthropic response body unreadable", {
-      message: error instanceof Error ? error.message : String(error),
+      reason: error instanceof Error ? error.name : "unknown",
     });
     throw new HttpsError("internal", "Claude returned malformed JSON.");
   }
@@ -201,9 +202,10 @@ export async function voiceQuickAddRequest(
     return sanitizeVoiceProposal(parsed, now);
   } catch (error) {
     if (error instanceof HttpsError) throw error;
-    // The transcript and model output are never logged (spoken content is user PII).
+    // The transcript and model output are never logged (spoken content is user PII) — and
+    // that includes JSON.parse messages, which embed a snippet of the unparseable source.
     logger.error("voice-quickadd model output unparseable", {
-      message: error instanceof Error ? error.message : String(error),
+      reason: error instanceof Error ? error.name : "unknown",
     });
     throw new HttpsError("internal", "Claude returned malformed JSON.");
   }

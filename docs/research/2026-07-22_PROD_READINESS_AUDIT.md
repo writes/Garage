@@ -92,7 +92,15 @@ Verification: full `verify-ios.sh` gate + CF `tsc`/52 tests + `test:rules` 13 te
 
 - **#18/#20/#22 — Perf/scale**: Stats over newest 100, Log search over newest 500 (comment claims
   full history); Dashboard re-runs 5 Firestore fetches on every tab switch; up to 500 docs decoded
-  on the main actor.
+  on the main actor. Also (from the pass-3 adversarial review): PDF export now accumulates the
+  full date-window history in memory and renders synchronously on the MainActor — fine at current
+  scale, needs chunked/off-main rendering for multi-thousand-entry vehicles.
+- **TRANSFER destination healing** (pass-3 review, operator-keyed): a transfer destination grant
+  is fail-closed skipped when no expiration is available (correct vs perpetual Pro), and the skip
+  is now retryable + alerted — but the durable heal is a RevenueCat REST lookup
+  (`GET /v1/subscribers`) with the secret key, same key as the deleteAccount subscriber-erase
+  follow-up. Until wired, a transferred annual subscriber regains server-side Pro only at the
+  next expiry-bearing event.
 - ~~#4/#15, #8, #9, #11, #12, #13/#14/#19/#23, #24, #25/#26~~ — all closed (3rd pass above +
   earlier passes).
 - **Completeness gaps** to schedule: no Firestore cascade delete; no push-notification delivery

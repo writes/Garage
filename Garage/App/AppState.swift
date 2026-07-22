@@ -139,9 +139,22 @@ final class AppState {
     /// here: the stream is torn down on UID change (VehicleSwitcher's .task(id:) scope) before
     /// this can run.
     func applyVehicleSnapshot(_ envelope: VehicleSnapshotEnvelope) {
-        applyLoadedVehicles(envelope.vehicles)
+        var loadedVehicles = envelope.vehicles
+        if !envelope.decodeFailureDocumentIDs.isEmpty {
+            // Keep the last-known copy of a transiently undecodable doc so it neither vanishes
+            // nor steals the selection; the sync badge surfaces the decode diagnostic.
+            let failed = Set(envelope.decodeFailureDocumentIDs)
+            let retained = vehicles.filter { vehicle in
+                failed.contains(vehicle.id) && !loadedVehicles.contains(where: { $0.id == vehicle.id })
+            }
+            loadedVehicles.append(contentsOf: retained)
+            loadedVehicles.sort { $0.displayOrder < $1.displayOrder }
+        }
+        applyLoadedVehicles(loadedVehicles)
     }
 
+    // Deliberately NO seed fallback here: live-listener envelopes feed this path, and reseeding
+    // on empty resurrected ghosts after deleting the last vehicle. Seeds live in uiTest/demo modes.
     private func applyLoadedVehicles(_ loadedVehicles: [Vehicle]) {
         vehicles = loadedVehicles
         if let currentVehicle,
@@ -150,23 +163,16 @@ final class AppState {
         } else {
             currentVehicle = loadedVehicles.min(by: { $0.displayOrder < $1.displayOrder })
         }
-        #if DEBUG
-        if vehicles.isEmpty {
-            vehicles = SeedData.vehicles
-            currentVehicle = vehicles.first
-        }
-        #endif
     }
 
     func refreshVehicles() async {
+        guard let uid = authService.uid else { return }
+        let expectedRevision = authService.authenticationRevision
         do {
             let loadedVehicles = try await vehicleService.fetchVehicles()
-            vehicles = loadedVehicles
-            if let currentVehicle, loadedVehicles.contains(where: { $0.id == currentVehicle.id }) {
-                self.currentVehicle = loadedVehicles.first(where: { $0.id == currentVehicle.id })
-            } else {
-                self.currentVehicle = loadedVehicles.first
-            }
+            // Same stale-fetch guard as loadVehicles (no resurrecting a prior account's list).
+            guard authenticationMatches(expectedRevision, uid: uid) else { return }
+            applyLoadedVehicles(loadedVehicles)
         } catch {
             AppLogger.shared.error("Vehicle refresh failed: \(error.localizedDescription)")
             crashReporter.record(error, context: "vehicle-refresh")
@@ -194,6 +200,10 @@ final class AppState {
             return
         }
         userProfile = profile
+        // Consent authority: a mid-session opt-out lands here, and BOTH trackers must follow —
+        // Crashlytics persisted its collection flag when enabled, so skipping this leaks non-fatals.
+        analytics.setEnabled(!profile.analyticsOptOut)
+        crashReporter.setEnabled(!profile.analyticsOptOut)
         AccentStore.shared.apply(themeID: profile.themeID)
     }
 

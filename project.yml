@@ -183,8 +183,21 @@ targets:
             echo "warning: Crashlytics upload-symbols or GoogleService-Info.plist missing; skipping dSYM upload."
             exit 0
           fi
-          "${UPLOAD_TOOL}" -gsp "${GOOGLE_SERVICE_INFO_PATH}" -p ios "${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}" \
-            || echo "warning: Crashlytics dSYM upload failed; symbolicate manually with upload-symbols."
+          # Bounded watchdog (landmine #14: every spawn site carries a timeout) — the upload
+          # tool hangs indefinitely without network/auth, which stalled the CI archive.
+          "${UPLOAD_TOOL}" -gsp "${GOOGLE_SERVICE_INFO_PATH}" -p ios "${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}" &
+          UPLOAD_PID=$!
+          WAITED=0
+          while kill -0 "${UPLOAD_PID}" 2>/dev/null && [ "${WAITED}" -lt 90 ]; do
+            sleep 5
+            WAITED=$((WAITED + 5))
+          done
+          if kill -0 "${UPLOAD_PID}" 2>/dev/null; then
+            kill "${UPLOAD_PID}" 2>/dev/null
+            echo "warning: Crashlytics dSYM upload timed out after ${WAITED}s; symbolicate manually with upload-symbols."
+          fi
+          wait "${UPLOAD_PID}" 2>/dev/null \
+            || echo "warning: Crashlytics dSYM upload did not complete; symbolicate manually with upload-symbols."
         inputFiles:
           - $(DWARF_DSYM_FOLDER_PATH)/$(DWARF_DSYM_FILE_NAME)
         basedOnDependencyAnalysis: false

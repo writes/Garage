@@ -5,7 +5,10 @@ import {
   type DeleteVehicleDeps,
 } from "../src/functions/deleteVehicle";
 
-function spyDeps(claimResult: "claimed" | "not-found" = "claimed", failOn?: keyof DeleteVehicleDeps) {
+function spyDeps(
+  claimResult: "claimed" | "already-claimed" | "not-found" = "claimed",
+  failOn?: keyof DeleteVehicleDeps,
+) {
   const calls: string[] = [];
   const deps: DeleteVehicleDeps = {
     async claimVehicle(uid, vehicleId) {
@@ -63,6 +66,15 @@ describe("deleteVehicleRequest", () => {
     const result = await deleteVehicleRequest({ auth: { uid: "owner-1" }, data: { vehicleId: "v1" } }, deps);
     expect(calls).toEqual(["claim:owner-1:v1", "purge:v1"]);
     expect(result).toEqual({ deleted: true, alreadyDeleted: true });
+  });
+
+  it("re-purges an already-claimed vehicle without reporting it deleted twice", async () => {
+    // A mid-purge failure leaves the tombstoned doc in place; the retry must purge again but
+    // must NOT be treated as "already deleted" (the data is still there).
+    const { calls, deps } = spyDeps("already-claimed");
+    const result = await deleteVehicleRequest({ auth: { uid: "owner-1" }, data: { vehicleId: "v1" } }, deps);
+    expect(calls).toEqual(["claim:owner-1:v1", "purge:v1"]);
+    expect(result).toEqual({ deleted: true, alreadyDeleted: false });
   });
 
   it("propagates a claim failure without purging", async () => {

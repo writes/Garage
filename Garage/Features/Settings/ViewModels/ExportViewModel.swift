@@ -74,7 +74,8 @@ final class ExportViewModel {
         activeExportOperationID = operationID
         defer { finishOperation(ifCurrent: operationID) }
         do {
-            let query = EntryQuery(vehicleId: vehicle.id, startDate: startDate, endDate: endDate)
+            let windowStart = startDate, windowEnd = endDate
+            let query = EntryQuery(vehicleId: vehicle.id, startDate: windowStart, endDate: windowEnd)
             var cursor: EntryCursor?, entries: [FirestoreEntry] = []
             repeat {
                 guard operationIsCurrent(operationID), authorization() == expectedAuthorization else { return }
@@ -82,7 +83,7 @@ final class ExportViewModel {
                 entries += page.entries
                 cursor = page.nextCursor
             } while cursor != nil
-            let resolvedEntries = filterByDate(entries)
+            let resolvedEntries = filterByDate(entries, start: windowStart, end: windowEnd)
             guard operationIsCurrent(operationID), authorization() == expectedAuthorization else { return }
             exportData = try pdfExportService.buildReport(
                 vehicle: vehicle,
@@ -243,7 +244,7 @@ private extension ExportViewModel {
         }
     }
 
-    private func filterByDate(_ entries: [FirestoreEntry]) -> [FirestoreEntry] {
-        entries.filter { $0.entryDate >= startDate && $0.entryDate <= endDate }
+    private func filterByDate(_ entries: [FirestoreEntry], start: Date, end: Date) -> [FirestoreEntry] {
+        entries.filter { $0.entryDate >= start && $0.entryDate <= end }
     }
 }

@@ -20,9 +20,14 @@ extension VehicleService {
             try await batch.commit()
         } catch let error as NSError where error.domain == FirestoreErrorDomain
             && error.code == FirestoreErrorCode.permissionDenied.rawValue {
-            // Past the ownership precondition, a rule denial here means the server-side cap
-            // rejected the create (a raced second device, or a stale local isPro).
-            throw AppError.vehicleLimitReached
+            // The local precheck already passed, so this denial means the SERVER's view
+            // disagrees with ours — most likely a still-undecremented counter from a recent
+            // deletion (heal it), or a create raced from another device. Claiming "upgrade to
+            // Pro" here would be a false upsell; say what actually happened instead.
+            Task { await retryPendingPurges() }
+            throw AppError.database(
+                "Couldn't add the vehicle — your vehicle count is still syncing. Please try again in a moment."
+            )
         }
     }
 }

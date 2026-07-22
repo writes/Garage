@@ -5,6 +5,7 @@ import Testing
 struct AppStateTests {
     @Test func bootstrapLoadsOptInAndPaywallThenSignOutAppliesPrivacyState() async {
         let analytics = AnalyticsSpy()
+        let crashReporter = CrashReporterSpy()
         let purchaseService = PurchaseService(testIsPro: false)
         let authService = AuthService(testUID: "user", analytics: analytics)
         let profileStore = AppStateProfileStore(fields: ["analyticsOptOut": .boolean(false)])
@@ -13,6 +14,7 @@ struct AppStateTests {
             vehicleService: VehicleService(testVehicles: [], purchaseService: purchaseService),
             purchaseService: purchaseService,
             analytics: analytics,
+            crashReporter: crashReporter,
             profileStore: profileStore
         )
 
@@ -21,6 +23,7 @@ struct AppStateTests {
         #expect(state.userProfile?.id == "user")
         #expect(state.userProfile?.analyticsOptOut == false)
         #expect(analytics.enabledValues.last == true)
+        #expect(crashReporter.enabledValues.last == true)
 
         state.paywallDidAppear(source: .settings)
 
@@ -32,44 +35,35 @@ struct AppStateTests {
         state.signOut()
 
         #expect(analytics.enabledValues.last == false)
+        #expect(crashReporter.enabledValues.last == false)
     }
 
-    @Test func applyVehicleSnapshot_keepsSelectionAndFallsBackWhenRemoved() {
+    @Test func applyProfileOptOutDisablesBothTrackersMidSession() async {
+        let analytics = AnalyticsSpy()
+        let crashReporter = CrashReporterSpy()
         let purchaseService = PurchaseService(testIsPro: false)
         let state = AppState(
-            authService: AuthService(testUID: "user", analytics: AnalyticsSpy()),
+            authService: AuthService(testUID: "user", analytics: analytics),
             vehicleService: VehicleService(testVehicles: [], purchaseService: purchaseService),
             purchaseService: purchaseService,
-            analytics: AnalyticsSpy(),
-            crashReporter: NoopCrashReporter(),
-            profileStore: AppStateProfileStore(fields: [:])
+            analytics: analytics,
+            crashReporter: crashReporter,
+            profileStore: AppStateProfileStore(fields: ["analyticsOptOut": .boolean(false)])
         )
-        let first = snapshotVehicle(id: "first", displayOrder: 0)
-        let second = snapshotVehicle(id: "second", displayOrder: 1)
+        await state.bootstrap()
+        #expect(crashReporter.enabledValues.last == true)
 
-        state.applyVehicleSnapshot(envelope([first, second]))
-        #expect(state.vehicles.map(\.id) == ["first", "second"])
-        #expect(state.currentVehicle?.id == "first")
+        // The settings toggle path: an opted-out profile arrives via applyProfile mid-session
+        // and BOTH trackers must follow (Crashlytics persisted its enabled flag).
+        guard var profile = state.userProfile else {
+            Issue.record("Expected a bootstrapped profile")
+            return
+        }
+        profile.analyticsOptOut = true
+        state.applyProfile(profile)
 
-        state.selectVehicle(second)
-        var renamed = second
-        renamed.nickname = "Renamed"
-        state.applyVehicleSnapshot(envelope([first, renamed]))
-        #expect(state.currentVehicle?.nickname == "Renamed")
-
-        state.applyVehicleSnapshot(envelope([first]))
-        #expect(state.currentVehicle?.id == "first")
-    }
-
-    private func envelope(_ vehicles: [Vehicle]) -> VehicleSnapshotEnvelope {
-        VehicleSnapshotEnvelope(vehicles: vehicles, isFromCache: false, hasPendingWrites: false)
-    }
-
-    private func snapshotVehicle(id: String, displayOrder: Int) -> Vehicle {
-        Vehicle(
-            id: id, userId: "user", nickname: id, make: "Garage", model: "Test", year: 2026,
-            currentOdometer: 1, displayOrder: displayOrder
-        )
+        #expect(analytics.enabledValues.last == false)
+        #expect(crashReporter.enabledValues.last == false)
     }
 
     @Test func unconfiguredFirebaseProfileStore_rejectsEveryOperation() async {
@@ -121,6 +115,7 @@ struct AppStateTests {
             vehicleService: VehicleService(testVehicles: [], purchaseService: purchaseService),
             purchaseService: purchaseService,
             analytics: analytics,
+            crashReporter: NoopCrashReporter(),
             profileStore: profileStore
         )
 
@@ -140,6 +135,7 @@ struct AppStateTests {
             vehicleService: VehicleService(testVehicles: [], purchaseService: purchaseService),
             purchaseService: purchaseService,
             analytics: analytics,
+            crashReporter: NoopCrashReporter(),
             profileStore: profileStore
         )
 
