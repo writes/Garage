@@ -56,6 +56,9 @@ targets:
         NSMicrophoneUsageDescription: Speak a log entry and Garage drafts it for you to review.
         NSSpeechRecognitionUsageDescription: Turns your spoken log entry into text you confirm before saving.
         CFBundleDisplayName: Garage
+        # App uses only standard/exempt encryption (HTTPS/TLS); declaring this avoids the
+        # "Missing Compliance" hold on every TestFlight/App Store upload.
+        ITSAppUsesNonExemptEncryption: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.writes.harrysplayhouse

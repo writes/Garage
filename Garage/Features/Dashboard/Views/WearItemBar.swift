@@ -11,6 +11,13 @@ struct WearItemBar: View {
         return Theme.Colors.wearLow
     }
 
+    /// Non-color signal for the wear health, also used as the VoiceOver value (WCAG 1.4.1).
+    private var statusText: String {
+        if percentage > 60 { return "Good" }
+        if percentage > 30 { return "Fair" }
+        return "Replace soon"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             HStack {
@@ -36,5 +43,8 @@ struct WearItemBar: View {
             }
             .frame(height: 8)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(label)
+        .accessibilityValue("\(Int(percentage)) percent, \(statusText)\(rawValue.map { ", \($0)" } ?? "")")
     }
 }
