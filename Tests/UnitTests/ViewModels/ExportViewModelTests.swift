@@ -145,8 +145,8 @@ struct ExportSessionIsolationTests {
         analytics.setEnabled(true)
         var authorization: ExportSessionAuthorization? = sessionA
         let url = tempCSVURL("identity")
-        let firstPage = try await EntryService(testEntries: [entryA]).fetchEntries(
-            query: EntryQuery(vehicleId: vehicleA.id), limit: 1, after: nil)
+        // Built directly, not via fetchEntries(limit: 1), so this is independent of the #4 sentinel.
+        let firstPage = EntryPage(entries: [entryA], nextCursor: EntryService.cursor(for: entryA))
         let viewModel = ExportViewModel(
             analytics: analytics,
             csvPageFetch: fetch.load,

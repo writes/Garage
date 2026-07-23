@@ -34,6 +34,7 @@ struct LogView: View {
                                 .buttonStyle(.plain)
                                 .accessibilityIdentifier("log.row.\(entry.id)")
                             }
+                            loadMoreFooter
                         }
                         .padding(.bottom, Theme.Spacing.xxl)
                     }
@@ -69,6 +70,34 @@ struct LogView: View {
                 guard activeSheet == nil else { return }
                 Task { await reload() }
             }
+        }
+    }
+
+    /// A search or type filter narrows `entries` below `allEntries`; the footer caption and
+    /// button read differently in that case since "Load More" fetches older raw history, not
+    /// more filtered matches.
+    private var isFiltering: Bool {
+        !viewModel.searchText.isEmpty || !viewModel.selectedTypes.isEmpty
+    }
+
+    @ViewBuilder
+    private var loadMoreFooter: some View {
+        if viewModel.allEntries.count >= Constants.maxLogEntries || viewModel.hasMoreEntries {
+            VStack(spacing: Theme.Spacing.sm) {
+                Text(isFiltering
+                    ? "\(viewModel.entries.count) matching of the most recent \(viewModel.allEntries.count) entries"
+                    : "Showing the most recent \(viewModel.allEntries.count) entries")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                if viewModel.hasMoreEntries {
+                    Button(isFiltering ? "Search Older Entries" : "Load More") {
+                        Task { await viewModel.loadMore() }
+                    }
+                    .disabled(viewModel.isLoadingMore)
+                    .accessibilityIdentifier("log.loadMore")
+                }
+            }
+            .padding(.top, Theme.Spacing.sm)
         }
     }
 

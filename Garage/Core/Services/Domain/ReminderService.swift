@@ -21,6 +21,7 @@ final class ReminderService {
         let reference = firestore.db.collection(FirestorePaths.vehicleReminders(vehicleId: reminder.vehicleId))
             .document(reminder.id)
         try await reference.setData(firestore.encode(reminder), merge: true)
+        VehicleDataRevisionStore.shared.bump(vehicleId: reminder.vehicleId)
     }
 
     func fetchUpcoming(vehicleId: String) async throws -> [Reminder] {

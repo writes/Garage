@@ -5,11 +5,18 @@ import Observation
     let batchSubmitter: any AtomicBatchSubmitting
     let syncService: SyncService
     let acknowledgementSink: @Sendable (SyncEvidenceToken, String?) -> Void
+    // Seam for the optimistic + compensating revision bumps around a batch submit; @MainActor
+    // @Sendable matches this file's other cross-actor callback fields (see acknowledgementSink).
+    // `var`, not `let`: an assigned `let` is EXCLUDED from the memberwise init, which is what
+    // hermetic tests use to inject a spy store.
+    var bumpRevision: @MainActor @Sendable (String) -> Void = { VehicleDataRevisionStore.shared.bump(vehicleId: $0) }
 }
 enum EntrySaveDisposition: Sendable, Equatable { case atomicEntryAndVehicleAccepted, entryOnlyAcceptedForHermeticStore }
 struct EntryPage { let entries: [FirestoreEntry], nextCursor: EntryCursor? }
-struct EntryCursor { fileprivate let document: DocumentSnapshot?
-    fileprivate let entryDate: Date, documentID: String }
+// `internal` (not `fileprivate`), unlike the type's original single-file home: pagination
+// helpers now live in EntryService+Paging.swift and need to read/construct these fields.
+struct EntryCursor { let document: DocumentSnapshot?
+    let entryDate: Date, documentID: String }
 @MainActor @Observable final class EntryService { static let shared = EntryService()
     private let liveDependenciesProvider: () -> EntryServiceDependencies
     private let isLocalDemoMode: () -> Bool
@@ -112,17 +119,30 @@ struct EntryCursor { fileprivate let document: DocumentSnapshot?
             ),
             AtomicBatchWrite(path: "\(FirestorePaths.vehicles)/\(vehicle.id)", data: vehicleData)
         ]
-        let acknowledgementSink = dependencies.acknowledgementSink
         do {
-            try dependencies.batchSubmitter.submitBatch(writes) { [evidence, acknowledgementSink] message in
-                acknowledgementSink(evidence, message)
-            }
+            try dependencies.batchSubmitter.submitBatch(writes, completion: Self.submissionCompletion(
+                evidence: evidence, vehicleId: entry.vehicleId, dependencies: dependencies))
         } catch {
             dependencies.syncService.rollbackMutation(evidence)
             dependencies.syncService.recordFailure(session: session, message: error.localizedDescription)
             throw error
         }
+        // Optimistic: `submitBatch` only reports LOCAL acceptance here. A later backend rejection
+        // is compensated in submissionCompletion above, which bumps again on a non-nil message.
+        dependencies.bumpRevision(entry.vehicleId)
         return .atomicEntryAndVehicleAccepted
+    }
+    private static func submissionCompletion(
+        evidence: SyncEvidenceToken, vehicleId: String, dependencies: EntryServiceDependencies
+    ) -> @Sendable (String?) -> Void {
+        let sink = dependencies.acknowledgementSink
+        let bump = dependencies.bumpRevision
+        return { message in
+            sink(evidence, message)
+            guard let message else { return }
+            AppLogger.shared.error("Entry submission rejected after optimistic acceptance: \(message)")
+            Task { @MainActor in bump(vehicleId) }
+        }
     }
     func fetchRecent(vehicleId: String, limit: Int = Constants.dashboardRecentLimit) async throws -> [FirestoreEntry] {
         if let testEntries {
@@ -156,15 +176,25 @@ struct EntryCursor { fileprivate let document: DocumentSnapshot?
         // combining them with the "entryType" `in` filter below WOULD require one — exports pass no entryTypes.
         request = query.startDate.map { request.whereField("entryDate", isGreaterThanOrEqualTo: $0) } ?? request
         request = query.endDate.map { request.whereField("entryDate", isLessThanOrEqualTo: $0) } ?? request
-        request = request.order(by: "entryDate", descending: true).limit(to: limit)
+        // limit+1 sentinel (#4): one extra doc reveals whether more history remains without a
+        // wasted round-trip when the vehicle's history is an exact multiple of the page size.
+        request = request.order(by: "entryDate", descending: true).limit(to: limit + 1)
         if !query.entryTypes.isEmpty && query.entryTypes.count < EntryType.allCases.count {
             request = request.whereField("entryType", in: query.entryTypes.map(\.rawValue))
         }
         if let document = cursor?.document { request = request.start(afterDocument: document) }
         let snapshot = try await request.getDocuments()
-        let entries = try snapshot.documents.map { try firestore.decode(FirestoreEntry.self, from: $0.data()) }
-        let nextCursor = snapshot.documents.count == limit
-            ? Self.cursor(document: snapshot.documents.last, entry: entries.last) : nil
+        let hasMore = snapshot.documents.count > limit
+        let pageDocuments = snapshot.documents.prefix(limit)
+        // Chunked decode (#22): yield every 50 docs so the main actor can interleave UI frames
+        // instead of blocking through a single synchronous decode of up to `limit` documents.
+        var entries: [FirestoreEntry] = []
+        entries.reserveCapacity(pageDocuments.count)
+        for (index, document) in pageDocuments.enumerated() {
+            entries.append(try firestore.decode(FirestoreEntry.self, from: document.data()))
+            if index % 50 == 49 { await Task.yield() }
+        }
+        let nextCursor = hasMore ? Self.cursor(document: pageDocuments.last, entry: entries.last) : nil
         return EntryPage(entries: Self.filter(entries, with: query.searchText), nextCursor: nextCursor)
     }
     func fetchLatestOdometer(vehicleId: String) async throws -> Int? {
@@ -208,42 +238,5 @@ extension EntryService {
             throw AppError.database(message)
         }
         return ["currentOdometer": currentOdometer, "updatedAt": updatedAt]
-    }
-    static func page(_ entries: [FirestoreEntry], matching query: EntryQuery,
-                     limit: Int, after cursor: EntryCursor?) -> EntryPage {
-        let forVehicle = entries.filter { $0.vehicleId == query.vehicleId }
-        let typed = query.entryTypes.isEmpty
-            ? forVehicle : forVehicle.filter { query.entryTypes.contains($0.entryType) }
-        let matching = typed.filter { Self.isWithinDateBounds($0.entryDate, query: query) }
-        let ordered = matching.sorted(by: Self.isOrderedBefore)
-        let remaining = cursor.map { cursor in ordered.filter { Self.isAfter($0, cursor: cursor) } } ?? ordered
-        let page = Array(remaining.prefix(limit))
-        return EntryPage(
-            entries: filter(page, with: query.searchText),
-            nextCursor: page.count == limit ? Self.cursor(for: page.last) : nil
-        )
-    }
-    static func cursor(document: DocumentSnapshot?, entry: FirestoreEntry?) -> EntryCursor? {
-        guard let document, let entry else { return nil }
-        return EntryCursor(document: document, entryDate: entry.entryDate, documentID: document.documentID)
-    }
-    static func cursor(for entry: FirestoreEntry?) -> EntryCursor? {
-        guard let entry else { return nil }
-        return EntryCursor(document: nil, entryDate: entry.entryDate, documentID: entry.id)
-    }
-    static func isWithinDateBounds(_ entryDate: Date, query: EntryQuery) -> Bool {
-        entryDate >= (query.startDate ?? .distantPast) && entryDate <= (query.endDate ?? .distantFuture)
-    }
-    static func isOrderedBefore(_ lhs: FirestoreEntry, _ rhs: FirestoreEntry) -> Bool {
-        lhs.entryDate != rhs.entryDate ? lhs.entryDate > rhs.entryDate : lhs.id > rhs.id
-    }
-    static func isAfter(_ entry: FirestoreEntry, cursor: EntryCursor) -> Bool {
-        entry.entryDate != cursor.entryDate ? entry.entryDate < cursor.entryDate : entry.id < cursor.documentID
-    }
-    nonisolated static func latestOdometer(in entries: [FirestoreEntry], vehicleId: String) -> Int? {
-        entries.filter { $0.vehicleId == vehicleId }.map(\.odometerReading).max()
-    }
-    nonisolated static func latestFuelEntry(in entries: [FirestoreEntry], vehicleId: String) -> FirestoreEntry? {
-        entries.filter { $0.vehicleId == vehicleId && $0.entryType == .fuel }.max { $0.entryDate < $1.entryDate }
     }
 }

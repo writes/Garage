@@ -21,6 +21,7 @@ final class PartsService {
         let reference = firestore.db.collection(FirestorePaths.vehicleParts(vehicleId: part.vehicleId))
             .document(part.id)
         try await reference.setData(firestore.encode(part), merge: true)
+        VehicleDataRevisionStore.shared.bump(vehicleId: part.vehicleId)
     }
 
     func fetchParts(vehicleId: String) async throws -> [SparePart] {

@@ -103,6 +103,24 @@ import Testing
         #expect(batch.writes.count == 2)
         #expect(sync.presentationState == .needsAttention)
     }
+    @Test func lateBackendRejectionAfterOptimisticAcceptanceCompensatesWithARevisionBump() async throws {
+        let (sync, session) = activeSync()
+        let order = OrderRecorder(), batch = BatchSubmitterSpy(order: order)
+        let revisionStore = VehicleDataRevisionStore()
+        let entry = makeEntry()
+        let service = EntryService(dependencies: dependencies(
+            sync: sync, batch: batch, order: order, revisionStore: revisionStore))
+        let disposition = try service.save(entry, updatingVehicle: updatingVehicle(), session: session)
+        #expect(disposition == .atomicEntryAndVehicleAccepted)
+        let revisionAfterOptimisticBump = revisionStore.revision(for: entry.vehicleId)
+
+        // submitBatch is fire-and-forget: local acceptance already bumped once above, but the
+        // backend can still reject the write after the fact via this captured completion.
+        batch.capturedCompletion?("simulated backend rejection")
+        await Task.yield()
+
+        #expect(revisionStore.revision(for: entry.vehicleId) > revisionAfterOptimisticBump)
+    }
     @Test func hermeticArrayPathSavesEntryBeforeAnyLiveDependencyResolution() async throws {
         let service = EntryService(testEntries: [])
         let entry = makeEntry(id: "hermetic")
@@ -120,68 +138,15 @@ import Testing
         #expect(dependencies.syncService === injected)
         #expect(dependencies.syncService !== SyncService.shared)
     }
-    @Test func filter_matchesNotesAndType() {
-        let oil = makeEntry(id: "oil", type: .oilChange, notes: "Mobil 1 service")
-        let fuel = makeEntry(id: "fuel", type: .fuel, notes: "Station visit")
-        #expect(EntryService.filter([oil, fuel], with: "mobil").map(\.id) == ["oil"])
-    }
-    @Test func fetchEntries_subsetsTypesForVehicle() async throws {
-        let service = EntryService(testEntries: [
-            makeEntry(id: "fuel", type: .fuel, odometer: 30_000, date: 300),
-            makeEntry(id: "oil", type: .oilChange, odometer: 29_000, date: 200),
-            makeEntry(id: "repair", type: .repair, odometer: 28_000, date: 100),
-            makeEntry(id: "other", type: .fuel, odometer: 1, date: 400, vehicleId: "other")
-        ])
-        let entries = try await service.fetchEntries(
-            query: EntryQuery(vehicleId: "vehicle", entryTypes: [.fuel, .oilChange], searchText: "")
-        )
-        #expect(entries.map(\.id) == ["fuel", "oil"])
-    }
-    @Test func latestOdometerAndFuelEntry_useTheirDedicatedOrdering() async throws {
-        let service = EntryService(testEntries: [
-            makeEntry(id: "older-fuel", type: .fuel, odometer: 31_000, date: 100),
-            makeEntry(id: "latest-fuel", type: .fuel, odometer: 30_000, date: 300),
-            makeEntry(id: "highest-odometer", type: .repair, odometer: 32_000, date: 200)
-        ])
-        let odometer = try await service.fetchLatestOdometer(vehicleId: "vehicle")
-        let fuel = try await service.lastFuelEntry(vehicleId: "vehicle")
-        #expect(odometer == 32_000)
-        #expect(fuel?.id == "latest-fuel")
-    }
-    @Test func fetchEntries_pagesStablyAcrossEqualTimestampBoundaries() async throws {
-        let entries = (0..<1_203).map {
-            makeEntry(
-                id: String(format: "entry-%04d", $0),
-                type: .maintenance, odometer: $0, date: paginationDate(for: $0)
-            )
-        }
-        let service = EntryService(testEntries: Array(entries.reversed()))
-        var cursor: EntryCursor?
-        var counts: [Int] = []
-        var ids: [String] = []
-        repeat {
-            let page = try await service.fetchEntries(
-                query: EntryQuery(vehicleId: "vehicle"),
-                limit: 500,
-                after: cursor
-            )
-            counts.append(page.entries.count)
-            ids += page.entries.map(\.id)
-            cursor = page.nextCursor
-        } while cursor != nil
-        let expected = entries.sorted {
-            $0.entryDate != $1.entryDate ? $0.entryDate > $1.entryDate : $0.id > $1.id
-        }.map(\.id)
-        #expect(counts == [500, 500, 203])
-        #expect(ids.count == 1_203 && Set(ids).count == 1_203)
-        #expect(ids == expected)
-    }
 }
+// Query/pagination reads (filter, subsetting, ordering, cursor pagination incl. the #4
+// limit+1 sentinel) live in EntryServiceQueryTests.swift — split out to stay under the file cap.
 private extension EntryServiceTests {
     func activeSync() -> (SyncService, SyncSessionToken) { let sync = isolatedSyncService()
         return (sync, sync.activateSession(uid: "user")) }
     func dependencies(
-        sync: SyncService, batch: BatchSubmitterSpy, order: OrderRecorder, vehicleData: [String: Any]? = nil
+        sync: SyncService, batch: BatchSubmitterSpy, order: OrderRecorder, vehicleData: [String: Any]? = nil,
+        revisionStore: VehicleDataRevisionStore? = nil
     ) -> EntryServiceDependencies {
         EntryServiceDependencies(
             encodeEntry: {
@@ -198,6 +163,9 @@ private extension EntryServiceTests {
             syncService: sync,
             acknowledgementSink: { token, message in
                 Task { @MainActor in sync.recordAcknowledgement(token, message: message) }
+            },
+            bumpRevision: { vehicleId in
+                if let revisionStore { revisionStore.bump(vehicleId: vehicleId) }
             }
         )
     }
@@ -218,14 +186,12 @@ private extension EntryServiceTests {
             id: "vehicle", userId: "user", nickname: "Test car", make: "Garage",
             model: "Test", year: 2026, currentOdometer: 12_100
         ) }
-    func paginationDate(for index: Int) -> TimeInterval {
-        if (495...505).contains(index) { return 1_999_505 }
-        if (995...1_005).contains(index) { return 1_999_005 }
-        return 2_000_000 - Double(index)
-    }
 }
 @MainActor private final class BatchSubmitterSpy: AtomicBatchSubmitting {
     private(set) var writes: [AtomicBatchWrite] = []
+    /// Lets a test simulate a LATE backend rejection by invoking this after submitBatch returns,
+    /// independent of completesSynchronously (which fires the completion inline instead).
+    private(set) var capturedCompletion: (@Sendable (String?) -> Void)?
     private let completesSynchronously: Bool, throwsOnSubmit: Bool
     private let order: OrderRecorder?
     init(completesSynchronously: Bool = false, throwsOnSubmit: Bool = false, order: OrderRecorder? = nil) {
@@ -235,6 +201,7 @@ private extension EntryServiceTests {
     }
     func submitBatch(_ writes: [AtomicBatchWrite], completion: @escaping @Sendable (String?) -> Void) throws {
         self.writes = writes
+        capturedCompletion = completion
         order?.values.append("submit")
         if throwsOnSubmit { throw EntryServiceTestError.submit }
         if completesSynchronously { completion(nil) }

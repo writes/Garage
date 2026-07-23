@@ -16,6 +16,7 @@ final class WarrantyService {
         let reference = firestore.db.collection(FirestorePaths.vehicleWarranties(vehicleId: warranty.vehicleId))
             .document(warranty.id)
         try await reference.setData(firestore.encode(warranty), merge: true)
+        VehicleDataRevisionStore.shared.bump(vehicleId: warranty.vehicleId)
     }
 
     func fetchWarranties(vehicleId: String) async throws -> [Warranty] {
@@ -36,6 +37,7 @@ final class WarrantyService {
         let reference = firestore.db.collection(FirestorePaths.vehicleRecalls(vehicleId: recall.vehicleId))
             .document(recall.id)
         try await reference.setData(firestore.encode(recall), merge: true)
+        VehicleDataRevisionStore.shared.bump(vehicleId: recall.vehicleId)
     }
 
     func fetchRecalls(vehicleId: String) async throws -> [Recall] {
