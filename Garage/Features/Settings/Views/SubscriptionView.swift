@@ -44,6 +44,8 @@ private struct SubscriptionContentView: View {
         BottomSheet(title: "Garage Pro") {
             Text("Pro includes up to 5 vehicles, parts, detailing, warranty and recall records, and stats.")
                 .font(Theme.Typography.body)
+            // Offerings load automatically below (.task); this button is now a manual
+            // retry for when that load fails or the connection drops, not the primary trigger.
             PrimaryButton(title: "Refresh Plans") { Task { await model.refreshTapped() } }
                 .disabled(model.isBusy)
                 .accessibilityIdentifier("subscription.refresh")
@@ -67,6 +69,7 @@ private struct SubscriptionContentView: View {
         .onChange(of: model.accountRevision, initial: true) { _, revision in
             model.accountRevisionChanged(to: revision)
         }
+        .task { await model.refreshTapped() }
     }
 
     @ViewBuilder

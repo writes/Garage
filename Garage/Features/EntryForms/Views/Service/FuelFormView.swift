@@ -42,14 +42,28 @@ struct FuelFormView: View {
 
     private func save() async -> Bool {
         guard let vehicle = appState.currentVehicle else { return false }
+        let gallonsValue = Double(gallons) ?? 0
+        let currentOdometer = Int(form.odometerReading) ?? 0
+        let mpg = await Self.mpg(vehicleId: vehicle.id, currentOdometer: currentOdometer, gallons: gallonsValue)
         let details = FuelEntry(
-            gallons: Double(gallons) ?? 0,
+            gallons: gallonsValue,
             pricePerGallon: Double(pricePerGallon) ?? 0,
             totalCost: Double(totalCost) ?? 0,
             stationName: stationName.isEmpty ? nil : stationName,
             fuelGrade: fuelGrade,
-            calculatedMPG: nil
+            calculatedMPG: mpg
         )
         return await form.save(vehicle: vehicle, entryType: .fuel, details: details)
+    }
+
+    /// The newest existing fuel entry is the previous fill-up by construction: odometer readings
+    /// are validated non-decreasing across every entry type (Validators.odometer), so whatever
+    /// EntryService.lastFuelEntry returns already has a lower odometer than the one being saved.
+    /// Nil on a first-ever fill-up (no prior fuel entry) or a fetch failure — MPG is best-effort.
+    private static func mpg(vehicleId: String, currentOdometer: Int, gallons: Double) async -> Double? {
+        guard let previous = try? await EntryService.shared.lastFuelEntry(vehicleId: vehicleId) else { return nil }
+        return FuelEntry.calculatedMPG(
+            currentOdometer: currentOdometer, previousOdometer: previous.odometerReading, gallons: gallons
+        )
     }
 }

@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -6,6 +7,7 @@ struct SettingsView: View {
     @State private var showDeleteConfirmation = false
     @State private var deletionError: AppError?
     @State private var isDeleting = false
+    @State private var isShowingManageSubscriptions = false
     // Computed (not a stored default) so the singleton — which calls Functions.functions() — is
     // constructed only when deletion actually runs, never at tab-build time. In demo/UI-test mode
     // Firebase is not configured, and deleteAccount() never touches it, so it must stay lazy.
@@ -25,7 +27,7 @@ struct SettingsView: View {
                 Button("Export History") { router.present(.export) }
                     .accessibilityIdentifier("settings.export")
                 Button(appState.isPro ? "Manage Subscription" : "Upgrade to Pro") {
-                    router.present(.subscription(.settings))
+                    manageSubscriptionTapped()
                 }
                     .accessibilityIdentifier("settings.subscription")
                 Button("Sign Out") { appState.signOut() }
@@ -59,7 +61,20 @@ struct SettingsView: View {
             } message: {
                 Text(deletionError?.errorDescription ?? "Please try again.")
             }
+            .manageSubscriptionsSheet(isPresented: $isShowingManageSubscriptions)
         }
+    }
+
+    /// Active Pro subscribers get StoreKit's real management sheet (cancel, change plan, billing
+    /// history) instead of being re-shown the acquisition paywall. Demo/UI-test Pro is simulated
+    /// (PurchaseService.uiTest — no real subscription behind it), so StoreKit has nothing to
+    /// manage there; it keeps the existing paywall-sheet fallback instead of calling into StoreKit.
+    private func manageSubscriptionTapped() {
+        guard appState.isPro, !AppRuntime.isLocalDemoMode else {
+            router.present(.subscription(.settings))
+            return
+        }
+        isShowingManageSubscriptions = true
     }
 
     private func deleteAccount() async {

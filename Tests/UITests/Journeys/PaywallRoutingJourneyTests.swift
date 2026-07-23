@@ -78,7 +78,11 @@ final class PaywallRoutingJourneyTests: JourneyTestCase {
             app.staticTexts["Pro includes up to 5 vehicles, parts, detailing, warranty and recall records, and stats."]
         )
         require(app.staticTexts["Review the current plan and price before purchasing."])
-        require(app.staticTexts["Plans are unavailable right now. Check your connection, then tap Refresh Plans."])
+        // The paywall now auto-loads offerings on appear (.task); in demo/UI-test mode there is no
+        // gateway (PurchaseService.uiTest), so that load resolves .notReady, not .plansUnavailable —
+        // the same status text a manual "Refresh Plans" tap would produce, since both call the same
+        // refreshTapped() path. This is what "unavailable" reads as before purchase now.
+        require(app.staticTexts["Subscriptions are unavailable right now. Check your connection and try again."])
     }
 
     private func routeToSubscription(from gate: XCUIElement, in app: XCUIApplication) {
