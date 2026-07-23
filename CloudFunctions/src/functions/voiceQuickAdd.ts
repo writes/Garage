@@ -45,8 +45,10 @@ export type VoiceQuickAddDependencies = {
   now?: () => Date;
 };
 
+export type VoiceQuotaReservation = { bucketId: string; uid: string };
+
 /** Pro-only daily quota. A non-Pro user is fenced with a typed permission error the client upsells. */
-export async function consumeVoiceQuota(db: QuotaFirestore, uid: string, now: Date): Promise<{ bucketId: string }> {
+export async function consumeVoiceQuota(db: QuotaFirestore, uid: string, now: Date): Promise<VoiceQuotaReservation> {
   const userRef = db.collection("users").doc(uid);
   return db.runTransaction(async (transaction) => {
     const user = await transaction.get(userRef);
@@ -66,7 +68,32 @@ export async function consumeVoiceQuota(db: QuotaFirestore, uid: string, now: Da
     transaction.set(quotaRef, {
       uid, kind: "voice_quickadd", count: count + 1, updatedAt: now.toISOString(),
     }, { merge: true });
-    return { bucketId };
+    return { bucketId, uid };
+  });
+}
+
+/**
+ * Returns a previously consumed quota unit only after a genuine upstream infrastructure
+ * failure. Mirrors refundOilAnalysisQuota's policy (claudeProxy.ts): a completed model
+ * response consumes upstream cost, even when its output is malformed or unrecognized.
+ */
+export async function refundVoiceQuota(
+  db: QuotaFirestore,
+  reservation: VoiceQuotaReservation,
+  now: Date,
+): Promise<void> {
+  const quotaRef = db.collection("usage_quotas").doc(reservation.bucketId);
+
+  await db.runTransaction(async (transaction) => {
+    const current = await transaction.get(quotaRef);
+    const count = current.exists ? safeQuotaCount(current.data()?.count) : 0;
+
+    transaction.set(quotaRef, {
+      uid: reservation.uid,
+      kind: "voice_quickadd",
+      count: Math.max(0, count - 1),
+      updatedAt: now.toISOString(),
+    }, { merge: true });
   });
 }
 
@@ -147,7 +174,7 @@ export async function voiceQuickAddRequest(
   if (!apiKey) throw new HttpsError("failed-precondition", "Anthropic API key is not configured.");
 
   const now = (dependencies.now ?? (() => new Date()))();
-  await consumeVoiceQuota(dependencies.db, request.auth.uid, now);
+  const reservation = await consumeVoiceQuota(dependencies.db, request.auth.uid, now);
 
   let response: Response;
   try {
@@ -172,11 +199,17 @@ export async function voiceQuickAddRequest(
     logger.error("voice-quickadd anthropic request failed", {
       message: error instanceof Error ? error.message : String(error),
     });
+    await refundVoiceQuota(dependencies.db, reservation, now);
     throw new HttpsError("internal", "Claude request failed.");
   }
 
   if (!response.ok) {
     logger.error("voice-quickadd anthropic request rejected", { status: response.status });
+    // Anthropic did not complete billable inference on a 5xx response. Other HTTP failures
+    // and all HTTP-OK model-output errors keep their quota unit (mirrors claudeProxy).
+    if (response.status >= 500) {
+      await refundVoiceQuota(dependencies.db, reservation, now);
+    }
     throw new HttpsError("internal", `Claude request failed with ${response.status}.`);
   }
 
