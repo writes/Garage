@@ -88,6 +88,25 @@ Verification: full `verify-ios.sh` gate + CF `tsc`/52 tests + `test:rules` 13 te
    `deleteAccount`) + rules, App Check backend enforcement, real `Secrets.swift`, RevenueCat webhook
    URL+token, ASC metadata + privacy labels. Full steps: `docs/DEPLOY_RUNBOOK.md`.
 
+## ✅ 4th pass (2026-07-23 — perf cluster + verified external-audit fixes)
+
+- **#18/#18b/#20/#22 perf/scale** — mutation-driven `VehicleDataRevisionStore` gates
+  Dashboard/Stats/Log reloads (zero fetches on tab flip-flops; live-runtime only);
+  Stats/Log honesty captions; Log cursor Load More + limit+1 sentinel; 500-doc decode
+  yields every 50. Adversarial review: 4 confirmed findings fixed (incl. compensating
+  revision bump on late backend rejection of the fire-and-forget entry batch).
+- **External Codex audit (2026-07-23) verified-engineering fixes** — vehicles composite
+  index DECLARED (was a production app-breaker: userId+displayOrder query undeclared);
+  voiceQuickAdd failure refund (claudeProxy policy, CF 75/75); CI toolchain pinned
+  (XcodeGen 2.45.3 / SwiftLint 0.63.2 — brew-floating was the audit's "nondeterminism");
+  MPG computed on fuel save (chart was reading a never-written field); offerings
+  auto-load; real StoreKit manageSubscriptionsSheet for active Pro.
+- **External-audit items NOT acted on (operator decisions per the audit itself):** device
+  scope (iPhone-only vs universal), truthful-v1 contract (attachments/dossier/edit-delete
+  scope), naming clearance + icon, packaging/pricing, signing/ASC/legal/ops. Product-shape
+  builds (zero-vehicle activation, entry edit/correction, attachments upload, PDF share)
+  await the v1-contract call.
+
 ## 🔨 Remaining — CODE (recommended next PRs)
 
 - **#18/#20/#22 — Perf/scale**: Stats over newest 100, Log search over newest 500 (comment claims
