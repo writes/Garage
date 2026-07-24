@@ -27,13 +27,14 @@ and the webhook returns 503.
 ## 2. Cloud Functions — build + deploy
 ```bash
 cd CloudFunctions
-npm ci && npm run build && npm test          # tsc clean + 69 tests
+npm ci && npm run build && npm test          # tsc clean + 102 tests
 firebase deploy --only functions --project dev     # dev first
 # smoke-test dev, then:
 firebase deploy --only functions --project prod
 ```
 Functions: `parseOilAnalysis`, `voiceQuickAdd`, `handleRevenueCatWebhook`, `lookupRecalls`,
-`deleteAccount`, `deleteVehicle` (all region `us-central1`; callables enforce App Check).
+`deleteAccount`, `deleteVehicle`, `recomputeVehicleOdometer` (Firestore trigger),
+`enforceAttachmentProGate` (Storage trigger) (region `us-central1`; callables enforce App Check).
 
 ## 3. Firestore + Storage rules
 

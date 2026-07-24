@@ -4,14 +4,20 @@ import Observation
 @MainActor
 @Observable
 final class VehicleService {
-    private enum Mode { case live, uiTest }
+    // `Mode`/`firestoreProvider`/`uidProvider`/`purgeInvoker`/`mode`/`testVehicles`: `internal`
+    // (not `private`) because VehicleService+Deletion.swift's deleteVehicle/retryPendingPurges
+    // need them — same precedent as EntryService's liveDependenciesProvider/isLocalDemoMode.
+    enum Mode { case live, uiTest }
     typealias VehicleStream = AsyncThrowingStream<VehicleSnapshotEnvelope, Error>
     static let shared = VehicleService()
     static let uiTest = VehicleService(mode: .uiTest)
-    private let firestoreProvider: () -> FirestoreService; private let purchaseServiceProvider: () -> PurchaseService
-    private let uidProvider: () -> String?; private let listenerFactoryProvider: () -> VehicleListenerFactory
-    private let purgeInvoker: (String) async throws -> Void
-    private let mode: Mode; private var testVehicles: [String: Vehicle]?
+    let firestoreProvider: () -> FirestoreService; private let purchaseServiceProvider: () -> PurchaseService
+    let uidProvider: () -> String?; private let listenerFactoryProvider: () -> VehicleListenerFactory
+    let purgeInvoker: (String) async throws -> Void
+    /// Best-effort cancellation of a deleted vehicle's local reminder notifications — see
+    /// VehicleService+Deletion.swift's deleteVehicle. Mirrors purgeInvoker's seam style.
+    let reminderNotificationCancelInvoker: (String) async -> Void
+    let mode: Mode; var testVehicles: [String: Vehicle]?
 #if DEBUG
     private let testUpdateInterceptor: ((Vehicle) async throws -> Void)?
 #endif
@@ -36,6 +42,17 @@ final class VehicleService {
         // Resolved inside the closure so constructing the service never touches Functions
         // pre-FirebaseApp.configure (the deleteAccount launch-crash lesson).
         purgeInvoker = { try await VehiclePurgeService.shared.purgeVehicle(id: $0) }
+        // Same reasoning: resolved inside the closure, never at construction time. `[mode]`
+        // (not a call-site `guard`, since VehicleService+Deletion.swift calls this from every
+        // branch of deleteVehicle so it's reachable hermetically too): must independently no-op
+        // for `.uiTest` mode — the `VehicleService.uiTest` singleton GarageApp's non-production
+        // bootstrap modes use — so a real XCUITest run never touches ReminderService/Firestore,
+        // mirroring `guard mode == .live` everywhere else in this file.
+        reminderNotificationCancelInvoker = { [mode] vehicleId in
+            guard mode == .live else { return }
+            guard let reminders = try? await ReminderService.shared.fetchAll(vehicleId: vehicleId) else { return }
+            for reminder in reminders { ReminderNotificationCoordinator.shared.cancel(id: reminder.id) }
+        }
 #if DEBUG
         testUpdateInterceptor = nil
 #endif
@@ -44,7 +61,8 @@ final class VehicleService {
     init(testVehicles: [Vehicle], purchaseService: PurchaseService, listenerFactory: VehicleListenerFactory? = nil,
          uidProvider: @escaping () -> String? = { "test-user" },
          updateInterceptor: ((Vehicle) async throws -> Void)? = nil,
-         purgeInvoker: ((String) async throws -> Void)? = nil) {
+         purgeInvoker: ((String) async throws -> Void)? = nil,
+         reminderNotificationCancelInvoker: ((String) async -> Void)? = nil) {
         mode = .uiTest
         firestoreProvider = { fatalError("Hermetic VehicleService must not resolve Firestore") }
         purchaseServiceProvider = { purchaseService }
@@ -56,6 +74,7 @@ final class VehicleService {
         self.testVehicles = Dictionary(uniqueKeysWithValues: testVehicles.map { ($0.id, $0) })
         testUpdateInterceptor = updateInterceptor
         self.purgeInvoker = purgeInvoker ?? { _ in }
+        self.reminderNotificationCancelInvoker = reminderNotificationCancelInvoker ?? { _ in }
     }
     init(listenerFactory: VehicleListenerFactory, uidProvider: @escaping () -> String? = { "test-user" }) {
         mode = .live
@@ -65,6 +84,7 @@ final class VehicleService {
         listenerFactoryProvider = { listenerFactory }
         testUpdateInterceptor = nil
         purgeInvoker = { _ in }
+        reminderNotificationCancelInvoker = { _ in }
     }
 #endif
     private var purchaseService: PurchaseService { purchaseServiceProvider() }
@@ -180,71 +200,6 @@ final class VehicleService {
     }
 }
 
-// MARK: - Deletion (RULES-1 soft delete + trusted purge)
-
-extension VehicleService {
-    /// Tombstone first (client timestamp, fire-and-forget: lands in the local cache immediately
-    /// and decodes as a real Date — a pending serverTimestamp reads as nil and would dodge the
-    /// filter), then the purge CF runs detached. Failed purges self-heal via retryPendingPurges().
-    func deleteVehicle(_ vehicle: Vehicle) async throws {
-        if var testVehicles {
-            testVehicles[vehicle.id] = nil
-            self.testVehicles = testVehicles
-            return
-        }
-#if DEBUG
-        if AppRuntime.isLocalDemoMode {
-            var tombstoned = vehicle
-            tombstoned.deletedAt = Date.now
-            DemoSessionStore.shared.save(tombstoned)
-            return
-        }
-#endif
-        guard mode == .live else { return }
-        let firestore = firestoreProvider()
-        let document = firestore.db.collection(FirestorePaths.vehicles).document(vehicle.id)
-        writeTombstone(on: document)
-        Task { [purgeInvoker] in
-            do {
-                try await purgeInvoker(vehicle.id)
-            } catch {
-                // The tombstone already hides the vehicle; the purge (subcollections + counter
-                // decrement) converges on the next sweep. Not surfaced by design.
-                AppLogger.shared.error("Vehicle purge failed for \(vehicle.id): \(error.localizedDescription)")
-                CrashReporter.shared.record(error, context: "vehicle-purge")
-            }
-        }
-    }
-
-    /// Non-async on purpose: Swift 6 forbids the completion-handler overload inside async
-    /// contexts, and the async variant is ack-gated (it would suspend forever offline).
-    private func writeTombstone(on document: DocumentReference) {
-        document.setData(["deletedAt": Timestamp(date: .now)], merge: true) { error in
-            if let error {
-                AppLogger.shared.error("Vehicle tombstone rejected: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    /// Best-effort self-heal: re-purges any still-tombstoned vehicle (e.g. an offline delete).
-    func retryPendingPurges() async {
-        guard mode == .live, testVehicles == nil, !AppRuntime.isLocalDemoMode,
-              let uid = uidProvider() else { return }
-        do {
-            let firestore = firestoreProvider()
-            let query = firestore.db.collection(FirestorePaths.vehicles).whereField("userId", isEqualTo: uid)
-            let snapshot = try await query.limit(to: 20).getDocuments()
-            for document in snapshot.documents where document.data()["deletedAt"] != nil {
-                do {
-                    try await purgeInvoker(document.documentID)
-                } catch {
-                    AppLogger.shared.error(
-                        "Vehicle purge retry failed for \(document.documentID): \(error.localizedDescription)"
-                    )
-                }
-            }
-        } catch {
-            AppLogger.shared.error("Vehicle purge sweep failed: \(error.localizedDescription)")
-        }
-    }
-}
+// Deletion (RULES-1 soft delete + trusted purge): VehicleService+Deletion.swift — split out to
+// stay under the file cap; needs `mode`/`testVehicles`/`firestoreProvider`/`purgeInvoker`/
+// `reminderNotificationCancelInvoker` above, hence their `internal` (not `private`) access.

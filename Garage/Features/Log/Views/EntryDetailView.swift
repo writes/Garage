@@ -11,6 +11,13 @@ struct EntryDetailView: View {
     @State private var isShowingDeleteConfirmation = false
     @State private var isDeleting = false
     @State private var deletionError: AppError?
+    @State private var previewItem: PDFPreviewItem?
+    /// The attachment path currently downloading for preview, if any — at most one at a time.
+    /// Review fix (concurrent-tap race): a second tap while a download is already in flight is
+    /// ignored rather than starting a second download that would race PDFPreviewTempFile.write's
+    /// shared-temp-dir wipe against whatever the first tap's live QuickLook sheet is rendering.
+    @State private var inFlightPreviewPath: String?
+    @State private var previewErrorsByPath: [String: AppError] = [:]
 
     init(
         entry: FirestoreEntry,
@@ -83,6 +90,35 @@ struct EntryDetailView: View {
         } message: {
             Text(deletionError?.errorDescription ?? "Please try again.")
         }
+        // This view owns the download/temp-write/preview lifecycle for every attachment row
+        // (loadPreview below) so there's exactly one sheet/one temp-file/one in-flight-download
+        // owner for the whole screen, regardless of how many attachment rows exist — rows
+        // themselves are dumb (AttachmentDetailRow.swift). The onChange below (not a trailing
+        // `onDismiss:` closure — swiftlint's multiple_closures_with_trailing_closure forbids two
+        // trailing closures on one call) clears the temp file on both swipe-to-dismiss and the
+        // "Done" button, since either path sets previewItem back to nil.
+        .sheet(item: $previewItem) { item in
+            NavigationStack {
+                QuickLookPreview(url: item.url)
+                    .navigationTitle(item.filename)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { previewItem = nil }
+                                .accessibilityIdentifier("entry.detail.attachment.preview.done")
+                        }
+                    }
+            }
+        }
+        .onChange(of: previewItem) { oldValue, newValue in
+            if oldValue != nil && newValue == nil {
+                PDFPreviewTempFile.removeAll()
+                // Review fix (late-arrival race): a download that was still in flight when the
+                // user dismissed must not be allowed to reopen the sheet once it finally
+                // completes — see loadPreview's inFlightPreviewPath guard below.
+                inFlightPreviewPath = nil
+            }
+        }
     }
 
     private var attachmentsSection: some View {
@@ -91,8 +127,42 @@ struct EntryDetailView: View {
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.Colors.textSecondary)
             ForEach(entry.attachmentPaths, id: \.self) { path in
-                AttachmentDetailRow(path: path, entryAttachmentService: entryAttachmentService)
+                AttachmentDetailRow(
+                    path: path,
+                    entryAttachmentService: entryAttachmentService,
+                    isLoading: inFlightPreviewPath == path,
+                    previewError: previewErrorsByPath[path],
+                    onTap: { attachmentTapped(path: path) }
+                )
             }
+        }
+    }
+
+    /// Ignored (not queued/replaced) if a download for ANY path — same or different — is already
+    /// in flight: exactly one preview download at a time keeps PDFPreviewTempFile's single shared
+    /// temp slot race-free.
+    private func attachmentTapped(path: String) {
+        guard Self.shouldStartPreviewDownload(tappedPath: path, inFlightPath: inFlightPreviewPath) else { return }
+        inFlightPreviewPath = path
+        previewErrorsByPath[path] = nil
+        Task { await loadPreview(path: path) }
+    }
+
+    private func loadPreview(path: String) async {
+        defer {
+            if inFlightPreviewPath == path { inFlightPreviewPath = nil }
+        }
+        do {
+            let data = try await entryAttachmentService.downloadData(for: path)
+            let filename = (path as NSString).lastPathComponent
+            let url = try PDFPreviewTempFile.write(data, filename: filename)
+            // Late-arrival guard: only honor this download if the user hasn't already dismissed
+            // (or otherwise moved past) it — see the onChange(of: previewItem) handler above.
+            guard Self.shouldApplyPreviewResult(for: path, inFlightPath: inFlightPreviewPath) else { return }
+            previewItem = PDFPreviewItem(id: path, url: url, filename: filename)
+        } catch {
+            guard Self.shouldApplyPreviewResult(for: path, inFlightPath: inFlightPreviewPath) else { return }
+            previewErrorsByPath[path] = AppError(from: error)
         }
     }
 
@@ -113,59 +183,21 @@ struct EntryDetailView: View {
     }
 }
 
-/// PDFs render as a labeled row (icon + filename) — no QuickLook this pass (future work). Images
-/// resolve a downloadURL and show an async thumbnail; failures fall back to a placeholder icon
-/// rather than an empty gap.
-private struct AttachmentDetailRow: View {
-    let path: String
-    let entryAttachmentService: EntryAttachmentService
-    @State private var downloadURL: URL?
-
-    private var isPDF: Bool { path.hasSuffix(".pdf") }
-
-    var body: some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            if isPDF {
-                Image(systemName: "doc.fill")
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                Text((path as NSString).lastPathComponent)
-                    .font(Theme.Typography.caption)
-                    .lineLimit(1)
-            } else {
-                thumbnail
-                Text("Photo")
-                    .font(Theme.Typography.caption)
-            }
-            Spacer()
-        }
-        .frame(minHeight: 44)
-        .accessibilityElement(children: .combine)
-        .task {
-            guard !isPDF else { return }
-            downloadURL = try? await entryAttachmentService.downloadURL(for: path)
-        }
+extension EntryDetailView {
+    /// Whether a tap on `tappedPath` should start a new download. Pure/static and exposed for
+    /// direct unit testing — a SwiftUI View's @State-driven logic otherwise isn't reachable from
+    /// a test without a UI-hosting harness. Mirrors ReminderNotificationCoordinator.plan's
+    /// "exposed for testing" precedent.
+    static func shouldStartPreviewDownload(tappedPath: String, inFlightPath: String?) -> Bool {
+        inFlightPath == nil
     }
 
-    @ViewBuilder
-    private var thumbnail: some View {
-        if let downloadURL {
-            AsyncImage(url: downloadURL) { phase in
-                if let image = phase.image {
-                    image.resizable().scaledToFill()
-                } else {
-                    placeholderIcon
-                }
-            }
-            .frame(width: 44, height: 44)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
-        } else {
-            ProgressView()
-                .frame(width: 44, height: 44)
-        }
-    }
-
-    private var placeholderIcon: some View {
-        Image(systemName: "photo")
-            .foregroundStyle(Theme.Colors.textSecondary)
+    /// Whether a just-completed download for `path` should still be applied (set `previewItem`
+    /// or surface its error). False once the in-flight slot has moved on — cleared either by a
+    /// later dismissal or, since only one download can ever be in flight, never by another tap —
+    /// so a late-arriving download from an abandoned tap can't reopen a sheet the user already
+    /// dismissed.
+    static func shouldApplyPreviewResult(for path: String, inFlightPath: String?) -> Bool {
+        inFlightPath == path
     }
 }

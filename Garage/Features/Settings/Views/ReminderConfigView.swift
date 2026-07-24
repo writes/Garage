@@ -40,6 +40,10 @@ struct ReminderConfigView: View {
             }
         }
         .task(id: vehicle.id) { await viewModel.load(vehicleId: vehicle.id) }
+        // Review finding: this view/VM instance is reused across vehicle switches (the .task
+        // above just reloads `reminders` for the new vehicle), so a stale "Reminder saved"/
+        // notifications-off hint from the PREVIOUS vehicle stayed visible after switching.
+        .onChange(of: vehicle.id) { _, _ in didSave = false }
 #if DEBUG
         .task(id: demoStore.revision) { await viewModel.load(vehicleId: vehicle.id) }
 #endif
@@ -81,9 +85,18 @@ struct ReminderConfigView: View {
                 .keyboardType(.numberPad)
                 .accessibilityIdentifier("reminder.form.months")
                 .focused($isEditingField)
+            Toggle("Remind me on a date", isOn: $viewModel.hasDueDate)
+                .accessibilityIdentifier("reminder.form.hasDueDate")
+            if viewModel.hasDueDate {
+                DatePicker(
+                    "Due date", selection: $viewModel.dueDate, in: Date.now..., displayedComponents: .date
+                )
+                    .datePickerStyle(.compact)
+                    .accessibilityIdentifier("reminder.form.dueDate")
+            }
             Button("Save Reminder") {
                 isEditingField = false
-                Task { didSave = await viewModel.save(vehicleId: vehicle.id) }
+                Task { didSave = await viewModel.save(vehicleId: vehicle.id, vehicleName: vehicle.displayName) }
             }
             .accessibilityIdentifier("reminder.form.save")
             if didSave {
@@ -91,6 +104,12 @@ struct ReminderConfigView: View {
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.success)
                     .accessibilityIdentifier("reminder.form.saved")
+            }
+            if didSave && viewModel.hasDueDate && viewModel.isNotificationAuthorizationDenied {
+                Text("Notifications are off, so this reminder won't send an alert. Enable them in Settings.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .accessibilityIdentifier("reminder.form.notificationsHint")
             }
         }
     }

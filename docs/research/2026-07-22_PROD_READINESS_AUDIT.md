@@ -155,13 +155,32 @@ Verification: full `verify-ios.sh` gate + CF `tsc`/52 tests + `test:rules` 13 te
 - **CF `enforceAttachmentProGate`** — onObjectFinalized reaper deletes non-Pro uploads
   (Storage rules can't read Firestore; the client gate alone is cosmetic). CF suite 102/102.
 
+## ✅ 9th pass (2026-07-24 — reminders fire, PDF preview, review hardening)
+
+- **Reminders DELIVER now (local notifications)** — UNUserNotificationCenter behind a fakeable
+  `NotificationScheduling` protocol; schedule/replace/cancel wired into every ReminderService
+  mutation; lazy auth prompt (non-blocking save); date field added to reminder config (default
+  tomorrow 09:00, past days unpickable, canonical-instant normalization). Adversarial review
+  caught + fixed: silent past-due default (BLOCKER), stale notifications after vehicle/account
+  deletion (cancelAll on sign-out + pre-tombstone per-vehicle cancel seam), repeat reminders
+  never rescheduling (successor minted on markCompleted), permission dialog blocking save,
+  cross-vehicle hint leaks. Push/APNs remains operator-gated; local-only is the v1 lane.
+- **PDF attachments open in QuickLook** — downloadData on EntryAttachmentService (25MB cap =
+  storage-rules ceiling), single-owner preview state in EntryDetailView. Review caught + fixed:
+  concurrent-tap temp-file race (BLOCKER), late-download sheet reopen, temp-file residue across
+  process death/sign-out (removeAll at launch + sign-out).
+- **Verified-null sweeps:** perf items #18/#20/#22 confirmed ALREADY SHIPPED (pass-4 commit
+  `3d99bfb` — revision-gated refetch, honest cap footers + Load More, chunked decode); the 3
+  open Dependabot alerts (all medium, npm transitive) are upstream-blocked (MCP SDK, pubsub,
+  google-gax chains; two of three under devDep firebase-tools) — no non-major fix exists;
+  `overrides` forcing is a documented-but-unapplied operator option.
+
 ## 🔨 Remaining — CODE (recommended next PRs)
 
-- **#18/#20/#22 — Perf/scale**: Stats over newest 100, Log search over newest 500 (comment claims
-  full history); Dashboard re-runs 5 Firestore fetches on every tab switch; up to 500 docs decoded
-  on the main actor. Also (from the pass-3 adversarial review): PDF export now accumulates the
-  full date-window history in memory and renders synchronously on the MainActor — fine at current
+- **PDF export scale** (from the pass-3 adversarial review): export accumulates the full
+  date-window history in memory and renders synchronously on the MainActor — fine at current
   scale, needs chunked/off-main rendering for multi-thousand-entry vehicles.
+  (~~#18/#20/#22 Dashboard/Stats/Log perf~~ — confirmed shipped in pass 4, see 9th pass.)
 - **TRANSFER destination healing** (pass-3 review, operator-keyed): a transfer destination grant
   is fail-closed skipped when no expiration is available (correct vs perpetual Pro), and the skip
   is now retryable + alerted — but the durable heal is a RevenueCat REST lookup
