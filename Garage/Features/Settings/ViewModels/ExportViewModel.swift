@@ -5,10 +5,15 @@ import Observation
 @Observable
 final class ExportViewModel {
     typealias EntryPageFetch = @MainActor (EntryQuery, Int, EntryCursor?) async throws -> EntryPage
-    private static let exportPageSize = 500
-    private static let csvFilenamePrefix = "garage-raw-export-"
-    private static var liveCSVURLs: Set<URL> = []
-    private struct ActiveCSVArtifact {
+    // `internal` (not `private`): ExportViewModel+CSVArtifact.swift's appendCSVPages reads this too.
+    static let exportPageSize = 500
+    // `internal` (not `private`): ExportViewModel+CSVArtifact.swift's tracking/cleanup helpers
+    // need this prefix for the launch-time abandoned-file sweep.
+    static let csvFilenamePrefix = "garage-raw-export-"
+    static var liveCSVURLs: Set<URL> = []
+    /// `internal` (not `private`), same reason: constructed/read/written from the CSV-artifact
+    /// extension file's trackCSV/cleanupCSV/cancelActiveCSV helpers.
+    struct ActiveCSVArtifact {
         let operationID: UUID
         let writer: CSVExportService.RawExportWriter
         let url: URL
@@ -18,13 +23,21 @@ final class ExportViewModel {
     private let csvExportService: CSVExportService
     private let analytics: any AnalyticsTracking
     private let pdfEntryFetch: EntryPageFetch
-    private let csvPageFetch: EntryPageFetch
+    // `internal` (not `private`): read by ExportViewModel+CSVArtifact.swift's appendCSVPages.
+    let csvPageFetch: EntryPageFetch
     private let csvURLFactory: () -> URL
-    private var pdfAuthorization: PDFExportAuthorization?
-    private var csvAuthorization: ExportSessionAuthorization?
+    // `internal` (not `private`), matching the EntryService+Mutations split precedent:
+    // ExportViewModel+PDFArtifact.swift needs these to persist/expose/discard the PDF temp file.
+    let pdfURLFactory: () -> URL
+    private(set) var pdfAuthorization: PDFExportAuthorization?
+    var pdfExportURL: URL?
+    static var livePDFURLs: Set<URL> = []
+    // `internal` (not `private`): written by ExportViewModel+CSVArtifact.swift's discardCSVExport.
+    var csvAuthorization: ExportSessionAuthorization?
     private var observedSession: ExportSessionAuthorization?
     private var activeExportOperationID: UUID?
-    private var activeCSVArtifact: ActiveCSVArtifact?
+    // `internal` (not `private`): tracked by ExportViewModel+CSVArtifact.swift's trackCSV/cleanupCSV.
+    var activeCSVArtifact: ActiveCSVArtifact?
     private static let recordPDFExcludedSections: Set<ReportSection> = [.photoGallery, .receipts]
     var recordPDFSections: [ReportSection] {
         ReportSection.allCases.filter { !Self.recordPDFExcludedSections.contains($0) }
@@ -33,7 +46,8 @@ final class ExportViewModel {
     var startDate = Calendar.current.date(byAdding: .year, value: -1, to: Date.now) ?? Date.now
     var endDate = Date.now
     private(set) var exportData: Data?
-    private(set) var csvExportURL: URL?
+    // `internal` (not `private(set)`): ExportViewModel+CSVArtifact.swift's discardCSVExport clears this.
+    var csvExportURL: URL?
     private(set) var error: AppError?
     var isExporting: Bool { activeExportOperationID != nil }
     init(
@@ -46,6 +60,10 @@ final class ExportViewModel {
         csvURLFactory: @escaping () -> URL = {
             FileManager.default.temporaryDirectory
                 .appending(path: "garage-raw-export-\(UUID().uuidString).csv")
+        },
+        pdfURLFactory: @escaping () -> URL = {
+            FileManager.default.temporaryDirectory
+                .appending(path: "garage-record-pdf-\(UUID().uuidString).pdf")
         }
     ) {
         self.entryService = entryService
@@ -59,8 +77,10 @@ final class ExportViewModel {
             try await entryService.fetchEntries(query: query, limit: limit, after: cursor)
         }
         self.csvURLFactory = csvURLFactory
+        self.pdfURLFactory = pdfURLFactory
         self.selectedSections = Set(ReportSection.allCases).subtracting(Self.recordPDFExcludedSections)
         Self.removeAbandonedCSVExports()
+        Self.removeAbandonedPDFExports()
     }
     isolated deinit { discardExportArtifacts() }
     func buildPDF(
@@ -92,6 +112,10 @@ final class ExportViewModel {
                 selectedSections: selectedSections,
                 includeReceipts: false
             )
+            // Persisted before pdfAuthorization is set, so a write failure leaves both
+            // authorizedPDFData(for:) and authorizedPDFURL(for:) unauthorized/nil together —
+            // no half-authorized state for ExportView to render.
+            try persistPDFArtifact()
             pdfAuthorization = expectedAuthorization
             analytics.track(.exportPDF(entryCount: resolvedEntries.count))
         } catch {
@@ -134,7 +158,7 @@ final class ExportViewModel {
             pdfAuthorization = nil
             analytics.track(.exportCSV(entryCount: entryCount))
         } catch {
-            Self.removeCSVFile(url)
+            Self.removeExportFile(url)
             guard operationIsCurrent(operationID),
                   authorization() == expectedAuthorization else { return }
             self.error = AppError(from: error)
@@ -162,89 +186,48 @@ final class ExportViewModel {
         pdfAuthorization = nil
         error = nil
         discardCSVExport()
+        discardPDFExport()
     }
 }
 
 private extension ExportViewModel {
-    private func operationIsCurrent(_ operationID: UUID) -> Bool {
+    func filterByDate(_ entries: [FirestoreEntry], start: Date, end: Date) -> [FirestoreEntry] {
+        entries.filter { $0.entryDate >= start && $0.entryDate <= end }
+    }
+}
+
+// MARK: - Operation-lifetime tracking shared by buildPDF, buildCSV, and both artifact extensions
+
+extension ExportViewModel {
+    func operationIsCurrent(_ operationID: UUID) -> Bool {
         activeExportOperationID == operationID
     }
-    private func finishOperation(ifCurrent operationID: UUID) {
+    func finishOperation(ifCurrent operationID: UUID) {
         if operationIsCurrent(operationID) { activeExportOperationID = nil }
     }
-    private func trackCSV(writer: CSVExportService.RawExportWriter, url: URL, operationID: UUID) {
-        activeCSVArtifact = .init(operationID: operationID, writer: writer, url: url)
-        Self.liveCSVURLs.insert(url)
-    }
-    private func releaseActiveCSV(ifCurrent operationID: UUID) {
-        if activeCSVArtifact?.operationID == operationID { activeCSVArtifact = nil }
-    }
+}
 
-    private func cancelActiveCSV() {
-        guard let artifact = activeCSVArtifact else { return }
-        cleanupCSV(writer: artifact.writer, url: artifact.url, operationID: artifact.operationID)
-    }
+// MARK: - Shared temp-export-file plumbing (not `private extension`: ExportViewModel+PDFArtifact.swift calls both)
 
-    private func cleanupCSV(
-        writer: CSVExportService.RawExportWriter, url: URL, operationID: UUID
-    ) {
-        writer.cancel()
-        releaseActiveCSV(ifCurrent: operationID)
-        Self.liveCSVURLs.remove(url)
-        Self.removeCSVFile(url)
-    }
-
-    private func appendCSVPages(
-        vehicleID: String,
-        writer: CSVExportService.RawExportWriter,
-        operationID: UUID,
-        expectedAuthorization: ExportSessionAuthorization,
-        authorization: @MainActor () -> ExportSessionAuthorization?
-    ) async throws -> Int? {
-        var cursor: EntryCursor?
-        var entryCount = 0
-        repeat {
-            guard operationIsCurrent(operationID),
-                  authorization() == expectedAuthorization else { return nil }
-            let page = try await csvPageFetch(
-                EntryQuery(vehicleId: vehicleID), Self.exportPageSize, cursor
-            )
-            guard operationIsCurrent(operationID),
-                  authorization() == expectedAuthorization else { return nil }
-            try writer.append(entries: page.entries)
-            entryCount += page.entries.count
-            cursor = page.nextCursor
-        } while cursor != nil
-        return entryCount
-    }
-
-    private func discardCSVExport() {
-        csvAuthorization = nil
-        guard let csvExportURL else { return }
-        Self.liveCSVURLs.remove(csvExportURL)
-        Self.removeCSVFile(csvExportURL)
-        self.csvExportURL = nil
-    }
-
-    private static func removeAbandonedCSVExports() {
+extension ExportViewModel {
+    /// Shared by the CSV sweep above and the PDF sweep in ExportViewModel+PDFArtifact.swift: on
+    /// launch, delete any temp export file left behind by a prior process death (crash, force
+    /// quit) that never got a chance to run discardExportArtifacts().
+    static func removeAbandonedExports(prefix: String, extension fileExtension: String, liveURLs: Set<URL>) {
         let directory = FileManager.default.temporaryDirectory
         guard let urls = try? FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: nil
         ) else { return }
-        for url in urls where url.lastPathComponent.hasPrefix(csvFilenamePrefix)
-            && url.pathExtension == "csv" && !liveCSVURLs.contains(url) {
-            removeCSVFile(url)
+        for url in urls where url.lastPathComponent.hasPrefix(prefix)
+            && url.pathExtension == fileExtension && !liveURLs.contains(url) {
+            removeExportFile(url)
         }
     }
 
-    private static func removeCSVFile(_ url: URL) {
+    static func removeExportFile(_ url: URL) {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         do { try FileManager.default.removeItem(at: url) } catch {
-            AppLogger.shared.error("Failed to remove a temporary CSV export.")
+            AppLogger.shared.error("Failed to remove a temporary export file.")
         }
-    }
-
-    private func filterByDate(_ entries: [FirestoreEntry], start: Date, end: Date) -> [FirestoreEntry] {
-        entries.filter { $0.entryDate >= start && $0.entryDate <= end }
     }
 }

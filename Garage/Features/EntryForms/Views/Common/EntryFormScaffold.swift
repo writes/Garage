@@ -105,6 +105,13 @@ struct EntryFormScaffold<Content: View>: View {
     @ViewBuilder var content: Content
 
     @Environment(AppRouter.self) private var router
+    @Environment(AppState.self) private var appState
+    /// Belt-and-braces for the zero-vehicle audit finding: AppRouter.present already redirects
+    /// .entryForm to vehicle creation when there are no vehicles, so this only fires in the
+    /// narrow window where a vehicle is removed (e.g. from another device) while this sheet is
+    /// still open — the per-form `save()` closures each `guard let vehicle = appState
+    /// .currentVehicle else { return false }` silently, with no other visible feedback.
+    @State private var noVehicleError: AppError?
 
     init(
         title: String,
@@ -151,6 +158,9 @@ struct EntryFormScaffold<Content: View>: View {
             if let error = viewModel.error {
                 ErrorBanner(error: error)
                     .accessibilityIdentifier("entry.form.error")
+            } else if let noVehicleError {
+                ErrorBanner(error: noVehicleError)
+                    .accessibilityIdentifier("entry.form.error")
             }
             PrimaryButton(title: viewModel.isSaving ? "Saving..." : "Save Entry") {
                 Task {
@@ -194,8 +204,11 @@ struct EntryFormScaffold<Content: View>: View {
 
     private func saveIfAdmitted() async {
         guard let mutationGate else {
-            if await onSave() {
+            let didSave = await onSave()
+            if didSave {
                 router.dismissSheet()
+            } else {
+                flagMissingVehicleIfNeeded()
             }
             return
         }
@@ -204,7 +217,17 @@ struct EntryFormScaffold<Content: View>: View {
             return
         }
         let didSave = await onSave()
-        guard didSave, mutationGate.canCommitSave(epoch: epoch) else { return }
+        guard didSave, mutationGate.canCommitSave(epoch: epoch) else {
+            flagMissingVehicleIfNeeded()
+            return
+        }
         router.dismissSheet()
+    }
+
+    /// Only surfaces the banner when the failed save is otherwise unexplained (no viewModel
+    /// error already latched) and the vehicle really is gone — never masks a real save error.
+    private func flagMissingVehicleIfNeeded() {
+        guard viewModel.error == nil, appState.currentVehicle == nil else { return }
+        noVehicleError = .validation("Select a vehicle first")
     }
 }

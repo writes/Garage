@@ -27,6 +27,10 @@ final class DemoSessionStore {
     private var partOverlay: [String: SparePart] = [:]
     private var detailingOverlay: [String: DetailingRecord] = [:]
     private var profileOverlay: ProfileFields = [:]
+    /// Entries/reminders have no `deletedAt` field for the seed+overlay merge to key off (unlike
+    /// Vehicle), so deletion here is tracked as its own tombstone set instead.
+    private var deletedEntryIDs: Set<String> = []
+    private var deletedReminderIDs: Set<String> = []
     private(set) var revision = 0
 
     init() {}
@@ -36,9 +40,15 @@ final class DemoSessionStore {
         revision += 1
     }
 
+    func deleteEntry(id: String) {
+        entryOverlay[id] = nil
+        deletedEntryIDs.insert(id)
+        revision += 1
+    }
+
     func entries(for vehicleId: String) -> [FirestoreEntry] {
         merged(SeedData.entries(for: vehicleId), with: entryOverlay)
-            .filter { $0.vehicleId == vehicleId }
+            .filter { $0.vehicleId == vehicleId && !deletedEntryIDs.contains($0.id) }
             .sorted { $0.entryDate > $1.entryDate }
     }
 
@@ -57,9 +67,15 @@ final class DemoSessionStore {
         revision += 1
     }
 
+    func deleteReminder(id: String) {
+        reminderOverlay[id] = nil
+        deletedReminderIDs.insert(id)
+        revision += 1
+    }
+
     func reminders(for vehicleId: String) -> [Reminder] {
         merged(SeedData.reminders(for: vehicleId), with: reminderOverlay)
-            .filter { $0.vehicleId == vehicleId }
+            .filter { $0.vehicleId == vehicleId && !deletedReminderIDs.contains($0.id) }
     }
 
     func save(_ part: SparePart) {

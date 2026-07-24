@@ -18,12 +18,14 @@ struct EntryPage { let entries: [FirestoreEntry], nextCursor: EntryCursor? }
 struct EntryCursor { let document: DocumentSnapshot?
     let entryDate: Date, documentID: String }
 @MainActor @Observable final class EntryService { static let shared = EntryService()
-    private let liveDependenciesProvider: () -> EntryServiceDependencies
-    private let isLocalDemoMode: () -> Bool
-    private var testEntries: [FirestoreEntry]?
+    // `internal` (not `private`), matching the EntryCursor precedent above: EntryService+Mutations.swift
+    // needs these to route deleteEntry through the same testEntries/demo/live modes as save().
+    let liveDependenciesProvider: () -> EntryServiceDependencies
+    let isLocalDemoMode: () -> Bool
+    var testEntries: [FirestoreEntry]?
 #if DEBUG
     private let hermeticSaveFailure: ((FirestoreEntry) -> Error?)?
-    private let usesHermeticSave: Bool
+    let usesHermeticSave: Bool
 #endif
     private init() {
         isLocalDemoMode = { AppRuntime.isLocalDemoMode }
@@ -64,7 +66,7 @@ struct EntryCursor { let document: DocumentSnapshot?
         liveDependenciesProvider = { dependencies }
     }
 #endif
-    private var firestore: FirestoreService { FirestoreService.shared }
+    var firestore: FirestoreService { FirestoreService.shared }
     func save(_ entry: FirestoreEntry,
               updatingVehicle vehicle: Vehicle, session: SyncSessionToken) throws -> EntrySaveDisposition {
         if var testEntries {

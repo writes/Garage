@@ -12,4 +12,7 @@ struct Reminder: Codable, Identifiable, Sendable, Equatable {
     var notes: String?
     var isProFeature: Bool = false
     var createdAt: Date?
+    /// Nil means still outstanding. Backward-compatible: existing documents decode with this
+    /// unset, i.e. still upcoming — matching their pre-lifecycle behavior.
+    var completedAt: Date?
 }

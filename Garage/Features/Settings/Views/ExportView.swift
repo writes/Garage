@@ -71,10 +71,7 @@ struct ExportView: View {
                     VStack(alignment: .leading, spacing: Theme.Spacing.md) {
                         Text("Record PDF")
                             .font(Theme.Typography.title)
-                        Text(
-                            "This record-only PDF does not include photo, receipt, " +
-                                "or invoice files. Sharing and saving are unavailable in this beta."
-                        )
+                        Text("This record-only PDF does not include photo, receipt, or invoice files.")
                             .font(Theme.Typography.body)
                             .foregroundStyle(Theme.Colors.textSecondary)
                         DatePicker("Start date", selection: $viewModel.startDate, displayedComponents: .date)
@@ -116,22 +113,19 @@ struct ExportView: View {
                 } else {
                     ProGateView(
                         title: "Record PDF is part of Pro",
-                        message: "Upgrade to generate a record PDF. Photo, receipt, and invoice files are not " +
-                            "included, and sharing or saving are unavailable in this beta.",
+                        message: "Upgrade to generate a record PDF. Photo, receipt, and invoice files " +
+                            "are not included.",
                         actionIdentifier: "export.gate.cta"
                     ) {
                         router.present(.subscription(.exportPDF))
                     }
                 }
 
-                if let data = viewModel.authorizedPDFData(for: pdfAuthorization(for: vehicle)) {
-                    Text(
-                        "A record PDF was generated in this session. Sharing and saving are unavailable " +
-                            "in this beta. \(data.count.formatted()) bytes"
-                    )
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .accessibilityIdentifier("export.pdfResult")
+                if let url = viewModel.authorizedPDFURL(for: pdfAuthorization(for: vehicle)) {
+                    ShareLink(item: url) {
+                        Label("Share Record PDF", systemImage: "square.and.arrow.up")
+                    }
+                    .accessibilityIdentifier("export.sharePDF")
                 }
                 if let error = viewModel.error {
                     ErrorBanner(error: error)

@@ -2,6 +2,10 @@ import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
+// WARNING (2026-07-23 release audit): this component is UNWIRED dead code and must stay that way
+// until a real upload pipeline exists — it records synthetic/local FILENAMES into
+// attachmentPaths without uploading any bytes to Storage, so wiring it into a form would ship
+// fake "attachments" that persist and export but reference nothing.
 struct AttachmentPicker: View {
     @Binding var attachmentPaths: [String]
     @State private var selectedPhoto: PhotosPickerItem?

@@ -36,6 +36,9 @@ final class AppState {
     var userProfile: UserProfile?
     var syncStatus: SyncStatus = .idle
     var isBootstrapping = false
+    /// Zero-vehicle-gate tri-state: "not yet loaded" must never read as "confirmed zero
+    /// vehicles". True only after a real load; reset on sign-out/re-auth.
+    private(set) var hasCompletedInitialVehicleLoad = false
     private var authenticationRevision = 0
 
     init(
@@ -55,8 +58,7 @@ final class AppState {
         self.crashReporter = crashReporter ?? CrashReporter.shared
         self.profileStore = profileStore ?? ProfileStoreFactory.makeDefault()
         analytics.setEnabled(false)
-        // Crashlytics rides the same consent lifecycle as Analytics (#23): fail closed until a
-        // profile load confirms the stored opt-in.
+        // Crashlytics rides Analytics's consent lifecycle (#23): fail closed until profile load.
         self.crashReporter.setEnabled(false)
     }
 
@@ -103,6 +105,7 @@ final class AppState {
             userProfile = nil
             vehicles = []
             currentVehicle = nil
+            hasCompletedInitialVehicleLoad = false
             return
         }
 
@@ -110,16 +113,15 @@ final class AppState {
             userProfile = nil
             vehicles = []
             currentVehicle = nil
-            // Defense-in-depth: an account switch must not carry the prior user's accent even if
-            // the new profile load fails before applying its own themeID.
+            hasCompletedInitialVehicleLoad = false
+            // Defense-in-depth: an account switch must not carry the prior user's accent.
             AccentStore.shared.scheme = .classic
         }
 
         await loadProfile(uid: uid, expectedAuthenticationRevision: expectedAuthenticationRevision)
         guard authenticationMatches(expectedAuthenticationRevision, uid: uid) else { return }
         await loadVehicles(uid: uid, expectedAuthenticationRevision: expectedAuthenticationRevision)
-        // Self-heal offline deletes (RULES-1): re-purge anything still tombstoned, off the
-        // critical path.
+        // Self-heal offline deletes (RULES-1): re-purge anything still tombstoned, off critical path.
         Task { await vehicleService.retryPendingPurges() }
     }
 
@@ -134,15 +136,12 @@ final class AppState {
         }
     }
 
-    /// Drives vehicles/currentVehicle from the live Firestore listener (#9) so edits from other
-    /// devices or screens land without a manual refresh. Stale-auth snapshots are impossible
-    /// here: the stream is torn down on UID change (VehicleSwitcher's .task(id:) scope) before
-    /// this can run.
+    /// Drives vehicles/currentVehicle from the live Firestore listener (#9). Stale-auth snapshots
+    /// are impossible: the stream tears down on UID change before this can run.
     func applyVehicleSnapshot(_ envelope: VehicleSnapshotEnvelope) {
         var loadedVehicles = envelope.vehicles
         if !envelope.decodeFailureDocumentIDs.isEmpty {
-            // Keep the last-known copy of a transiently undecodable doc so it neither vanishes
-            // nor steals the selection; the sync badge surfaces the decode diagnostic.
+            // Keeps a transiently undecodable doc's last-known copy; the sync badge surfaces it.
             let failed = Set(envelope.decodeFailureDocumentIDs)
             let retained = vehicles.filter { vehicle in
                 failed.contains(vehicle.id) && !loadedVehicles.contains(where: { $0.id == vehicle.id })
@@ -153,9 +152,9 @@ final class AppState {
         applyLoadedVehicles(loadedVehicles)
     }
 
-    // Deliberately NO seed fallback here: live-listener envelopes feed this path, and reseeding
-    // on empty resurrected ghosts after deleting the last vehicle. Seeds live in uiTest/demo modes.
+    // No seed fallback: reseeding on empty resurrects ghosts after deleting the last vehicle.
     private func applyLoadedVehicles(_ loadedVehicles: [Vehicle]) {
+        hasCompletedInitialVehicleLoad = true
         vehicles = loadedVehicles
         if let currentVehicle,
            let matchingVehicle = loadedVehicles.first(where: { $0.id == currentVehicle.id }) {
@@ -170,7 +169,7 @@ final class AppState {
         let expectedRevision = authService.authenticationRevision
         do {
             let loadedVehicles = try await vehicleService.fetchVehicles()
-            // Same stale-fetch guard as loadVehicles (no resurrecting a prior account's list).
+            // Same stale-fetch guard as loadVehicles.
             guard authenticationMatches(expectedRevision, uid: uid) else { return }
             applyLoadedVehicles(loadedVehicles)
         } catch {
@@ -179,7 +178,7 @@ final class AppState {
         }
     }
 
-    /// Tombstones the vehicle (it disappears immediately) and purges it server-side (RULES-1).
+    /// Tombstones the vehicle (disappears immediately), purges server-side (RULES-1).
     func deleteVehicle(_ vehicle: Vehicle) async throws {
         try await vehicleService.deleteVehicle(vehicle)
         await refreshVehicles()
@@ -200,8 +199,8 @@ final class AppState {
             return
         }
         userProfile = profile
-        // Consent authority: a mid-session opt-out lands here, and BOTH trackers must follow —
-        // Crashlytics persisted its collection flag when enabled, so skipping this leaks non-fatals.
+        // Consent authority: a mid-session opt-out lands here; BOTH trackers must follow, or
+        // Crashlytics (which persists its collection flag) leaks non-fatals.
         analytics.setEnabled(!profile.analyticsOptOut)
         crashReporter.setEnabled(!profile.analyticsOptOut)
         AccentStore.shared.apply(themeID: profile.themeID)
@@ -241,6 +240,7 @@ final class AppState {
             userProfile = nil
             vehicles = []
             currentVehicle = nil
+            hasCompletedInitialVehicleLoad = false
             AccentStore.shared.scheme = .classic
             authenticationRevision += 1
         } catch {

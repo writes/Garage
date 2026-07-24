@@ -19,8 +19,15 @@ struct GarageApp: App {
 
         switch bootstrapMode {
         case .uiTest, .localDemo, .localSetupRequired:
-            _appState = State(initialValue: Self.makeNonProductionAppState(for: bootstrapMode))
-            _router = State(initialValue: AppRouter())
+            let appState = Self.makeNonProductionAppState(for: bootstrapMode)
+            _appState = State(initialValue: appState)
+            // Review finding: "not yet loaded" must never read as "confirmed zero vehicles" — an
+            // existing signed-in user with vehicles would otherwise get misrouted to vehicle
+            // creation on cold launch, before bootstrap's first fetch/listener snapshot lands.
+            // The gate only fires once a load has actually completed and found zero vehicles.
+            _router = State(initialValue: AppRouter(
+                hasVehicles: { !appState.hasCompletedInitialVehicleLoad || !appState.vehicles.isEmpty }
+            ))
             return
         case .production:
             break
@@ -37,8 +44,13 @@ struct GarageApp: App {
         }
 
         Purchases.configure(withAPIKey: Secrets.revenueCatAPIKey)
-        _appState = State(initialValue: AppState())
-        _router = State(initialValue: AppRouter())
+        let appState = AppState()
+        _appState = State(initialValue: appState)
+        // See the matching comment in the non-production branch above: the gate must not treat
+        // "not yet loaded" as "confirmed zero vehicles".
+        _router = State(initialValue: AppRouter(
+            hasVehicles: { !appState.hasCompletedInitialVehicleLoad || !appState.vehicles.isEmpty }
+        ))
     }
 
     var body: some Scene {

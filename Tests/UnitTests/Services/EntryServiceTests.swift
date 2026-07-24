@@ -130,6 +130,18 @@ import Testing
         #expect(disposition == .entryOnlyAcceptedForHermeticStore)
         #expect(saved.map(\.id) == ["hermetic"])
     }
+    @Test func deleteEntry_hermeticArrayPathRemovesOnlyTheMatchingID() async throws {
+        let service = EntryService(testEntries: [makeEntry(id: "keep"), makeEntry(id: "delete-me")])
+        try await service.deleteEntry(makeEntry(id: "delete-me"), updatingVehicle: nil)
+        let remaining = try await service.fetchRecent(vehicleId: "vehicle")
+        #expect(remaining.map(\.id) == ["keep"])
+    }
+    @Test func deleteEntry_hermeticArrayPathToleratesAnUnknownID() async throws {
+        let service = EntryService(testEntries: [makeEntry(id: "keep")])
+        try await service.deleteEntry(makeEntry(id: "never-saved"), updatingVehicle: nil)
+        let remaining = try await service.fetchRecent(vehicleId: "vehicle")
+        #expect(remaining.map(\.id) == ["keep"])
+    }
     @Test func productionProviderUsesSharedIdentityWhileInjectedDependenciesStayIsolated() {
         let injected = isolatedSyncService()
         let batch = BatchSubmitterSpy(), order = OrderRecorder()
@@ -140,7 +152,8 @@ import Testing
     }
 }
 // Query/pagination reads (filter, subsetting, ordering, cursor pagination incl. the #4
-// limit+1 sentinel) live in EntryServiceQueryTests.swift — split out to stay under the file cap.
+// limit+1 sentinel) live in EntryServiceQueryTests.swift; delete-time vehicle-odometer
+// reconciliation lives in EntryServiceDeletionTests.swift — both split out to stay under the cap.
 private extension EntryServiceTests {
     func activeSync() -> (SyncService, SyncSessionToken) { let sync = isolatedSyncService()
         return (sync, sync.activateSession(uid: "user")) }
