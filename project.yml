@@ -56,6 +56,14 @@ targets:
         NSMicrophoneUsageDescription: Speak a log entry and Garage drafts it for you to review.
         NSSpeechRecognitionUsageDescription: Turns your spoken log entry into text you confirm before saving.
         CFBundleDisplayName: Garage
+        # XcodeGen writes a hardcoded CFBundleVersion of "1" when it is not declared here — it
+        # does NOT derive it from CURRENT_PROJECT_VERSION. Without these two lines the build
+        # number is frozen at 1 forever and every upload after the first is rejected by App
+        # Store Connect with ENTITY_ERROR.ATTRIBUTE.INVALID.DUPLICATE ("bundle version must be
+        # higher than the previously uploaded version"). Pointing the plist at the build
+        # settings makes bumping CURRENT_PROJECT_VERSION actually take effect.
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
         # App uses only standard/exempt encryption (HTTPS/TLS); declaring this avoids the
         # "Missing Compliance" hold on every TestFlight/App Store upload.
         ITSAppUsesNonExemptEncryption: false
@@ -70,7 +78,7 @@ targets:
         # the upload. Verified 2026-07-24 against a real signed archive that had a valid
         # 1024x1024 icon asset on disk and no icon in the product.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        CURRENT_PROJECT_VERSION: 1
+        CURRENT_PROJECT_VERSION: 2
         MARKETING_VERSION: 1.0
         DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
         ENABLE_USER_SCRIPT_SANDBOXING: NO

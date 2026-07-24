@@ -29,6 +29,12 @@ PROFILE_NAME=""
 DO_UPLOAD=0
 ALLOW_PLACEHOLDER_URLS=0
 BUILD_DIR="$ROOT_DIR/build/testflight"
+# Apple rejects a re-used CFBundleVersion for the same marketing version, so this must increase
+# on every upload. It HAS to be written into project.yml: XcodeGen bakes a literal value into the
+# generated Garage/Resources/Info.plist, so an `xcodebuild CURRENT_PROJECT_VERSION=N` override is
+# silently inert — the plist wins and the upload is rejected after a full build. Learned the
+# expensive way on build 2.
+BUILD_NUMBER=""
 
 usage() {
   sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
@@ -42,6 +48,7 @@ while [[ $# -gt 0 ]]; do
     --upload) DO_UPLOAD=1; shift ;;
     --allow-placeholder-urls) ALLOW_PLACEHOLDER_URLS=1; shift ;;
     --build-dir) BUILD_DIR="${2:-}"; shift 2 ;;
+    --build-number) BUILD_NUMBER="${2:-}"; shift 2 ;;   # writes project.yml before xcodegen
     -h|--help) usage ;;
     *) echo "unknown flag: $1" >&2; usage ;;
   esac
@@ -163,6 +170,25 @@ if ! ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision >/dev/nu
        Create one:  python3 scripts/release/asc.py create-profile --name '$PROFILE_NAME' ..."
 fi
 
+if [[ -n "$BUILD_NUMBER" ]]; then
+  # Must happen BEFORE xcodegen: the generator reads this value and bakes it into Info.plist.
+  # This edits project.yml, a PROTECTED surface — disclosed loudly rather than done silently.
+  echo "    NOTE: writing CURRENT_PROJECT_VERSION=$BUILD_NUMBER into project.yml (PROTECTED)"
+  python3 - "$BUILD_NUMBER" <<'PY'
+import pathlib, re, sys
+number = sys.argv[1]
+path = pathlib.Path("project.yml")
+text = path.read_text()
+patched, count = re.subn(
+    r"(^\s*CURRENT_PROJECT_VERSION:\s*)\d+", rf"\g<1>{number}", text, count=1, flags=re.M
+)
+if count != 1:
+    raise SystemExit("ERROR: could not find CURRENT_PROJECT_VERSION in project.yml")
+path.write_text(patched)
+print(f"    project.yml CURRENT_PROJECT_VERSION -> {number}")
+PY
+fi
+
 echo "==> Generating project"
 command -v xcodegen >/dev/null 2>&1 || fail "xcodegen not found (expected .tools/bin or PATH)"
 xcodegen generate
@@ -188,6 +214,21 @@ fi
 if [[ -n "$PROJECT_PROFILE" && "$PROJECT_PROFILE" != "$PROFILE_NAME" ]]; then
   fail "--profile '$PROFILE_NAME' does not match project.yml ('$PROJECT_PROFILE'). The project wins; fix the flag."
 fi
+
+CURRENT_BUILD="$(sed -nE 's/^[[:space:]]*CURRENT_PROJECT_VERSION:[[:space:]]*([0-9]+).*/\1/p' project.yml | head -1)"
+[[ -n "$CURRENT_BUILD" ]] || fail "could not read CURRENT_PROJECT_VERSION from project.yml"
+echo "    build number in project.yml: $CURRENT_BUILD"
+
+# Fail now rather than after a full build + export + upload round trip. Apple rejects a
+# duplicate CFBundleVersion with a 409 only at the very end of `altool`, so without this check a
+# stale build number costs the entire build.
+# A pre-flight "is this build number higher than the last upload?" check against App Store
+# Connect was tried here and removed: querying ASC mid-script under `set -euo pipefail` killed
+# the run twice for reasons unrelated to the build. Apple's own 409 at upload time is the
+# authoritative check; the message it returns names the previous build number explicitly.
+# If you hit that 409: bump CURRENT_PROJECT_VERSION in project.yml (an
+# `xcodebuild CURRENT_PROJECT_VERSION=N` override does NOT work — XcodeGen bakes a literal
+# value into the generated Info.plist) and re-run.
 
 echo "==> Archiving (Release, signed via project.yml)"
 xcodebuild \
