@@ -1,0 +1,933 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Underhood — Design Concept</title>
+<style>
+  :root{
+    --bg:#EDEFF2; --surface:#F8F9FB; --surface2:#FFFFFF;
+    --ink:#182027; --muted:#5A6875; --line:rgba(24,32,39,.14);
+    --accent:#F2A33C; --accent-ink:#8F5A0D;
+    --ok:#1E7A55; --bad:#B23A21;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0D1217; --surface:#141B23; --surface2:#1B2430;
+      --ink:#EAEFF3; --muted:#8B99A9; --line:rgba(234,239,243,.10);
+      --accent:#F2A33C; --accent-ink:#F2A33C;
+      --ok:#4CC38A; --bad:#E4572E;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0D1217; --surface:#141B23; --surface2:#1B2430;
+    --ink:#EAEFF3; --muted:#8B99A9; --line:rgba(234,239,243,.10);
+    --accent:#F2A33C; --accent-ink:#F2A33C;
+    --ok:#4CC38A; --bad:#E4572E;
+  }
+  :root[data-theme="light"]{
+    --bg:#EDEFF2; --surface:#F8F9FB; --surface2:#FFFFFF;
+    --ink:#182027; --muted:#5A6875; --line:rgba(24,32,39,.14);
+    --accent:#F2A33C; --accent-ink:#8F5A0D;
+    --ok:#1E7A55; --bad:#B23A21;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px 96px}
+  a{color:var(--accent-ink)}
+
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .eyebrow b{color:var(--accent-ink);font-weight:600}
+  h2{font-size:15px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 6px;font-weight:800}
+  .sect{margin-top:84px}
+  .sect-head{display:flex;align-items:baseline;gap:14px;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:28px}
+  .sect-head .code{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em}
+  .lede{color:var(--muted);max-width:62ch;margin:0}
+
+  /* ── masthead ─────────────────────────── */
+  .masthead{padding:72px 0 0}
+  .brandrow{display:flex;align-items:center;gap:14px;margin-bottom:40px}
+  .wordmark{font-weight:800;font-size:20px;letter-spacing:.06em}
+  .wordmark span{color:var(--accent-ink)}
+  .hero-title{font-weight:800;font-size:clamp(2.4rem,6.4vw,4.6rem);line-height:1.02;letter-spacing:-.025em;margin:0 0 22px;max-width:16ch;text-wrap:balance;text-transform:uppercase}
+  .hero-title em{font-style:normal;color:var(--accent-ink)}
+  .hero-sub{max-width:58ch;color:var(--muted);font-size:17px;margin:0}
+  .hero-meta{display:flex;flex-wrap:wrap;gap:20px;margin-top:34px;font-family:var(--mono);font-size:11.5px;color:var(--muted);letter-spacing:.05em}
+  .hero-meta span::before{content:"— ";color:var(--accent-ink)}
+
+  /* ── principles ───────────────────────── */
+  .grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}
+  .chamfer{position:relative;background:var(--line);clip-path:polygon(0 0,calc(100% - 18px) 0,100% 18px,100% 100%,0 100%)}
+  .chamfer>.inner{position:relative;margin:1px;background:var(--surface);clip-path:polygon(0 0,calc(100% - 17.5px) 0,100% 17.5px,100% 100%,0 100%);padding:20px 20px 22px;height:calc(100% - 2px)}
+  .p-tag{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--accent-ink);text-transform:uppercase}
+  .p-name{font-weight:800;font-size:17px;margin:8px 0 8px;letter-spacing:.01em}
+  .p-body{font-size:13.5px;color:var(--muted);margin:0}
+
+  /* ── prototype layout ─────────────────── */
+  .proto{display:grid;grid-template-columns:minmax(280px,1fr) auto;gap:48px;align-items:start}
+  @media (max-width:900px){.proto{grid-template-columns:1fr}.phone-col{justify-self:center}}
+  .try{display:flex;flex-direction:column;gap:0;counter-reset:step}
+  .try-item{display:flex;gap:16px;padding:18px 0;border-bottom:1px solid var(--line)}
+  .try-item:last-child{border-bottom:none}
+  .try-num{counter-increment:step;flex:none;width:34px;height:34px;display:grid;place-items:center;font-family:var(--mono);font-size:12px;border:1px solid var(--line);color:var(--accent-ink)}
+  .try-num::before{content:counter(step,decimal-leading-zero)}
+  .try-item h3{margin:2px 0 4px;font-size:14.5px;font-weight:700}
+  .try-item p{margin:0;font-size:13px;color:var(--muted)}
+
+  /* ── phone ────────────────────────────── */
+  .phone-col{position:sticky;top:28px}
+  .phone{
+    /* the app commits to one visual world: engine bay, dark */
+    --pbg:#0D1217; --psurf:#161E28; --psurf2:#1E2836; --pline:rgba(234,239,243,.09);
+    --pink:#EAEFF3; --pmut:#8B99A9; --pamber:#F2A33C; --pok:#4CC38A; --pbad:#E4572E;
+    width:388px;height:812px;background:var(--pbg);border-radius:46px;
+    border:1px solid rgba(234,239,243,.16);
+    box-shadow:0 30px 80px rgba(0,0,0,.45), inset 0 0 0 6px #05080B;
+    position:relative;overflow:hidden;color:var(--pink);
+    font-family:var(--sans)
+  }
+  @media (max-width:430px){.phone{transform:scale(.86);transform-origin:top center;margin-bottom:-110px}}
+  .notch{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:112px;height:28px;background:#05080B;border-radius:16px;z-index:40}
+  .statusbar{position:absolute;top:16px;left:0;right:0;display:flex;justify-content:space-between;padding:0 30px;font-family:var(--mono);font-size:11px;color:var(--pmut);z-index:39}
+
+  .screens{position:absolute;inset:0;padding:58px 0 84px}
+  .screen{position:absolute;inset:58px 0 84px;overflow-y:auto;padding:8px 18px 24px;display:none;scrollbar-width:none}
+  .screen::-webkit-scrollbar{display:none}
+  .screen.active{display:block}
+
+  .p-eyebrow{font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--pmut)}
+  .p-eyebrow.amber{color:var(--pamber)}
+  .veh-head{display:flex;justify-content:space-between;align-items:center;margin:6px 0 16px}
+  .veh-head .vname{font-weight:800;font-size:17px;letter-spacing:.01em}
+  .avatar{width:30px;height:30px;border-radius:50%;background:var(--psurf2);display:grid;place-items:center;font-family:var(--mono);font-size:10px;color:var(--pamber);border:1px solid var(--pline)}
+
+  /* odometer */
+  .odo-block{margin:4px 0 18px}
+  .odo{display:flex;align-items:baseline;gap:10px;margin-top:6px}
+  .odo-digits{display:flex;gap:3px}
+  .digit{width:30px;height:46px;background:var(--psurf);border:1px solid var(--pline);overflow:hidden;position:relative}
+  .digit .col{display:flex;flex-direction:column;transition:transform 1.1s cubic-bezier(.22,1,.3,1);font-family:var(--mono);font-size:30px;font-weight:600;text-align:center;line-height:46px}
+  .digit.comma{width:12px;background:none;border:none;font-family:var(--mono);font-size:26px;line-height:46px;text-align:center;color:var(--pmut)}
+  .odo-unit{font-family:var(--mono);font-size:13px;color:var(--pmut)}
+  .odo-src{font-family:var(--mono);font-size:10.5px;color:var(--pmut);margin-top:8px}
+  .odo-src b{color:var(--pink);font-weight:600}
+
+  /* service lights */
+  .lights{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px}
+  .light{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;letter-spacing:.05em;padding:7px 10px;background:var(--psurf);border:1px solid var(--pline)}
+  .light .dot{width:7px;height:7px;border-radius:50%}
+  .light.warn .dot{background:var(--pamber);box-shadow:0 0 8px var(--pamber)}
+  .light.bad .dot{background:var(--pbad);box-shadow:0 0 8px var(--pbad)}
+  .light.ok .dot{background:var(--pok)}
+  .light.warn{color:var(--pamber)} .light.bad{color:var(--pbad)} .light.ok{color:var(--pok)}
+
+  /* hood assembly */
+  .hood-assembly{position:relative;height:340px;margin-bottom:18px;perspective:1300px}
+  .bay-under{position:absolute;inset:0;padding-top:2px;opacity:0;transition:opacity .5s ease .18s;pointer-events:none}
+  .hood-assembly.open .bay-under{opacity:1;pointer-events:auto}
+  .hoodcard{
+    position:absolute;inset:0;z-index:5;background:linear-gradient(160deg,var(--psurf2),var(--psurf));
+    border:1px solid var(--pline);clip-path:polygon(0 0,calc(100% - 22px) 0,100% 22px,100% 100%,0 100%);
+    padding:20px;transform-origin:top center;transition:transform .8s cubic-bezier(.3,.9,.3,1),opacity .6s ease;
+    display:flex;flex-direction:column;justify-content:space-between;cursor:pointer
+  }
+  .hood-assembly.open .hoodcard{transform:rotateX(64deg) translateY(-4%);opacity:.04;pointer-events:none}
+  .hood-title{font-weight:800;font-size:22px;letter-spacing:.01em;margin-top:6px}
+  .hood-stats{display:flex;gap:22px;font-family:var(--mono);font-size:10.5px;color:var(--pmut)}
+  .hood-stats b{display:block;font-size:16px;color:var(--pink);font-weight:600}
+  .latch{align-self:flex-start;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--pamber);border:1px solid var(--pamber);padding:9px 14px;background:none;cursor:pointer}
+  .latch:focus-visible{outline:2px solid var(--pamber);outline-offset:2px}
+  .closebay{background:none;border:none;color:var(--pmut);font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;padding:6px 0;margin-top:2px}
+
+  .bay-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  .tile{background:var(--psurf);border:1px solid var(--pline);clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%);padding:11px 12px;text-align:left;cursor:pointer;color:var(--pink);font-family:var(--sans)}
+  .tile:focus-visible{outline:2px solid var(--pamber);outline-offset:2px}
+  .tile .t-name{font-weight:700;font-size:12.5px;display:flex;justify-content:space-between;align-items:center}
+  .tile .t-due{font-family:var(--mono);font-size:9.5px;margin-top:3px}
+  .tile .t-last{font-family:var(--mono);font-size:9.5px;color:var(--pmut);margin-top:2px}
+  .tile .bar{height:3px;background:var(--pline);margin-top:8px;position:relative}
+  .tile .bar i{position:absolute;left:0;top:0;bottom:0;display:block}
+  .tile.warn .t-due{color:var(--pamber)} .tile.warn .bar i{background:var(--pamber)}
+  .tile.bad .t-due{color:var(--pbad)} .tile.bad .bar i{background:var(--pbad)}
+  .tile.ok .t-due{color:var(--pok)} .tile.ok .bar i{background:var(--pok)}
+
+  /* recent list + logbook rows */
+  .rowhead{display:flex;justify-content:space-between;align-items:baseline;margin:16px 0 8px}
+  .linkish{background:none;border:none;color:var(--pamber);font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+  .entry{background:var(--psurf);border:1px solid var(--pline);padding:12px 14px;margin-bottom:8px}
+  .entry.flash{animation:flash 2.4s ease}
+  @keyframes flash{0%{border-color:var(--pamber);box-shadow:0 0 0 1px var(--pamber)}100%{border-color:var(--pline);box-shadow:none}}
+  .e-top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+  .e-name{font-weight:700;font-size:13.5px}
+  .e-mi{font-family:var(--mono);font-size:11px;color:var(--pmut)}
+  .e-sub{font-family:var(--mono);font-size:10.5px;color:var(--pmut);margin-top:3px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .chip{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;padding:4px 7px;border:1px solid var(--pline);color:var(--pmut)}
+  .chip.you{color:var(--pok);border-color:rgba(76,195,138,.35)}
+  .chip.scan{color:var(--pamber);border-color:rgba(242,163,60,.4)}
+  .chip.voice{color:#7FB8E8;border-color:rgba(127,184,232,.35)}
+  .chip.evi{color:var(--pink);border-color:var(--pline)}
+  .correction{display:none;margin-top:10px;border-left:2px solid var(--pamber);padding:8px 10px;background:rgba(242,163,60,.06)}
+  .entry.expanded .correction{display:block}
+  .correction .c-line{font-family:var(--mono);font-size:10.5px;color:var(--pamber)}
+  .correction .c-old{color:var(--pmut);text-decoration:line-through}
+  .correction p{margin:6px 0 0;font-size:11px;color:var(--pmut)}
+  .c-toggle{background:none;border:none;color:var(--pamber);font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;padding:0;margin-top:8px}
+
+  /* logbook top */
+  .lb-title{font-weight:800;font-size:24px;margin:2px 0 12px}
+  .search{display:flex;align-items:center;gap:8px;background:var(--psurf);border:1px solid var(--pline);padding:10px 12px;margin-bottom:10px}
+  .search input{background:none;border:none;color:var(--pink);font-size:13px;width:100%;outline:none;font-family:var(--sans)}
+  .filters{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+  .fchip{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:6px 10px;border:1px solid var(--pline);background:none;color:var(--pmut);cursor:pointer}
+  .fchip.on{color:var(--pbg);background:var(--pamber);border-color:var(--pamber);font-weight:700}
+  .yearmark{font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--pmut);margin:14px 0 8px}
+
+  /* record screen */
+  .rec-title{font-weight:800;font-size:24px;margin:2px 0 4px}
+  .rec-sub{font-size:12.5px;color:var(--pmut);margin:0 0 16px}
+  .rec-opts{display:grid;gap:10px}
+  .rec-opt{background:var(--psurf);border:1px solid var(--pline);clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,0 100%);padding:16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;color:var(--pink);text-align:left;font-family:var(--sans)}
+  .rec-opt:focus-visible{outline:2px solid var(--pamber);outline-offset:2px}
+  .rec-opt .o-name{font-weight:700;font-size:14px}
+  .rec-opt .o-sub{font-family:var(--mono);font-size:10px;color:var(--pmut);margin-top:3px}
+  .rec-opt .o-go{font-family:var(--mono);color:var(--pamber);font-size:14px}
+  .stage{display:none}
+  .stage.active{display:block}
+  .scanning{display:flex;flex-direction:column;align-items:center;gap:14px;padding:44px 0}
+  .scanline{width:150px;height:190px;border:1px dashed var(--pline);position:relative;overflow:hidden;background:var(--psurf)}
+  .scanline::after{content:"";position:absolute;left:0;right:0;height:2px;background:var(--pamber);box-shadow:0 0 14px var(--pamber);animation:scan 1.6s ease-in-out infinite}
+  @keyframes scan{0%{top:8%}50%{top:88%}100%{top:8%}}
+  .scanning p{font-family:var(--mono);font-size:11px;color:var(--pmut);margin:0}
+  .draft{border:1px solid rgba(242,163,60,.45);background:rgba(242,163,60,.05);padding:16px}
+  .draft-banner{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--pamber);margin-bottom:12px}
+  .dfield{display:flex;justify-content:space-between;border-bottom:1px solid var(--pline);padding:9px 0;font-size:13px}
+  .dfield:last-of-type{border-bottom:none}
+  .dfield .k{color:var(--pmut);font-family:var(--mono);font-size:11px}
+  .dfield .v{font-weight:600;font-family:var(--mono);font-size:12.5px}
+  .draft-note{font-size:11px;color:var(--pmut);margin:12px 0 14px}
+  .btnrow{display:flex;gap:10px}
+  .btn{flex:1;padding:13px;font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;border:1px solid var(--pline);background:none;color:var(--pink)}
+  .btn.primary{background:var(--pamber);border-color:var(--pamber);color:#0D1217;font-weight:700}
+  .btn:focus-visible{outline:2px solid var(--pamber);outline-offset:2px}
+
+  /* bay screen */
+  .vehcard{background:linear-gradient(160deg,var(--psurf2),var(--psurf));border:1px solid var(--pline);clip-path:polygon(0 0,calc(100% - 18px) 0,100% 18px,100% 100%,0 100%);padding:16px;margin-bottom:10px}
+  .vehcard.dim{opacity:.75}
+  .vc-top{display:flex;justify-content:space-between;align-items:baseline}
+  .vc-name{font-weight:800;font-size:16px}
+  .vc-badge{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--pamber);border:1px solid rgba(242,163,60,.4);padding:3px 7px}
+  .vc-stats{display:flex;gap:18px;font-family:var(--mono);font-size:10px;color:var(--pmut);margin-top:12px}
+  .vc-stats b{display:block;font-size:14px;color:var(--pink);font-weight:600}
+  .shelf{margin-top:18px}
+  .part{display:flex;justify-content:space-between;align-items:center;background:var(--psurf);border:1px solid var(--pline);padding:12px 14px;margin-bottom:8px}
+  .part .p-n{font-weight:700;font-size:13px}
+  .part .p-s{font-family:var(--mono);font-size:10px;color:var(--pmut);margin-top:2px}
+  .part .p-w{font-family:var(--mono);font-size:10px;color:var(--pok)}
+
+  /* handover screen */
+  .ho-toggle{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--pline)}
+  .ho-toggle label{font-size:13px;font-weight:600;cursor:pointer}
+  .ho-toggle .sub{display:block;font-family:var(--mono);font-size:9.5px;color:var(--pmut);font-weight:400;margin-top:2px}
+  .switch{position:relative;width:40px;height:22px;flex:none}
+  .switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+  .switch .knob{position:absolute;inset:0;background:var(--psurf2);border:1px solid var(--pline);border-radius:22px;transition:background .2s}
+  .switch .knob::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--pmut);transition:transform .2s,background .2s}
+  .switch input:checked+.knob{background:rgba(242,163,60,.25);border-color:var(--pamber)}
+  .switch input:checked+.knob::after{transform:translateX(18px);background:var(--pamber)}
+  .switch input:focus-visible+.knob{outline:2px solid var(--pamber);outline-offset:2px}
+  .dossier-prev{margin-top:16px;background:#0A0E12;border:1px solid var(--pline);clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,0 100%);padding:18px}
+  .dp-eyebrow{font-family:var(--mono);font-size:8.5px;letter-spacing:.2em;color:var(--pamber);text-transform:uppercase}
+  .dp-name{font-weight:800;font-size:19px;margin:6px 0 2px}
+  .dp-span{font-family:var(--mono);font-size:10px;color:var(--pmut)}
+  .dp-counts{display:flex;gap:18px;margin-top:14px;padding-top:12px;border-top:1px solid var(--pline);font-family:var(--mono);font-size:9.5px;color:var(--pmut)}
+  .dp-counts b{display:block;font-size:15px;color:var(--pink);font-weight:600}
+  .dp-sections{margin-top:12px;display:flex;flex-direction:column;gap:5px}
+  .dp-sec{font-family:var(--mono);font-size:10px;color:var(--pmut);display:flex;justify-content:space-between}
+  .dp-sec.off{display:none}
+  .ho-honest{font-size:11px;color:var(--pmut);margin:14px 0;border-left:2px solid var(--pline);padding-left:10px}
+  .pro-chip{font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--pamber);border:1px solid rgba(242,163,60,.4);padding:3px 7px;text-transform:uppercase}
+
+  /* dock */
+  .dock{position:absolute;bottom:0;left:0;right:0;height:84px;background:rgba(10,14,18,.92);backdrop-filter:blur(10px);border-top:1px solid var(--pline);display:flex;align-items:stretch;z-index:30}
+  .dock button{flex:1;background:none;border:none;color:var(--pmut);font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding-bottom:14px}
+  .dock button svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.6}
+  .dock button.on{color:var(--pamber)}
+  .dock button:focus-visible{outline:2px solid var(--pamber);outline-offset:-4px}
+  .dock .fab{flex:0 0 74px;position:relative}
+  .dock .fab i{width:46px;height:46px;background:var(--pamber);color:#0D1217;display:grid;place-items:center;font-size:24px;font-style:normal;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%);margin-bottom:2px;font-weight:700}
+
+  /* sheet + toast */
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:35;background:var(--psurf2);border-top:1px solid var(--pline);border-radius:20px 20px 0 0;padding:18px 20px 28px;transform:translateY(108%);transition:transform .45s cubic-bezier(.3,.9,.3,1)}
+  .sheet.open{transform:translateY(0)}
+  .sheet .grab{width:38px;height:4px;border-radius:2px;background:var(--pline);margin:0 auto 14px}
+  .sheet h4{margin:0;font-size:17px;font-weight:800}
+  .sheet .s-facts{margin:12px 0;display:grid;gap:7px}
+  .sheet .s-facts div{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--pmut)}
+  .sheet .s-facts b{color:var(--pink);font-weight:600}
+  .spark{width:100%;height:44px;margin:4px 0 10px}
+  .spark polyline{fill:none;stroke:var(--pamber);stroke-width:1.5}
+  .spark .grid-l{stroke:var(--pline);stroke-width:1}
+  .toast{position:absolute;left:20px;right:20px;bottom:98px;z-index:36;background:var(--pamber);color:#0D1217;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.04em;padding:12px 14px;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%);opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s;pointer-events:none}
+  .toast.show{opacity:1;transform:translateY(0)}
+
+  /* ── identity section ─────────────────── */
+  .pal{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+  .swatch{border:1px solid var(--line)}
+  .swatch .chipc{height:74px}
+  .swatch .meta{padding:10px 12px;background:var(--surface)}
+  .swatch .meta b{display:block;font-size:12.5px}
+  .swatch .meta span{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .typerow{display:grid;grid-template-columns:180px 1fr;gap:18px;padding:18px 0;border-bottom:1px solid var(--line);align-items:baseline}
+  @media (max-width:640px){.typerow{grid-template-columns:1fr;gap:6px}}
+  .typerow .role{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .spec-display{font-weight:800;font-size:26px;letter-spacing:-.02em;text-transform:uppercase}
+  .spec-data{font-family:var(--mono);font-size:18px;font-variant-numeric:tabular-nums}
+  .spec-body{font-size:15px}
+  .typerow .note{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:4px;text-transform:none;letter-spacing:0}
+
+  /* IA + registry */
+  .ia{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+  .ia .node{border:1px solid var(--line);background:var(--surface);padding:16px}
+  .ia .node b{display:block;font-size:14px;margin-bottom:4px}
+  .ia .node span{font-size:12.5px;color:var(--muted)}
+  .ia .node .tag{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;color:var(--accent-ink);text-transform:uppercase;display:block;margin-bottom:8px}
+  .reg{width:100%;border-collapse:collapse;font-size:13.5px}
+  .reg th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:10px 14px 10px 0;border-bottom:1px solid var(--line)}
+  .reg td{padding:12px 14px 12px 0;border-bottom:1px solid var(--line);vertical-align:top}
+  .reg td:first-child{font-weight:700;white-space:nowrap}
+  .reg .st{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+  .reg .st.ship{color:var(--ok)} .reg .st.new{color:var(--accent-ink)}
+  .tablewrap{overflow-x:auto}
+
+  .foot{margin-top:84px;border-top:1px solid var(--line);padding-top:22px;font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px 28px}
+
+  @media (prefers-reduced-motion: reduce){
+    .hoodcard,.digit .col,.sheet,.toast{transition:none}
+    .scanline::after{animation:none;top:50%}
+    .entry.flash{animation:none}
+  }
+</style>
+
+<div class="wrap">
+
+  <!-- ═════════ MASTHEAD ═════════ -->
+  <header class="masthead">
+    <div class="brandrow">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+        <path d="M4 25 H30" stroke="var(--accent-ink)" stroke-width="2.4" stroke-linecap="square"/>
+        <path d="M6 25 L24 9 H30" stroke="var(--ink)" stroke-width="2.4" fill="none" stroke-linecap="square"/>
+        <path d="M17 25 L17 15.5" stroke="var(--ink)" stroke-width="2" stroke-dasharray="2.5 3"/>
+      </svg>
+      <div class="wordmark">UNDER<span>HOOD</span></div>
+    </div>
+    <p class="eyebrow"><b>Design concept UH-24</b> · Garage naming workstream · 2026-07-24</p>
+    <h1 class="hero-title">Know what's <em>under the hood.</em></h1>
+    <p class="hero-sub">Every car wears paint over its truth. Underhood is the maintenance record that lifts the lid — a layered, inspection-lit logbook where every number is a recorded fact, every correction stays visible, and the whole history opens for the next owner exactly as far as you allow.</p>
+    <div class="hero-meta">
+      <span>Native SwiftUI · dark-first</span>
+      <span>Built on shipped Garage infrastructure</span>
+      <span>No invented health scores</span>
+      <span>Interactive prototype below</span>
+    </div>
+  </header>
+
+  <!-- ═════════ PRINCIPLES ═════════ -->
+  <section class="sect">
+    <div class="sect-head"><span class="code">UH-A</span><h2>Design principles</h2></div>
+    <div class="grid4">
+      <div class="chamfer"><div class="inner">
+        <span class="p-tag">Principle</span>
+        <h3 class="p-name">The Reveal</h3>
+        <p class="p-body">The signature motion is lifting the hood: surfaces hinge open to expose the layer beneath. Depth is the metaphor — nothing important lives on the paint.</p>
+      </div></div>
+      <div class="chamfer"><div class="inner">
+        <span class="p-tag">Principle</span>
+        <h3 class="p-name">Inspection Light</h3>
+        <p class="p-body">One amber lamp in a dark bay. The accent is spent only where attention belongs: due work, drafts awaiting review, the active control.</p>
+      </div></div>
+      <div class="chamfer"><div class="inner">
+        <span class="p-tag">Principle</span>
+        <h3 class="p-name">Machined</h3>
+        <p class="p-body">Chamfered corners like milled parts, hairline rules, monospaced tabular numerals. The interface reads like a well-kept tool, not a brochure.</p>
+      </div></div>
+      <div class="chamfer"><div class="inner">
+        <span class="p-tag">Principle</span>
+        <h3 class="p-name">Facts Only</h3>
+        <p class="p-body">Every status traces to a recorded fact plus interval math — "last done at 78,400 mi, due in 780." No synthetic health scores, no "verified" theater.</p>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- ═════════ PROTOTYPE ═════════ -->
+  <section class="sect">
+    <div class="sect-head"><span class="code">UH-B</span><h2>Working prototype</h2></div>
+    <div class="proto">
+      <div>
+        <p class="lede">Five destinations, live interactions, one fictional car. Everything below actually works — walk it in order:</p>
+        <div class="try" style="margin-top:10px">
+          <div class="try-item"><span class="try-num" aria-hidden="true"></span><div>
+            <h3>Pop the hood</h3><p>On the Hood screen, hit the latch. The vehicle card hinges open and the Systems Bay is revealed beneath it — the app's thesis as a gesture.</p>
+          </div></div>
+          <div class="try-item"><span class="try-num" aria-hidden="true"></span><div>
+            <h3>Tap a system</h3><p>Each bay tile is a fact card: last service mileage, interval, due math. Tap one for its history and a direct path to record work.</p>
+          </div></div>
+          <div class="try-item"><span class="try-num" aria-hidden="true"></span><div>
+            <h3>Scan a receipt</h3><p>Hit the amber chamfer in the dock → "Scan it." Watch the draft ritual: parsed fields stay amber and uncommitted until you press <em>Commit to Logbook</em>. Then watch the odometer roll and the coolant light go green.</p>
+          </div></div>
+          <div class="try-item"><span class="try-num" aria-hidden="true"></span><div>
+            <h3>Interrogate the logbook</h3><p>Filter by type, then expand the brake entry's correction stamp — the superseded mileage stays struck through, never erased.</p>
+          </div></div>
+          <div class="try-item"><span class="try-num" aria-hidden="true"></span><div>
+            <h3>Build the handover</h3><p>On Handover, flip the switches — the dossier preview rebuilds live: page counts, record counts, included sections. What leaves your account is exactly what you can see.</p>
+          </div></div>
+        </div>
+      </div>
+
+      <div class="phone-col">
+      <div class="phone" id="phone">
+        <div class="notch" aria-hidden="true"></div>
+        <div class="statusbar" aria-hidden="true"><span>9:41</span><span>UNDERHOOD</span></div>
+
+        <div class="screens">
+
+          <!-- ── HOOD ── -->
+          <section class="screen active" data-screen="hood" aria-label="Hood — home">
+            <div class="veh-head">
+              <div>
+                <span class="p-eyebrow">Active vehicle</span>
+                <div class="vname">1998 Atlas GT</div>
+              </div>
+              <div class="avatar">JT</div>
+            </div>
+
+            <div class="odo-block">
+              <span class="p-eyebrow amber">Current odometer</span>
+              <div class="odo">
+                <div class="odo-digits" id="odo" aria-label="84,220 miles">
+                  <div class="digit"><div class="col" data-d="8">0<br>1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9</div></div>
+                  <div class="digit"><div class="col" data-d="4">0<br>1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9</div></div>
+                  <div class="digit comma">,</div>
+                  <div class="digit"><div class="col" data-d="2">0<br>1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9</div></div>
+                  <div class="digit"><div class="col" data-d="2">0<br>1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9</div></div>
+                  <div class="digit"><div class="col" data-d="0">0<br>1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9</div></div>
+                </div>
+                <span class="odo-unit">mi</span>
+              </div>
+              <div class="odo-src" id="odoSrc">recorded <b>Jul 21</b> · entered by you</div>
+            </div>
+
+            <div class="lights" role="list" aria-label="Service lights">
+              <span class="light bad" role="listitem"><span class="dot"></span>BRAKE FLUID · 430 MI OVER</span>
+              <span class="light warn" role="listitem"><span class="dot"></span>OIL · DUE 780 MI</span>
+              <span class="light warn" id="coolantLight" role="listitem"><span class="dot"></span>COOLANT · DUE NOW</span>
+            </div>
+
+            <div class="hood-assembly" id="hoodAsm">
+              <div class="bay-under">
+                <span class="p-eyebrow amber">Systems bay</span>
+                <div class="bay-grid">
+                  <button class="tile bad" data-sys="Brake fluid" data-last="Flushed at 77,800 mi · Mar 2024" data-int="24 months / 30,000 mi" data-due="430 mi past interval" data-note="2 records · receipt on file">
+                    <span class="t-name">Brake fluid</span>
+                    <span class="t-due">430 mi over</span>
+                    <span class="t-last">last @ 77,800</span>
+                    <span class="bar"><i style="width:100%"></i></span>
+                  </button>
+                  <button class="tile warn" data-sys="Engine oil" data-last="Oil &amp; filter at 79,400 mi · Feb 2026" data-int="5,000 mi / 6 months" data-due="due in 780 mi" data-note="11 records · every change logged since 2019">
+                    <span class="t-name">Engine oil</span>
+                    <span class="t-due">due in 780 mi</span>
+                    <span class="t-last">last @ 79,400</span>
+                    <span class="bar"><i style="width:84%"></i></span>
+                  </button>
+                  <button class="tile warn" id="coolantTile" data-sys="Coolant" data-last="Flushed at 54,100 mi · Jun 2022" data-int="4 years / 40,000 mi" data-due="due now" data-note="1 record · no evidence attached">
+                    <span class="t-name">Coolant</span>
+                    <span class="t-due" id="coolantDue">due now</span>
+                    <span class="t-last" id="coolantLast">last @ 54,100</span>
+                    <span class="bar"><i id="coolantBar" style="width:97%"></i></span>
+                  </button>
+                  <button class="tile ok" data-sys="Tires" data-last="Rotated at 82,900 mi · Jun 2026" data-int="7,500 mi rotation" data-due="due in 6,180 mi" data-note="Set installed 71,220 mi · tread logged 6/32">
+                    <span class="t-name">Tires</span>
+                    <span class="t-due">due in 6,180 mi</span>
+                    <span class="t-last">rotated @ 82,900</span>
+                    <span class="bar"><i style="width:18%"></i></span>
+                  </button>
+                  <button class="tile ok" data-sys="Battery" data-last="Installed Oct 2024" data-int="warranty through Oct 2027" data-due="in warranty" data-note="Receipt + warranty card attached">
+                    <span class="t-name">Battery</span>
+                    <span class="t-due">in warranty</span>
+                    <span class="t-last">installed 2024</span>
+                    <span class="bar"><i style="width:34%"></i></span>
+                  </button>
+                  <button class="tile ok" data-sys="Cabin filter" data-last="Replaced at 80,150 mi · Mar 2026" data-int="15,000 mi" data-due="due in 10,930 mi" data-note="1 record · entered by you">
+                    <span class="t-name">Cabin filter</span>
+                    <span class="t-due">due in 10,930 mi</span>
+                    <span class="t-last">last @ 80,150</span>
+                    <span class="bar"><i style="width:27%"></i></span>
+                  </button>
+                </div>
+                <button class="closebay" id="closeBay">Close the hood ↑</button>
+              </div>
+              <div class="hoodcard" id="hoodCard" role="button" tabindex="0" aria-expanded="false" aria-label="Pop the hood to reveal the systems bay">
+                <div>
+                  <span class="p-eyebrow">The record so far</span>
+                  <div class="hood-title">1998 Atlas GT</div>
+                </div>
+                <div class="hood-stats">
+                  <span><b>42</b>records</span>
+                  <span><b>18</b>evidence files</span>
+                  <span><b>6y 2m</b>history held</span>
+                </div>
+                <span class="latch">⌃ &nbsp;Pop the hood</span>
+              </div>
+            </div>
+
+            <div class="rowhead">
+              <span class="p-eyebrow">Recent care</span>
+              <button class="linkish" data-goto="logbook">Full logbook →</button>
+            </div>
+            <div class="entry">
+              <div class="e-top"><span class="e-name">Oil &amp; filter</span><span class="e-mi">84,220 mi</span></div>
+              <div class="e-sub">Jul 21 · $64.80 · DIY · 5W-40, 8.8 qt</div>
+            </div>
+            <div class="entry">
+              <div class="e-top"><span class="e-name">Fuel fill</span><span class="e-mi">83,814 mi</span></div>
+              <div class="e-sub">Jul 12 · 14.1 gal · 26.4 mpg calc</div>
+            </div>
+          </section>
+
+          <!-- ── LOGBOOK ── -->
+          <section class="screen" data-screen="logbook" aria-label="Logbook">
+            <span class="p-eyebrow">The vehicle record</span>
+            <div class="lb-title">Logbook</div>
+            <div class="search"><span style="color:var(--pmut)">⌕</span><input type="search" placeholder="Search work, mileage, or evidence" aria-label="Search the logbook"></div>
+            <div class="filters" role="group" aria-label="Filter by type">
+              <button class="fchip on" data-filter="all">All</button>
+              <button class="fchip" data-filter="service">Service</button>
+              <button class="fchip" data-filter="fuel">Fuel</button>
+              <button class="fchip" data-filter="note">Notes</button>
+            </div>
+            <div class="yearmark">2026 · <span id="lbCount">5</span> RECORDS</div>
+            <div id="lbList">
+              <div class="entry" data-type="service">
+                <div class="e-top"><span class="e-name">Oil &amp; filter</span><span class="e-mi">84,220 mi</span></div>
+                <div class="e-sub">Jul 21 · $64.80 · DIY</div>
+                <div class="chips"><span class="chip you">Entered by you</span><span class="chip evi">Receipt attached</span></div>
+              </div>
+              <div class="entry" data-type="service" id="brakeEntry">
+                <div class="e-top"><span class="e-name">Brake inspection</span><span class="e-mi">84,412 mi</span></div>
+                <div class="e-sub">Jul 18 · Northline Garage · pads 6mm</div>
+                <div class="chips"><span class="chip you">Entered by you</span><span class="chip scan">Corrected</span></div>
+                <button class="c-toggle" data-cor>Show correction ↓</button>
+                <div class="correction">
+                  <span class="c-line">Corrected Jul 19 · odometer <span class="c-old">84,512</span> → 84,412</span>
+                  <p>The prior value stays on the record, struck — a correction is honest history, not an erasure.</p>
+                </div>
+              </div>
+              <div class="entry" data-type="fuel">
+                <div class="e-top"><span class="e-name">Fuel fill</span><span class="e-mi">83,814 mi</span></div>
+                <div class="e-sub">Jul 12 · 14.1 gal · $51.70 · 26.4 mpg</div>
+                <div class="chips"><span class="chip voice">Voice · reviewed</span></div>
+              </div>
+              <div class="entry" data-type="note">
+                <div class="e-top"><span class="e-name">Cold-start rattle note</span><span class="e-mi">83,650 mi</span></div>
+                <div class="e-sub">Jul 8 · 2-sec rattle when below 40°F · watching</div>
+                <div class="chips"><span class="chip you">Entered by you</span></div>
+              </div>
+              <div class="entry" data-type="service">
+                <div class="e-top"><span class="e-name">Tire rotation</span><span class="e-mi">82,900 mi</span></div>
+                <div class="e-sub">Jun 14 · $30.00 · Northline Garage</div>
+                <div class="chips"><span class="chip scan">Scanned · reviewed</span><span class="chip evi">Invoice attached</span></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ── RECORD ── -->
+          <section class="screen" data-screen="record" aria-label="Add to the record">
+            <span class="p-eyebrow amber">Add to the record</span>
+            <div class="rec-title">What happened?</div>
+            <p class="rec-sub">However it comes in, nothing joins the logbook until you commit it.</p>
+
+            <div class="stage active" data-stage="pick">
+              <div class="rec-opts">
+                <button class="rec-opt" data-rec="type"><span><span class="o-name">Type it</span><span class="o-sub">service · fuel · expense · note</span></span><span class="o-go">→</span></button>
+                <button class="rec-opt" data-rec="voice"><span><span class="o-name">Say it</span><span class="o-sub">"oil change today, eighty-four two-twenty, sixty-five bucks"</span></span><span class="o-go">→</span></button>
+                <button class="rec-opt" data-rec="scan"><span><span class="o-name">Scan it</span><span class="o-sub">receipt or invoice → drafted for your review</span></span><span class="o-go">→</span></button>
+              </div>
+            </div>
+
+            <div class="stage" data-stage="scanning">
+              <div class="scanning">
+                <div class="scanline" aria-hidden="true"></div>
+                <p>Reading receipt…</p>
+              </div>
+            </div>
+
+            <div class="stage" data-stage="draft">
+              <div class="draft">
+                <div class="draft-banner">◐ Draft — scanned from receipt · nothing saved yet</div>
+                <div class="dfield"><span class="k">WORK</span><span class="v">Coolant flush</span></div>
+                <div class="dfield"><span class="k">ODOMETER</span><span class="v">84,236 mi</span></div>
+                <div class="dfield"><span class="k">COST</span><span class="v">$189.40</span></div>
+                <div class="dfield"><span class="k">SHOP</span><span class="v">Northline Garage</span></div>
+                <div class="dfield"><span class="k">DATE</span><span class="v">Jul 24, 2026</span></div>
+              </div>
+              <p class="draft-note">Check the numbers against the paper. Committing records it with its origin: <b style="color:var(--pamber)">scanned · reviewed by you</b>.</p>
+              <div class="btnrow">
+                <button class="btn" data-adjust>Adjust</button>
+                <button class="btn primary" id="commitBtn">Commit to Logbook</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- ── BAY ── -->
+          <section class="screen" data-screen="bay" aria-label="The Bay — vehicles and parts">
+            <span class="p-eyebrow">Your garage</span>
+            <div class="lb-title">The Bay</div>
+            <div class="vehcard">
+              <div class="vc-top"><span class="vc-name">1998 Atlas GT</span><span class="vc-badge">Active</span></div>
+              <div class="vc-stats">
+                <span><b id="bayOdo">84,220</b>miles</span>
+                <span><b>42</b>records</span>
+                <span><b>2</b>lights on</span>
+              </div>
+            </div>
+            <div class="vehcard dim">
+              <div class="vc-top"><span class="vc-name">2004 Kestrel Wagon</span></div>
+              <div class="vc-stats">
+                <span><b>121,540</b>miles</span>
+                <span><b>17</b>records</span>
+                <span><b>0</b>lights on</span>
+              </div>
+            </div>
+            <div class="shelf">
+              <div class="rowhead"><span class="p-eyebrow">Parts &amp; warranties · Atlas GT</span></div>
+              <div class="part">
+                <span><span class="p-n">Battery — Group 48 AGM</span><span class="p-s">installed Oct 2024 @ 76,300 mi</span></span>
+                <span class="p-w">WARRANTY '27</span>
+              </div>
+              <div class="part">
+                <span><span class="p-n">Tire set — 225/45R17</span><span class="p-s">installed 71,220 mi · tread 6/32 logged</span></span>
+                <span class="p-w">13,000 MI ON SET</span>
+              </div>
+              <div class="part">
+                <span><span class="p-n">Wiper blades</span><span class="p-s">replaced Mar 2026</span></span>
+                <span class="p-w">—</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- ── HANDOVER ── -->
+          <section class="screen" data-screen="handover" aria-label="Handover — shareable dossier">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div><span class="p-eyebrow">Open the hood for someone else</span>
+              <div class="lb-title">Handover</div></div>
+              <span class="pro-chip">Pro</span>
+            </div>
+            <p class="rec-sub">A bounded copy of the record — a buyer, a shop, an insurer sees exactly what you switch on. Never account access.</p>
+
+            <div class="ho-toggle">
+              <label for="t-service">Service history<span class="sub">28 records · 6 pages</span></label>
+              <span class="switch"><input type="checkbox" id="t-service" checked data-pages="6" data-recs="28" data-sec="dpService"><span class="knob"></span></span>
+            </div>
+            <div class="ho-toggle">
+              <label for="t-fuel">Fuel &amp; mileage log<span class="sub">9 records · 2 pages</span></label>
+              <span class="switch"><input type="checkbox" id="t-fuel" checked data-pages="2" data-recs="9" data-sec="dpFuel"><span class="knob"></span></span>
+            </div>
+            <div class="ho-toggle">
+              <label for="t-evi">Receipts &amp; evidence<span class="sub">18 files · 3 pages</span></label>
+              <span class="switch"><input type="checkbox" id="t-evi" checked data-pages="3" data-recs="0" data-sec="dpEvi"><span class="knob"></span></span>
+            </div>
+            <div class="ho-toggle">
+              <label for="t-notes">Personal notes<span class="sub">4 records · 1 page · off by default</span></label>
+              <span class="switch"><input type="checkbox" id="t-notes" data-pages="1" data-recs="4" data-sec="dpNotes"><span class="knob"></span></span>
+            </div>
+            <div class="ho-toggle" style="border-bottom:none">
+              <label for="t-shops">Shop names<span class="sub">redacted when off</span></label>
+              <span class="switch"><input type="checkbox" id="t-shops" checked data-pages="0" data-recs="0" data-sec="dpShops"><span class="knob"></span></span>
+            </div>
+
+            <div class="dossier-prev">
+              <span class="dp-eyebrow">Owner-maintained vehicle history</span>
+              <div class="dp-name">1998 Atlas GT</div>
+              <div class="dp-span">MAY 2019 — JUL 2026 · PREPARED BY OWNER</div>
+              <div class="dp-counts">
+                <span><b id="dpPages">13</b>pages</span>
+                <span><b id="dpRecs">41</b>records</span>
+                <span><b id="dpEviN">18</b>evidence files</span>
+              </div>
+              <div class="dp-sections">
+                <span class="dp-sec" id="dpService"><span>01 · Service history</span><span>28 rec</span></span>
+                <span class="dp-sec" id="dpFuel"><span>02 · Fuel &amp; mileage</span><span>9 rec</span></span>
+                <span class="dp-sec" id="dpEvi"><span>03 · Receipts &amp; evidence</span><span>18 files</span></span>
+                <span class="dp-sec off" id="dpNotes"><span>04 · Personal notes</span><span>4 rec</span></span>
+                <span class="dp-sec" id="dpShops"><span>· Shop names shown</span><span></span></span>
+              </div>
+            </div>
+            <p class="ho-honest">This is an owner-maintained record with origins and evidence shown where they exist. It is not a certification, and Underhood never claims otherwise.</p>
+            <div class="btnrow">
+              <button class="btn">Share link</button>
+              <button class="btn primary">Preview PDF</button>
+            </div>
+          </section>
+
+        </div>
+
+        <!-- dock -->
+        <nav class="dock" aria-label="Primary">
+          <button class="on" data-goto="hood">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17h18M5 17L15 7h6"/></svg>Hood</button>
+          <button data-goto="logbook">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4"/></svg>Logbook</button>
+          <button class="fab" data-goto="record" aria-label="Add to the record"><i>+</i></button>
+          <button data-goto="bay">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V9l8-5 8 5v11M8 20v-6h8v6"/></svg>Bay</button>
+          <button data-goto="handover">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16H7zM10 8h4M12 15l3-3-3-3"/></svg>Handover</button>
+        </nav>
+
+        <!-- system sheet -->
+        <div class="sheet" id="sheet" role="dialog" aria-modal="false" aria-label="System detail">
+          <div class="grab" aria-hidden="true"></div>
+          <h4 id="shName">Engine oil</h4>
+          <svg class="spark" viewBox="0 0 300 44" preserveAspectRatio="none" aria-hidden="true">
+            <line class="grid-l" x1="0" y1="22" x2="300" y2="22"/>
+            <polyline points="0,34 40,30 85,32 130,24 175,26 220,16 265,18 300,8"/>
+            <circle cx="300" cy="8" r="3" fill="var(--pamber)"/>
+          </svg>
+          <div class="s-facts">
+            <div><span>LAST</span><b id="shLast">—</b></div>
+            <div><span>INTERVAL</span><b id="shInt">—</b></div>
+            <div><span>STATUS</span><b id="shDue">—</b></div>
+            <div><span>RECORD</span><b id="shNote">—</b></div>
+          </div>
+          <div class="btnrow">
+            <button class="btn" id="shClose">Close</button>
+            <button class="btn primary" data-goto="record">Record service</button>
+          </div>
+        </div>
+
+        <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════ IDENTITY ═════════ -->
+  <section class="sect">
+    <div class="sect-head"><span class="code">UH-C</span><h2>Identity system</h2></div>
+    <p class="lede" style="margin-bottom:24px">An engine bay at night, lit by one work lamp. The mark is an open hood over a level ground line, held by its prop rod — drawn in two strokes, legible at 16&nbsp;px.</p>
+    <div class="pal">
+      <div class="swatch"><div class="chipc" style="background:#0D1217"></div><div class="meta"><b>Bay</b><span>#0D1217 · ground</span></div></div>
+      <div class="swatch"><div class="chipc" style="background:#161E28"></div><div class="meta"><b>Gunmetal</b><span>#161E28 · surface</span></div></div>
+      <div class="swatch"><div class="chipc" style="background:#1E2836"></div><div class="meta"><b>Machined</b><span>#1E2836 · raised</span></div></div>
+      <div class="swatch"><div class="chipc" style="background:#F2A33C"></div><div class="meta"><b>Lamp Amber</b><span>#F2A33C · the light</span></div></div>
+      <div class="swatch"><div class="chipc" style="background:#EAEFF3"></div><div class="meta"><b>Bone</b><span>#EAEFF3 · text</span></div></div>
+      <div class="swatch"><div class="chipc" style="background:#8B99A9"></div><div class="meta"><b>Steel</b><span>#8B99A9 · secondary</span></div></div>
+    </div>
+    <div style="margin-top:34px">
+      <div class="typerow">
+        <span class="role">Display</span>
+        <div><div class="spec-display">Know the machine</div>
+        <div class="note">Heavy system sans · uppercase · −2% tracking. Ships as SF Pro Heavy; industrial character comes from casing and weight, not a licensed face.</div></div>
+      </div>
+      <div class="typerow">
+        <span class="role">Data voice</span>
+        <div><div class="spec-data">84,236 mi · $189.40 · JUL 24 2026</div>
+        <div class="note">Monospaced, tabular numerals — every mileage, cost, and date in the product speaks in this voice. SF Mono on device.</div></div>
+      </div>
+      <div class="typerow">
+        <span class="role">Body</span>
+        <div><div class="spec-body">Interface copy is a calm humanist sans — short sentences, owner's-manual plain.</div>
+        <div class="note">SF Pro Text · sentence case · 65ch max measure.</div></div>
+      </div>
+      <div class="typerow" style="border-bottom:none">
+        <span class="role">Geometry</span>
+        <div><div class="spec-body">One chamfered corner per card — a 45° machined cut, top-right, sized to the card's importance (12–22&nbsp;px). Everything else is square with hairline rules.</div>
+        <div class="note">clip-path chamfer in the prototype · masked shape in SwiftUI.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════ ARCHITECTURE ═════════ -->
+  <section class="sect">
+    <div class="sect-head"><span class="code">UH-D</span><h2>Information architecture</h2></div>
+    <div class="ia">
+      <div class="node"><span class="tag">Tab 1</span><b>Hood</b><span>Current odometer, service lights, and the hood-lift reveal into the Systems Bay. The state of the machine, at a glance and in depth.</span></div>
+      <div class="node"><span class="tag">Tab 2</span><b>Logbook</b><span>The full record — searchable, filterable, every entry stamped with its origin, evidence, and any corrections.</span></div>
+      <div class="node"><span class="tag">Center action</span><b>Record</b><span>Type it, say it, or scan it. Every non-manual path lands as an amber draft that only the owner commits.</span></div>
+      <div class="node"><span class="tag">Tab 3</span><b>Bay</b><span>All vehicles, plus the parts shelf: batteries, tire sets, warranties — the physical stuff the paper trail describes.</span></div>
+      <div class="node"><span class="tag">Tab 4</span><b>Handover</b><span>The bounded, owner-controlled dossier. Monetization lives here and at other value moments — never on a locked tab.</span></div>
+    </div>
+  </section>
+
+  <!-- ═════════ FEATURE REGISTRY ═════════ -->
+  <section class="sect">
+    <div class="sect-head"><span class="code">UH-E</span><h2>Feature registry — concept ↔ shipped infrastructure</h2></div>
+    <p class="lede" style="margin-bottom:20px">Underhood is a skin-and-soul redesign over infrastructure Garage has already shipped, plus the trust-wedge the 2026-07-24 tri-vote adopted. Nothing here presumes capabilities the codebase can't ground.</p>
+    <div class="tablewrap">
+    <table class="reg">
+      <tr><th>Surface</th><th>Backed by</th><th>Status</th></tr>
+      <tr><td>Current odometer + roll</td><td>Denormalized <code>currentOdometer</code> with edit-aware recompute on create, edit, and delete.</td><td><span class="st ship">Shipped</span></td></tr>
+      <tr><td>Systems Bay</td><td>Entry history + reminder intervals; every tile is last-record + interval math. New presentation, existing data.</td><td><span class="st new">Design-new</span></td></tr>
+      <tr><td>Say it / Scan it drafts</td><td>Voice quick-add prefill routing; Claude receipt parsing behind consent, quota, and an editable form.</td><td><span class="st ship">Shipped</span></td></tr>
+      <tr><td>Origin chips</td><td>Persisted per-entry provenance field — the tri-vote's first trust-wedge item.</td><td><span class="st new">Voted, to build</span></td></tr>
+      <tr><td>Correction stamps</td><td>Visible correction state over edit-in-place (which currently overwrites silently).</td><td><span class="st new">Voted, to build</span></td></tr>
+      <tr><td>Handover dossier</td><td>Wave-3 buyer-ready PDF over existing export + section toggles; live preview replaces the placeholder renderer.</td><td><span class="st new">Wave-3</span></td></tr>
+      <tr><td>Parts shelf</td><td>Existing Garage-tab spare parts + warranty tracking, resurfaced.</td><td><span class="st ship">Shipped</span></td></tr>
+      <tr><td>Contextual Pro moments</td><td>Existing <code>PaywallSource</code> contextual paywalls — already how Garage monetizes.</td><td><span class="st ship">Shipped</span></td></tr>
+    </table>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span>UNDERHOOD · design concept UH-24 · 2026-07-24</span>
+    <span>Fictional vehicle &amp; data (1998 Atlas GT)</span>
+    <span>Name pending trademark screen — rejection test, not clearance</span>
+    <span>Owner-maintained record language throughout · no certification claims</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  var phone=document.getElementById('phone');
+  var toastEl=document.getElementById('toast'), toastT;
+  function toast(msg){toastEl.textContent=msg;toastEl.classList.add('show');clearTimeout(toastT);toastT=setTimeout(function(){toastEl.classList.remove('show')},2600)}
+
+  /* navigation */
+  var screens=phone.querySelectorAll('.screen');
+  var dockBtns=phone.querySelectorAll('.dock button[data-goto]');
+  function go(name){
+    screens.forEach(function(s){s.classList.toggle('active',s.dataset.screen===name)});
+    dockBtns.forEach(function(b){b.classList.toggle('on',b.dataset.goto===name)});
+    closeSheet();
+  }
+  phone.querySelectorAll('[data-goto]').forEach(function(b){b.addEventListener('click',function(){go(b.dataset.goto)})});
+
+  /* odometer roller */
+  var reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function setOdo(str){
+    var digits=phone.querySelectorAll('#odo .col');
+    var chars=str.replace(/,/g,'').split('');
+    digits.forEach(function(col,i){
+      var d=parseInt(chars[i],10)||0;
+      col.style.transform='translateY(-'+(d*46)+'px)';
+    });
+    phone.querySelector('#odo').setAttribute('aria-label',str+' miles');
+  }
+  phone.querySelectorAll('#odo .col').forEach(function(c){c.style.transform='translateY(0)'});
+  setTimeout(function(){setOdo('84,220')},reduced?0:400);
+
+  /* hood lift */
+  var asm=document.getElementById('hoodAsm'), hoodCard=document.getElementById('hoodCard');
+  function setHood(open){
+    asm.classList.toggle('open',open);
+    hoodCard.setAttribute('aria-expanded',String(open));
+  }
+  hoodCard.addEventListener('click',function(){setHood(true)});
+  hoodCard.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();setHood(true)}});
+  document.getElementById('closeBay').addEventListener('click',function(){setHood(false)});
+
+  /* system sheet */
+  var sheet=document.getElementById('sheet');
+  function closeSheet(){sheet.classList.remove('open')}
+  phone.querySelectorAll('.tile').forEach(function(t){
+    t.addEventListener('click',function(){
+      document.getElementById('shName').textContent=t.dataset.sys;
+      document.getElementById('shLast').textContent=t.dataset.last.replace(/&amp;/g,'&');
+      document.getElementById('shInt').textContent=t.dataset.int;
+      document.getElementById('shDue').textContent=t.dataset.due;
+      document.getElementById('shNote').textContent=t.dataset.note;
+      sheet.classList.add('open');
+    });
+  });
+  document.getElementById('shClose').addEventListener('click',closeSheet);
+
+  /* logbook filters */
+  var chips=phone.querySelectorAll('.fchip');
+  chips.forEach(function(ch){
+    ch.addEventListener('click',function(){
+      chips.forEach(function(c){c.classList.remove('on')});
+      ch.classList.add('on');
+      var f=ch.dataset.filter, n=0;
+      phone.querySelectorAll('#lbList .entry').forEach(function(e){
+        var show=(f==='all'||e.dataset.type===f);
+        e.style.display=show?'':'none'; if(show)n++;
+      });
+      document.getElementById('lbCount').textContent=n;
+    });
+  });
+
+  /* correction expand */
+  phone.querySelectorAll('[data-cor]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var entry=btn.closest('.entry');
+      var open=entry.classList.toggle('expanded');
+      btn.textContent=open?'Hide correction ↑':'Show correction ↓';
+    });
+  });
+
+  /* record flow */
+  var stages=phone.querySelectorAll('.stage');
+  function stage(name){stages.forEach(function(s){s.classList.toggle('active',s.dataset.stage===name)})}
+  phone.querySelectorAll('.rec-opt').forEach(function(o){
+    o.addEventListener('click',function(){
+      if(o.dataset.rec==='scan'){stage('scanning');setTimeout(function(){stage('draft')},reduced?200:1900)}
+      else{toast(o.dataset.rec==='voice'?'Voice capture drafts, then you review — demo uses Scan it':'Manual entry opens the full form — demo uses Scan it')}
+    });
+  });
+  phone.querySelector('[data-adjust]').addEventListener('click',function(){toast('Every field stays editable until you commit')});
+
+  var committed=false;
+  document.getElementById('commitBtn').addEventListener('click',function(){
+    if(committed){go('logbook');return}
+    committed=true;
+    /* land the entry */
+    var list=document.getElementById('lbList');
+    var el=document.createElement('div');
+    el.className='entry flash'; el.dataset.type='service';
+    el.innerHTML='<div class="e-top"><span class="e-name">Coolant flush</span><span class="e-mi">84,236 mi</span></div>'+
+      '<div class="e-sub">Jul 24 · $189.40 · Northline Garage</div>'+
+      '<div class="chips"><span class="chip scan">Scanned · reviewed</span><span class="chip evi">Receipt attached</span></div>';
+    list.insertBefore(el,list.firstChild);
+    document.getElementById('lbCount').textContent=parseInt(document.getElementById('lbCount').textContent,10)+1;
+    /* roll odometer to the new max */
+    setOdo('84,236');
+    document.getElementById('odoSrc').innerHTML='recorded <b>today</b> · scanned · reviewed by you';
+    document.getElementById('bayOdo').textContent='84,236';
+    /* coolant system goes green */
+    var light=document.getElementById('coolantLight');
+    light.className='light ok'; light.innerHTML='<span class="dot"></span>COOLANT · LOGGED TODAY';
+    var tile=document.getElementById('coolantTile');
+    tile.className='tile ok';
+    document.getElementById('coolantDue').textContent='due in 40,000 mi';
+    document.getElementById('coolantLast').textContent='last @ 84,236';
+    document.getElementById('coolantBar').style.width='2%';
+    tile.dataset.last='Flushed at 84,236 mi · Jul 2026';
+    tile.dataset.due='due in 40,000 mi';
+    tile.dataset.note='2 records · receipt on file';
+    stage('pick');
+    go('logbook');
+    toast('Committed · origin: scanned, reviewed by you');
+  });
+
+  /* handover live preview */
+  var basePages=1, holders=phone.querySelectorAll('.ho-toggle input');
+  function recalc(){
+    var pages=basePages, recs=0;
+    holders.forEach(function(t){
+      var on=t.checked;
+      var sec=document.getElementById(t.dataset.sec);
+      if(sec) sec.classList.toggle('off',!on);
+      if(on){pages+=parseInt(t.dataset.pages,10);recs+=parseInt(t.dataset.recs,10)}
+    });
+    document.getElementById('dpPages').textContent=pages;
+    document.getElementById('dpRecs').textContent=recs;
+    var evi=document.getElementById('t-evi').checked;
+    document.getElementById('dpEviN').textContent=evi?'18':'0';
+    var shops=document.getElementById('t-shops').checked;
+    document.getElementById('dpShops').firstElementChild.textContent=shops?'· Shop names shown':'· Shop names redacted';
+  }
+  holders.forEach(function(t){t.addEventListener('change',recalc)});
+  recalc();
+})();
+</script>
