@@ -107,6 +107,24 @@ Verification: full `verify-ios.sh` gate + CF `tsc`/52 tests + `test:rules` 13 te
   builds (zero-vehicle activation, entry edit/correction, attachments upload, PDF share)
   await the v1-contract call.
 
+## ✅ 5th pass (2026-07-23 evening — conservative product-completion, external-audit closure sprint)
+
+- **Zero-vehicle activation** — router-level gate (entryPicker/voice/entryForm → vehicleForm)
+  with a load-completed tri-state (cold launch never misroutes), Dashboard "Add Your First
+  Vehicle" CTA, reminder-config empty state, scaffold "Select a vehicle first" banner. The
+  first-use dead-end is closed.
+- **Entry DELETE** (correction path) — EntryService.deleteEntry across modes, revision-bumped,
+  vehicle.currentOdometer reconciled when the backing entry is deleted; detail + swipe delete
+  with confirmation. **Edit-in-place was built and CUT by review** (3 BLOCKERs: silent
+  details-map wipe, odometer block/corruption, createdAt reset) — deferred until per-form
+  details seeding exists; delete + re-add is the v1 correction path.
+- **PDF share** — session-disciplined temp artifact + ShareLink (CSV-parallel); "unavailable
+  in this beta" copy gone. The paid output is now save/shareable.
+- **Reminders lifecycle** — completedAt, delete/markCompleted, list with swipe actions;
+  upcoming excludes completed.
+- **AttachmentPicker** — confirmed UNWIRED dead code (zero call sites); warning comment added
+  so nobody ships filename-only "attachments".
+
 ## 🔨 Remaining — CODE (recommended next PRs)
 
 - **#18/#20/#22 — Perf/scale**: Stats over newest 100, Log search over newest 500 (comment claims
