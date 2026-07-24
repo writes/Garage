@@ -7,18 +7,18 @@ struct RepairFormView: View {
     @State private var status: ServiceStatus = .resolved
 
     var body: some View {
-        EntryFormScaffold(title: "Repair", viewModel: form, onSave: save) {
+        EntryFormScaffold(title: "Repair", viewModel: form, onSave: save, onEditEntry: seed) {
             TextField("Title", text: $title).textFieldStyle(.roundedBorder)
             Picker("Status", selection: $status) {
                 ForEach(ServiceStatus.allCases, id: \.self) { status in Text(status.displayName).tag(status) }
             }
         }
-        .task { await prepare() }
     }
 
-    private func prepare() async {
-        guard let vehicleId = appState.currentVehicle?.id else { return }
-        await form.prepare(vehicleId: vehicleId)
+    private func seed(from entry: FirestoreEntry) {
+        guard let details = entry.decodedDetails(as: RepairEntry.self) else { return }
+        title = details.title
+        status = details.status
     }
 
     private func save() async -> Bool {

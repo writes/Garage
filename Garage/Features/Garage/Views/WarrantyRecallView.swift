@@ -20,6 +20,7 @@ struct WarrantyRecallView: View {
                             )
                                 .font(Theme.Typography.caption)
                         }
+                        .accessibilityElement(children: .combine)
                     }
                 }
             }
@@ -38,6 +39,7 @@ struct WarrantyRecallView: View {
                                         : Theme.Colors.textSecondary
                                 )
                         }
+                        .accessibilityElement(children: .combine)
                     }
                 }
             }

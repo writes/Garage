@@ -80,8 +80,24 @@ struct FirestoreEntry: EntryProtocol, Equatable {
     var updatedAt: Date?
 }
 
+extension FirestoreEntry {
+    /// Decodes `details` back into its typed detail struct — the inverse of however `details` was
+    /// populated at save time (EntryFormViewModel.makeAnyCodableMap: T -> JSON -> [String: Any] ->
+    /// [String: AnyCodable]). Re-serializing the already-decoded map to JSON and decoding that
+    /// into `T` is symmetric with that path regardless of whether `details` came from a live
+    /// Firestore decode, hermetic testEntries, or the demo store. Each entry form's edit-seed path
+    /// uses this to restore its own type-specific fields; nil on any shape mismatch (e.g. a
+    /// legacy/partial entry) — callers treat that as "nothing to seed," never a crash.
+    func decodedDetails<T: Decodable>(as type: T.Type) -> T? {
+        guard let data = try? JSONEncoder().encode(details) else { return nil }
+        return try? JSONDecoder().decode(T.self, from: data)
+    }
+}
+
 struct EntryQuery: Sendable, Equatable {
     var vehicleId: String
     var entryTypes: Set<EntryType> = []
     var searchText: String = ""
+    var startDate: Date?
+    var endDate: Date?
 }

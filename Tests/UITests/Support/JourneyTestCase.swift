@@ -32,8 +32,10 @@ class JourneyTestCase: XCTestCase {
         require(app.tabBars.buttons["Dashboard"])
         let vehicleSwitcher = app.buttons["vehicle.switcher"]
         require(vehicleSwitcher)
+        // The switcher's accessibilityValue announces the vehicle NAME (a11y sweep replaced the
+        // raw Firestore id, which VoiceOver users heard as a UUID).
         let vehicleLoaded = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "value == %@", "seed-viper"),
+            predicate: NSPredicate(format: "value == %@", "Viper ACR"),
             object: vehicleSwitcher
         )
         XCTAssertEqual(XCTWaiter.wait(for: [vehicleLoaded], timeout: JourneyTestCase.timeout), .completed)

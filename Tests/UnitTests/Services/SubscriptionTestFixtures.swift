@@ -202,29 +202,14 @@ enum SubscriptionSourceProbe {
     }
 }
 @MainActor
-final class PDFEntryFetchProbe {
-    private var continuation: CheckedContinuation<[FirestoreEntry], Never>?
-    private var callContinuation: CheckedContinuation<Void, Never>?
-    private(set) var calls = 0
-    func load(_ query: EntryQuery, _ limit: Int) async throws -> [FirestoreEntry] {
-        calls += 1
-        callContinuation?.resume()
-        callContinuation = nil
-        return await withCheckedContinuation { continuation = $0 }
-    }
-    func waitUntilCalled() async {
-        if calls > 0 { return }
-        await withCheckedContinuation { callContinuation = $0 }
-    }
-    func resolve(_ entries: [FirestoreEntry]) { continuation?.resume(returning: entries); continuation = nil }
-}
-@MainActor
-final class CSVPageFetchProbe {
+final class EntryPageFetchProbe {
     private var continuations: [CheckedContinuation<EntryPage, Never>] = []
     private var callWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
     private(set) var calls = 0
+    private(set) var queries: [EntryQuery] = []
     func load(_ query: EntryQuery, _ limit: Int, _ cursor: EntryCursor?) async throws -> EntryPage {
         calls += 1
+        queries.append(query)
         let ready = callWaiters.filter { $0.0 <= calls }
         callWaiters.removeAll { $0.0 <= calls }
         ready.forEach { $0.1.resume() }
@@ -234,9 +219,8 @@ final class CSVPageFetchProbe {
         if calls >= count { return }
         await withCheckedContinuation { callWaiters.append((count, $0)) }
     }
-    func resolveNext(_ page: EntryPage) {
-        continuations.removeFirst().resume(returning: page)
-    }
+    func resolve(_ entries: [FirestoreEntry]) { resolveNext(EntryPage(entries: entries, nextCursor: nil)) }
+    func resolveNext(_ page: EntryPage) { continuations.removeFirst().resume(returning: page) }
 }
 @MainActor
 final class CSVURLSequence {

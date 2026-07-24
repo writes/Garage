@@ -8,5 +8,6 @@ struct SkeletonLoader: View {
             .fill(Theme.Colors.secondary.opacity(0.18))
             .frame(height: height)
             .modifier(ShimmerModifier())
+            .accessibilityHidden(true)
     }
 }

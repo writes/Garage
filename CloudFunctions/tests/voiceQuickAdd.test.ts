@@ -96,6 +96,50 @@ describe("voiceQuickAddRequest", () => {
     seedActivePro(db);
     await expectHttpsError(voiceQuickAddRequest(request(), dependencies(db, "not json")), "internal");
   });
+
+  it("refunds the consumed voice bucket after an upstream network failure", async () => {
+    const db = new InMemoryFirestore();
+    seedActivePro(db);
+    const requestDependencies = dependencies(db);
+    requestDependencies.fetchImpl = async (): Promise<Response> => {
+      throw new Error("network unavailable");
+    };
+
+    await expectHttpsError(voiceQuickAddRequest(request(), requestDependencies), "internal");
+
+    expect(db.data("usage_quotas/owner-1_voice_2026-07-21")).toMatchObject({ count: 0 });
+  });
+
+  it("refunds the consumed voice bucket after an upstream 5xx failure", async () => {
+    const db = new InMemoryFirestore();
+    seedActivePro(db);
+    const requestDependencies = dependencies(db);
+    requestDependencies.fetchImpl = async (): Promise<Response> => new Response("upstream unavailable", { status: 500 });
+
+    await expectHttpsError(voiceQuickAddRequest(request(), requestDependencies), "internal");
+
+    expect(db.data("usage_quotas/owner-1_voice_2026-07-21")).toMatchObject({ count: 0 });
+  });
+
+  it("does not refund a non-5xx HTTP failure", async () => {
+    const db = new InMemoryFirestore();
+    seedActivePro(db);
+    const requestDependencies = dependencies(db);
+    requestDependencies.fetchImpl = async (): Promise<Response> => new Response("bad request", { status: 429 });
+
+    await expectHttpsError(voiceQuickAddRequest(request(), requestDependencies), "internal");
+
+    expect(db.data("usage_quotas/owner-1_voice_2026-07-21")).toMatchObject({ count: 1 });
+  });
+
+  it("does not refund billed HTTP-OK unparseable model output", async () => {
+    const db = new InMemoryFirestore();
+    seedActivePro(db);
+
+    await expectHttpsError(voiceQuickAddRequest(request(), dependencies(db, "not json")), "internal");
+
+    expect(db.data("usage_quotas/owner-1_voice_2026-07-21")).toMatchObject({ count: 1 });
+  });
 });
 
 describe("sanitizeVoiceProposal", () => {

@@ -13,5 +13,6 @@ struct LoadingOverlay: View {
         .frame(maxWidth: .infinity)
         .padding(Theme.Spacing.lg)
         .garageCard()
+        .accessibilityElement(children: .combine)
     }
 }

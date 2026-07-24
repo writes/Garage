@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DashboardView: View {
     @Environment(AppState.self) private var appState
+    @Environment(AppRouter.self) private var router
     @State private var viewModel = DashboardViewModel()
 #if DEBUG
     @State private var demoStore = DemoSessionStore.shared
@@ -11,17 +12,27 @@ struct DashboardView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: Theme.Spacing.lg) {
-                    OdometerHeroCard(vehicle: appState.currentVehicle, hasActiveWarranty: viewModel.hasActiveWarranty)
-                    RecallAlertBadge(openRecallCount: viewModel.openRecalls)
-
-                    if viewModel.isLoading {
-                        LoadingOverlay()
-                    } else if let error = viewModel.error {
-                        ErrorBanner(error: error, retry: { Task { await reload() } })
+                    // Audit finding (zero-vehicle activation dead end): a fresh account's
+                    // dashboard used to render an "empty" but otherwise normal layout (hero card
+                    // reading "No vehicle selected", empty wear/reminders sections) with no
+                    // actionable next step. Replace the whole body with one explicit CTA instead.
+                    if appState.vehicles.isEmpty {
+                        zeroVehicleState
                     } else {
-                        wearSection
-                        remindersSection
-                        RecentEntryFeed(entries: viewModel.recentEntries)
+                        OdometerHeroCard(
+                            vehicle: appState.currentVehicle, hasActiveWarranty: viewModel.hasActiveWarranty
+                        )
+                        RecallAlertBadge(openRecallCount: viewModel.openRecalls)
+
+                        if viewModel.isLoading {
+                            LoadingOverlay()
+                        } else if let error = viewModel.error {
+                            ErrorBanner(error: error, retry: { Task { await reload() } })
+                        } else {
+                            wearSection
+                            remindersSection
+                            RecentEntryFeed(entries: viewModel.recentEntries)
+                        }
                     }
                 }
                 .padding(Theme.Spacing.md)
@@ -36,6 +47,20 @@ struct DashboardView: View {
                 guard selectedTab == .dashboard else { return }
                 Task { await reload() }
             }
+        }
+    }
+
+    private var zeroVehicleState: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            EmptyStateView(
+                title: "Add Your First Vehicle",
+                message: "Garage tracks service history, wear, and reminders per vehicle. Add one to get started.",
+                systemImage: "car.fill"
+            )
+            PrimaryButton(title: "Add Your First Vehicle", systemImage: "plus") {
+                router.present(.vehicleForm)
+            }
+            .accessibilityIdentifier("dashboard.addFirstVehicle")
         }
     }
 

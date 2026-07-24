@@ -8,19 +8,20 @@ struct UpgradeFormView: View {
     @State private var category: UpgradeCategory = .engine
 
     var body: some View {
-        EntryFormScaffold(title: "Upgrade", viewModel: form, onSave: save) {
+        EntryFormScaffold(title: "Upgrade", viewModel: form, onSave: save, onEditEntry: seed) {
             TextField("Upgrade name", text: $title).textFieldStyle(.roundedBorder)
             TextField("Brand", text: $brand).textFieldStyle(.roundedBorder)
             Picker("Category", selection: $category) {
                 ForEach(UpgradeCategory.allCases, id: \.self) { category in Text(category.displayName).tag(category) }
             }
         }
-        .task { await prepare() }
     }
 
-    private func prepare() async {
-        guard let vehicleId = appState.currentVehicle?.id else { return }
-        await form.prepare(vehicleId: vehicleId)
+    private func seed(from entry: FirestoreEntry) {
+        guard let details = entry.decodedDetails(as: UpgradeEntry.self) else { return }
+        title = details.title
+        brand = details.brand ?? ""
+        category = details.category
     }
 
     private func save() async -> Bool {

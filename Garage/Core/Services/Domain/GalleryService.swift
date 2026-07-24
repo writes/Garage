@@ -23,6 +23,7 @@ final class GalleryService {
         let reference = firestore.db.collection(FirestorePaths.vehicleGallery(vehicleId: photo.vehicleId))
             .document(photo.id)
         try await reference.setData(firestore.encode(photo), merge: true)
+        VehicleDataRevisionStore.shared.bump(vehicleId: photo.vehicleId)
     }
 
     func fetchPhotos(vehicleId: String) async throws -> [GalleryPhoto] {

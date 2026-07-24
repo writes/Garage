@@ -11,10 +11,20 @@ struct DashboardContent {
 @MainActor
 @Observable
 final class DashboardViewModel {
+    /// Vehicle + revision pair already reflected in the loaded content; a matching pair on the
+    /// next call means no live write has bumped `VehicleDataRevisionStore` since, so the load is
+    /// skipped. Tuples aren't Equatable-optional-friendly, hence the struct.
+    private struct LoadKey: Equatable {
+        let vehicleId: String
+        let revision: Int
+    }
+
     private let entryService: EntryService
     private let wearService: WearService
     private let reminderService: ReminderService
     private let warrantyService: WarrantyService
+    private let revisionStore: VehicleDataRevisionStore
+    private let gateEnabled: Bool
     private let contentLoader: ((String) async throws -> DashboardContent)?
 
     private(set) var recentEntries: [FirestoreEntry] = []
@@ -24,6 +34,7 @@ final class DashboardViewModel {
     private(set) var hasActiveWarranty = false
     private(set) var isLoading = false
     private var reloadToken = 0
+    private var lastLoadedKey: LoadKey?
     private(set) var error: AppError?
 
     init(
@@ -31,16 +42,24 @@ final class DashboardViewModel {
         wearService: WearService = .shared,
         reminderService: ReminderService = .shared,
         warrantyService: WarrantyService = .shared,
+        revisionStore: VehicleDataRevisionStore = .shared,
+        gateEnabled: Bool = VehicleDataRevisionStore.skipGateIsEnabled,
         contentLoader: ((String) async throws -> DashboardContent)? = nil
     ) {
         self.entryService = entryService
         self.wearService = wearService
         self.reminderService = reminderService
         self.warrantyService = warrantyService
+        self.revisionStore = revisionStore
+        self.gateEnabled = gateEnabled
         self.contentLoader = contentLoader
     }
 
     func loadDashboard(vehicleId: String) async {
+        let currentKey = LoadKey(vehicleId: vehicleId, revision: revisionStore.revision(for: vehicleId))
+        // Demo/UI-test runtimes never skip: demo writes bump a different counter, and UI-test
+        // journeys mutate then re-check views in-process, so a stale match here would hide them.
+        if gateEnabled, lastLoadedKey == currentKey { return }
         reloadToken &+= 1
         let token = reloadToken
         isLoading = true
@@ -52,6 +71,7 @@ final class DashboardViewModel {
                 guard token == reloadToken else { return }
                 apply(content)
                 error = nil
+                lastLoadedKey = currentKey
                 return
             }
             async let entries = entryService.fetchRecent(vehicleId: vehicleId)
@@ -70,9 +90,11 @@ final class DashboardViewModel {
             guard token == reloadToken else { return }
             apply(content)
             error = nil
+            lastLoadedKey = currentKey
         } catch {
             guard token == reloadToken else { return }
             self.error = AppError(from: error)
+            lastLoadedKey = nil
         }
     }
 

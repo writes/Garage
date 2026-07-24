@@ -28,6 +28,7 @@ final class AppState {
     private let syncService: SyncService
     private let profileStore: any ProfileStore
     private let analytics: any AnalyticsTracking
+    private let crashReporter: any CrashReporting
 
     var selectedTab: AppTab = .dashboard
     var currentVehicle: Vehicle?
@@ -35,6 +36,9 @@ final class AppState {
     var userProfile: UserProfile?
     var syncStatus: SyncStatus = .idle
     var isBootstrapping = false
+    /// Zero-vehicle-gate tri-state: "not yet loaded" must never read as "confirmed zero
+    /// vehicles". True only after a real load; reset on sign-out/re-auth.
+    private(set) var hasCompletedInitialVehicleLoad = false
     private var authenticationRevision = 0
 
     init(
@@ -43,6 +47,7 @@ final class AppState {
         purchaseService: PurchaseService = .shared,
         syncService: SyncService = .shared,
         analytics: any AnalyticsTracking = AnalyticsService.shared,
+        crashReporter: (any CrashReporting)? = nil,
         profileStore: (any ProfileStore)? = nil
     ) {
         self.authService = authService
@@ -50,8 +55,11 @@ final class AppState {
         self.purchaseService = purchaseService
         self.syncService = syncService
         self.analytics = analytics
+        self.crashReporter = crashReporter ?? CrashReporter.shared
         self.profileStore = profileStore ?? ProfileStoreFactory.makeDefault()
         analytics.setEnabled(false)
+        // Crashlytics rides Analytics's consent lifecycle (#23): fail closed until profile load.
+        self.crashReporter.setEnabled(false)
     }
 
     var isAuthenticated: Bool {
@@ -82,6 +90,7 @@ final class AppState {
 
     private func bootstrap(expectedAuthenticationRevision: Int) async {
         analytics.setEnabled(false)
+        crashReporter.setEnabled(false)
 
         if AppRuntime.isLocalDemoMode {
             syncStatus = .upToDate
@@ -96,6 +105,7 @@ final class AppState {
             userProfile = nil
             vehicles = []
             currentVehicle = nil
+            hasCompletedInitialVehicleLoad = false
             return
         }
 
@@ -103,49 +113,75 @@ final class AppState {
             userProfile = nil
             vehicles = []
             currentVehicle = nil
-            // Defense-in-depth: an account switch must not carry the prior user's accent even if
-            // the new profile load fails before applying its own themeID.
+            hasCompletedInitialVehicleLoad = false
+            // Defense-in-depth: an account switch must not carry the prior user's accent.
             AccentStore.shared.scheme = .classic
         }
 
         await loadProfile(uid: uid, expectedAuthenticationRevision: expectedAuthenticationRevision)
         guard authenticationMatches(expectedAuthenticationRevision, uid: uid) else { return }
         await loadVehicles(uid: uid, expectedAuthenticationRevision: expectedAuthenticationRevision)
+        // Self-heal offline deletes (RULES-1): re-purge anything still tombstoned, off critical path.
+        Task { await vehicleService.retryPendingPurges() }
     }
 
     private func loadVehicles(uid: String, expectedAuthenticationRevision: Int) async {
         do {
             let loadedVehicles = try await vehicleService.fetchVehicles()
             guard authenticationMatches(expectedAuthenticationRevision, uid: uid) else { return }
-            vehicles = loadedVehicles
-            if let currentVehicle,
-               let matchingVehicle = loadedVehicles.first(where: { $0.id == currentVehicle.id }) {
-                self.currentVehicle = matchingVehicle
-            } else {
-                currentVehicle = loadedVehicles.min(by: { $0.displayOrder < $1.displayOrder })
-            }
-            #if DEBUG
-            if vehicles.isEmpty {
-                vehicles = SeedData.vehicles
-                currentVehicle = vehicles.first
-            }
-            #endif
+            applyLoadedVehicles(loadedVehicles)
         } catch {
             AppLogger.shared.error("App bootstrap failed: \(error.localizedDescription)")
+            crashReporter.record(error, context: "vehicle-bootstrap")
+        }
+    }
+
+    /// Drives vehicles/currentVehicle from the live Firestore listener (#9). Stale-auth snapshots
+    /// are impossible: the stream tears down on UID change before this can run.
+    func applyVehicleSnapshot(_ envelope: VehicleSnapshotEnvelope) {
+        var loadedVehicles = envelope.vehicles
+        if !envelope.decodeFailureDocumentIDs.isEmpty {
+            // Keeps a transiently undecodable doc's last-known copy; the sync badge surfaces it.
+            let failed = Set(envelope.decodeFailureDocumentIDs)
+            let retained = vehicles.filter { vehicle in
+                failed.contains(vehicle.id) && !loadedVehicles.contains(where: { $0.id == vehicle.id })
+            }
+            loadedVehicles.append(contentsOf: retained)
+            loadedVehicles.sort { $0.displayOrder < $1.displayOrder }
+        }
+        applyLoadedVehicles(loadedVehicles)
+    }
+
+    // No seed fallback: reseeding on empty resurrects ghosts after deleting the last vehicle.
+    private func applyLoadedVehicles(_ loadedVehicles: [Vehicle]) {
+        hasCompletedInitialVehicleLoad = true
+        vehicles = loadedVehicles
+        if let currentVehicle,
+           let matchingVehicle = loadedVehicles.first(where: { $0.id == currentVehicle.id }) {
+            self.currentVehicle = matchingVehicle
+        } else {
+            currentVehicle = loadedVehicles.min(by: { $0.displayOrder < $1.displayOrder })
         }
     }
 
     func refreshVehicles() async {
+        guard let uid = authService.uid else { return }
+        let expectedRevision = authService.authenticationRevision
         do {
-            vehicles = try await vehicleService.fetchVehicles()
-            if let currentVehicle, vehicles.contains(where: { $0.id == currentVehicle.id }) {
-                self.currentVehicle = vehicles.first(where: { $0.id == currentVehicle.id })
-            } else {
-                self.currentVehicle = vehicles.first
-            }
+            let loadedVehicles = try await vehicleService.fetchVehicles()
+            // Same stale-fetch guard as loadVehicles.
+            guard authenticationMatches(expectedRevision, uid: uid) else { return }
+            applyLoadedVehicles(loadedVehicles)
         } catch {
             AppLogger.shared.error("Vehicle refresh failed: \(error.localizedDescription)")
+            crashReporter.record(error, context: "vehicle-refresh")
         }
+    }
+
+    /// Tombstones the vehicle (disappears immediately), purges server-side (RULES-1).
+    func deleteVehicle(_ vehicle: Vehicle) async throws {
+        try await vehicleService.deleteVehicle(vehicle)
+        await refreshVehicles()
     }
 
     func selectVehicle(_ vehicle: Vehicle) {
@@ -159,9 +195,14 @@ final class AppState {
     func applyProfile(_ profile: UserProfile) {
         guard profile.id == authService.uid else {
             analytics.setEnabled(false)
+            crashReporter.setEnabled(false)
             return
         }
         userProfile = profile
+        // Consent authority: a mid-session opt-out lands here; BOTH trackers must follow, or
+        // Crashlytics (which persists its collection flag) leaks non-fatals.
+        analytics.setEnabled(!profile.analyticsOptOut)
+        crashReporter.setEnabled(!profile.analyticsOptOut)
         AccentStore.shared.apply(themeID: profile.themeID)
     }
 
@@ -170,14 +211,17 @@ final class AppState {
             let profile = try await ProfileViewModel.loadProfile(uid: uid, store: profileStore)
             guard authenticationMatches(expectedAuthenticationRevision, uid: uid) else {
                 analytics.setEnabled(false)
+                crashReporter.setEnabled(false)
                 return
             }
             userProfile = profile
             analytics.setEnabled(!profile.analyticsOptOut)
+            crashReporter.setEnabled(!profile.analyticsOptOut)
             AccentStore.shared.apply(themeID: profile.themeID)
         } catch {
             userProfile = nil
             analytics.setEnabled(false)
+            crashReporter.setEnabled(false)
             AccentStore.shared.scheme = .classic
             AppLogger.shared.error("Profile bootstrap failed: \(error.localizedDescription)")
         }
@@ -190,44 +234,17 @@ final class AppState {
 
     func signOut() {
         analytics.setEnabled(false)
+        crashReporter.setEnabled(false)
         do {
             try authService.signOut()
             userProfile = nil
             vehicles = []
             currentVehicle = nil
+            hasCompletedInitialVehicleLoad = false
             AccentStore.shared.scheme = .classic
             authenticationRevision += 1
         } catch {
             AppLogger.shared.error("Sign out failed: \(error.localizedDescription)")
         }
     }
-}
-
-enum SeedData {
-    static let vehicles: [Vehicle] = [
-        Vehicle(
-            id: "seed-viper",
-            userId: "debug-user",
-            nickname: "Viper ACR",
-            make: "Dodge",
-            model: "Viper ACR",
-            year: 2008,
-            currentOdometer: 18_240,
-            fuelType: .premium93,
-            color: "Red",
-            displayOrder: 0
-        ),
-        Vehicle(
-            id: "seed-sq5",
-            userId: "debug-user",
-            nickname: "Daily SQ5",
-            make: "Audi",
-            model: "SQ5",
-            year: 2015,
-            currentOdometer: 82_440,
-            fuelType: .premium91,
-            color: "Gray",
-            displayOrder: 1
-        )
-    ]
 }

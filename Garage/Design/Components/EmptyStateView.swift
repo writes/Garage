@@ -10,6 +10,7 @@ struct EmptyStateView: View {
             Image(systemName: systemImage)
                 .font(.system(size: 28, weight: .semibold))
                 .foregroundStyle(Theme.Colors.accent)
+                .accessibilityHidden(true)
             Text(title)
                 .font(Theme.Typography.title)
             Text(message)
@@ -20,5 +21,6 @@ struct EmptyStateView: View {
         .frame(maxWidth: .infinity)
         .padding(Theme.Spacing.lg)
         .garageCard()
+        .accessibilityElement(children: .combine)
     }
 }

@@ -80,6 +80,10 @@ final class ProfileViewModel {
     }
     @discardableResult
     func save() async -> Bool {
+        // Never write the full profile before a successful load: on a failed/offline/in-flight
+        // load the VM still holds empty defaults, and save() emits the full profileFields dict,
+        // which would wipe the user's name/address/insurance on the server.
+        guard hasSuccessfullyLoadedProfile else { return false }
         guard let uid = resolvedUserID() else {
             error = .auth("Not authenticated")
             return false

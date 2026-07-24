@@ -1,8 +1,17 @@
+import StoreKit
 import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppRouter.self) private var router
+    @State private var showDeleteConfirmation = false
+    @State private var deletionError: AppError?
+    @State private var isDeleting = false
+    @State private var isShowingManageSubscriptions = false
+    // Computed (not a stored default) so the singleton — which calls Functions.functions() — is
+    // constructed only when deletion actually runs, never at tab-build time. In demo/UI-test mode
+    // Firebase is not configured, and deleteAccount() never touches it, so it must stay lazy.
+    private var deletionService: any AccountDeleting { AccountDeletionService.shared }
 
     var body: some View {
         NavigationStack {
@@ -18,11 +27,16 @@ struct SettingsView: View {
                 Button("Export History") { router.present(.export) }
                     .accessibilityIdentifier("settings.export")
                 Button(appState.isPro ? "Manage Subscription" : "Upgrade to Pro") {
-                    router.present(.subscription(.settings))
+                    manageSubscriptionTapped()
                 }
                     .accessibilityIdentifier("settings.subscription")
                 Button("Sign Out") { appState.signOut() }
                     .accessibilityIdentifier("settings.signout")
+                Button(isDeleting ? "Deleting..." : "Delete Account", role: .destructive) {
+                    showDeleteConfirmation = true
+                }
+                .disabled(isDeleting)
+                .accessibilityIdentifier("settings.deleteAccount")
             }
             .navigationTitle("Settings")
             .toolbar {
@@ -30,6 +44,49 @@ struct SettingsView: View {
                     VehicleSwitcher()
                 }
             }
+            .alert("Delete Account?", isPresented: $showDeleteConfirmation) {
+                Button("Delete", role: .destructive) { Task { await deleteAccount() } }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(
+                    "This permanently deletes your account and every vehicle, log, photo, and "
+                        + "record. This cannot be undone."
+                )
+            }
+            .alert(
+                "Couldn't delete account",
+                isPresented: Binding(get: { deletionError != nil }, set: { if !$0 { deletionError = nil } })
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(deletionError?.errorDescription ?? "Please try again.")
+            }
+            .manageSubscriptionsSheet(isPresented: $isShowingManageSubscriptions)
+        }
+    }
+
+    /// Active Pro subscribers get StoreKit's real management sheet (cancel, change plan, billing
+    /// history) instead of being re-shown the acquisition paywall. Demo/UI-test Pro is simulated
+    /// (PurchaseService.uiTest — no real subscription behind it), so StoreKit has nothing to
+    /// manage there; it keeps the existing paywall-sheet fallback instead of calling into StoreKit.
+    private func manageSubscriptionTapped() {
+        guard appState.isPro, !AppRuntime.isLocalDemoMode else {
+            router.present(.subscription(.settings))
+            return
+        }
+        isShowingManageSubscriptions = true
+    }
+
+    private func deleteAccount() async {
+        isDeleting = true
+        defer { isDeleting = false }
+        do {
+            if !AppRuntime.isLocalDemoMode {
+                try await deletionService.deleteAccount()
+            }
+            appState.signOut()
+        } catch {
+            deletionError = AppError(from: error)
         }
     }
 }

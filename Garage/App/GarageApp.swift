@@ -19,8 +19,15 @@ struct GarageApp: App {
 
         switch bootstrapMode {
         case .uiTest, .localDemo, .localSetupRequired:
-            _appState = State(initialValue: Self.makeNonProductionAppState(for: bootstrapMode))
-            _router = State(initialValue: AppRouter())
+            let appState = Self.makeNonProductionAppState(for: bootstrapMode)
+            _appState = State(initialValue: appState)
+            // Review finding: "not yet loaded" must never read as "confirmed zero vehicles" — an
+            // existing signed-in user with vehicles would otherwise get misrouted to vehicle
+            // creation on cold launch, before bootstrap's first fetch/listener snapshot lands.
+            // The gate only fires once a load has actually completed and found zero vehicles.
+            _router = State(initialValue: AppRouter(
+                hasVehicles: { !appState.hasCompletedInitialVehicleLoad || !appState.vehicles.isEmpty }
+            ))
             return
         case .production:
             break
@@ -37,35 +44,46 @@ struct GarageApp: App {
         }
 
         Purchases.configure(withAPIKey: Secrets.revenueCatAPIKey)
-        _appState = State(initialValue: AppState())
-        _router = State(initialValue: AppRouter())
+        let appState = AppState()
+        _appState = State(initialValue: appState)
+        // See the matching comment in the non-production branch above: the gate must not treat
+        // "not yet loaded" as "confirmed zero vehicles".
+        _router = State(initialValue: AppRouter(
+            hasVehicles: { !appState.hasCompletedInitialVehicleLoad || !appState.vehicles.isEmpty }
+        ))
     }
 
     var body: some Scene {
         WindowGroup {
-            switch bootstrapMode {
-            case .uiTest:
-                UITestHarnessView()
-            case .localDemo:
-                ContentView()
-                    .environment(appState)
-                    .environment(router)
-                    .modelContainer(modelContainer)
-            case .localSetupRequired:
-                LocalSetupRequiredView()
-            case .production:
-                ContentView()
-                    .environment(appState)
-                    .environment(router)
-                    .modelContainer(modelContainer)
-                    .onOpenURL { url in
-                        if GIDSignIn.sharedInstance.handle(url) {
-                            return
-                        }
+            // The design system defines no dark-appearance asset variants, so dark mode renders
+            // broken (white text on white surfaces). Lock the app to light until a real dark
+            // palette is designed. This covers presented sheets too.
+            Group {
+                switch bootstrapMode {
+                case .uiTest:
+                    UITestHarnessView()
+                case .localDemo:
+                    ContentView()
+                        .environment(appState)
+                        .environment(router)
+                        .modelContainer(modelContainer)
+                case .localSetupRequired:
+                    LocalSetupRequiredView()
+                case .production:
+                    ContentView()
+                        .environment(appState)
+                        .environment(router)
+                        .modelContainer(modelContainer)
+                        .onOpenURL { url in
+                            if GIDSignIn.sharedInstance.handle(url) {
+                                return
+                            }
 
-                        _ = Auth.auth().canHandle(url)
-                    }
+                            _ = Auth.auth().canHandle(url)
+                        }
+                }
             }
+            .preferredColorScheme(.light)
         }
     }
 }
@@ -107,7 +125,11 @@ private extension GarageApp {
             vehicleService: .uiTest,
             purchaseService: .uiTest,
             syncService: .shared,
-            analytics: NoopAnalyticsService()
+            analytics: NoopAnalyticsService(),
+            // Explicit noop: these modes run before (or without) FirebaseApp.configure, and
+            // FirebaseCrashReporter touches Crashlytics.crashlytics() on setEnabled — the same
+            // pre-configure launch-crash class the deleteAccount service hit.
+            crashReporter: NoopCrashReporter()
         )
     }
 

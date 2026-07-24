@@ -21,6 +21,7 @@ final class DetailingService {
         let reference = firestore.db.collection(FirestorePaths.vehicleDetailing(vehicleId: record.vehicleId))
             .document(record.id)
         try await reference.setData(firestore.encode(record), merge: true)
+        VehicleDataRevisionStore.shared.bump(vehicleId: record.vehicleId)
     }
 
     func fetchRecords(vehicleId: String) async throws -> [DetailingRecord] {

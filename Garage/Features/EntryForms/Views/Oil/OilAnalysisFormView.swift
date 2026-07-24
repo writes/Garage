@@ -23,6 +23,7 @@ struct OilAnalysisFormView: View {
             title: "Oil Analysis",
             viewModel: form,
             onSave: save,
+            onEditEntry: seed,
             mutationGate: importCoordinator
         ) {
             importMutationSurface
@@ -39,7 +40,6 @@ struct OilAnalysisFormView: View {
                     .accessibilityIdentifier("oilAnalysis.cancellingImport")
             }
         }
-        .task { await prepare() }
         .onAppear { importCoordinator.sceneDidChange(isBackgrounded: scenePhase == .background) }
         .onChange(of: scenePhase) { _, phase in
             let isBackgrounded = phase == .background
@@ -149,9 +149,12 @@ struct OilAnalysisFormView: View {
             }
         }
     }
-    private func prepare() async {
-        guard let vehicleId = appState.currentVehicle?.id else { return }
-        await form.prepare(vehicleId: vehicleId)
+    /// Reuses the exact prefill machinery the PDF-import path already uses (OilAnalysisImportPrefill
+    /// + OilAnalysisEditableFields.apply) — a direct mutation, not through the gated textBinding,
+    /// since this runs once at initial load, never concurrently with a user edit or live import.
+    private func seed(from entry: FirestoreEntry) {
+        guard let details = entry.decodedDetails(as: OilAnalysisEntry.self) else { return }
+        draft.editableFields.apply(OilAnalysisImportPrefill(entry: details))
     }
     private func save() async -> Bool {
         let admissionEpoch = importCoordinator.mutationEpoch

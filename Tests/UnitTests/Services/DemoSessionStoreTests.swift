@@ -43,6 +43,31 @@ struct DemoSessionStoreTests {
         #expect(store.profile()["phone"] == DemoSessionStore.profileFields["phone"])
     }
 
+    @Test func deleteEntry_removesAnOverlaySaveAndBumpsRevision() {
+        let store = DemoSessionStore()
+        let vehicle = testVehicle(id: "delete-vehicle")
+        let entry = testEntry(id: "delete-entry", vehicleId: vehicle.id)
+        store.save(entry)
+        let revisionBeforeDelete = store.revision
+
+        store.deleteEntry(id: entry.id)
+
+        #expect(!store.entries(for: vehicle.id).contains(where: { $0.id == entry.id }))
+        #expect(store.revision > revisionBeforeDelete)
+    }
+
+    @Test func deleteReminder_removesAnOverlaySaveAndBumpsRevision() {
+        let store = DemoSessionStore()
+        let reminder = Reminder(id: "delete-reminder", vehicleId: "delete-vehicle", title: "Rotate tires")
+        store.save(reminder)
+        let revisionBeforeDelete = store.revision
+
+        store.deleteReminder(id: reminder.id)
+
+        #expect(!store.reminders(for: reminder.vehicleId).contains(where: { $0.id == reminder.id }))
+        #expect(store.revision > revisionBeforeDelete)
+    }
+
     @Test func freshStore_resetsSessionWritesAndKeepsOnlySeeds() {
         let firstLaunch = DemoSessionStore()
         let vehicle = testVehicle(id: "relaunch-vehicle")

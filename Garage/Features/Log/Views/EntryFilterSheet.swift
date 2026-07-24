@@ -16,6 +16,7 @@ struct EntryFilterSheet: View {
                         }
                     }
                 ))
+                .frame(minHeight: 44)
                 .accessibilityIdentifier("log.filter.\(type.rawValue)")
             }
         }

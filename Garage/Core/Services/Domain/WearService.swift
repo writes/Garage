@@ -33,6 +33,7 @@ final class WearService {
                 .document(snapshot.id)
             try await reference.setData(firestore.encode(snapshot))
         }
+        VehicleDataRevisionStore.shared.bump(vehicleId: vehicleId)
     }
 
     nonisolated static func latestDashboardItems(from snapshots: [WearSnapshot]) -> [WearItem] {

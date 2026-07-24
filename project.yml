@@ -56,6 +56,12 @@ targets:
         NSMicrophoneUsageDescription: Speak a log entry and Garage drafts it for you to review.
         NSSpeechRecognitionUsageDescription: Turns your spoken log entry into text you confirm before saving.
         CFBundleDisplayName: Garage
+        # App uses only standard/exempt encryption (HTTPS/TLS); declaring this avoids the
+        # "Missing Compliance" hold on every TestFlight/App Store upload.
+        ITSAppUsesNonExemptEncryption: false
+        # Crashlytics is consent-gated (audit #23): collection stays OFF until AppState
+        # enables it alongside Analytics after a profile load confirms the stored opt-in.
+        FirebaseCrashlyticsCollectionEnabled: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.writes.harrysplayhouse
@@ -158,6 +164,42 @@ targets:
           - $(SRCROOT)/Garage/Resources/GoogleService-Info.plist
         outputFiles:
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist
+        basedOnDependencyAnalysis: false
+        showEnvVars: false
+      # Crashlytics dSYM upload (audit #14): without this phase Release crashes arrive
+      # unsymbolicated. Release-only (CI Debug/test builds skip it), fail-soft (a network
+      # failure warns instead of failing the build), and no-ops when the SPM checkout or
+      # GoogleService-Info.plist is absent.
+      - name: Upload dSYMs to Crashlytics
+        shell: /bin/sh
+        script: |
+          if [ "${CONFIGURATION}" != "Release" ]; then
+            echo "Skipping Crashlytics dSYM upload for ${CONFIGURATION}."
+            exit 0
+          fi
+          GOOGLE_SERVICE_INFO_PATH="${SRCROOT}/Garage/Resources/GoogleService-Info.plist"
+          UPLOAD_TOOL="${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols"
+          if [ ! -f "${GOOGLE_SERVICE_INFO_PATH}" ] || [ ! -x "${UPLOAD_TOOL}" ]; then
+            echo "warning: Crashlytics upload-symbols or GoogleService-Info.plist missing; skipping dSYM upload."
+            exit 0
+          fi
+          # Bounded watchdog (landmine #14: every spawn site carries a timeout) — the upload
+          # tool hangs indefinitely without network/auth, which stalled the CI archive.
+          "${UPLOAD_TOOL}" -gsp "${GOOGLE_SERVICE_INFO_PATH}" -p ios "${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}" &
+          UPLOAD_PID=$!
+          WAITED=0
+          while kill -0 "${UPLOAD_PID}" 2>/dev/null && [ "${WAITED}" -lt 90 ]; do
+            sleep 5
+            WAITED=$((WAITED + 5))
+          done
+          if kill -0 "${UPLOAD_PID}" 2>/dev/null; then
+            kill "${UPLOAD_PID}" 2>/dev/null
+            echo "warning: Crashlytics dSYM upload timed out after ${WAITED}s; symbolicate manually with upload-symbols."
+          fi
+          wait "${UPLOAD_PID}" 2>/dev/null \
+            || echo "warning: Crashlytics dSYM upload did not complete; symbolicate manually with upload-symbols."
+        inputFiles:
+          - $(DWARF_DSYM_FOLDER_PATH)/$(DWARF_DSYM_FILE_NAME)
         basedOnDependencyAnalysis: false
         showEnvVars: false
   GarageUnitTests:

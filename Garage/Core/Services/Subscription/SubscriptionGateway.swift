@@ -61,12 +61,22 @@ final class SubscriptionGateway {
     func execute(_ operation: SubscriptionQueuedOperation) async {
         switch operation {
         case .identity(let attempt): await executeIdentity(attempt)
+        case .signOut(let generation): await executeSignOut(generation)
         case let .status(lease, ticket): await executeStatus(lease, ticket)
         case let .offerings(lease, ticket): await executeOfferings(lease, ticket)
         case let .purchase(selection, lease, flight, ticket):
             await executePurchase(selection, lease, flight, ticket)
         case let .restore(lease, flight, ticket): await executeRestore(lease, flight, ticket)
         }
+    }
+
+    func executeSignOut(_ generation: UInt64) async {
+        // A sign-in that landed after this sign-out supersedes it — logging out then would
+        // clobber the newer user's SDK identity. Local access was already fenced by the
+        // revoke in setDesiredFirebaseUID; the SDK call is best-effort identity hygiene.
+        guard state.generation == generation, state.desiredFirebaseUID == nil else { return }
+        let observed = await client.logOut()
+        state.appliedRevenueCatUID = observed.observedAppUserID
     }
 
     func executeIdentity(_ attempt: SubscriptionIdentityAttempt) async {

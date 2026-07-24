@@ -25,6 +25,7 @@ struct SparePartsView: View {
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.Colors.textSecondary)
                     }
+                    .accessibilityElement(children: .combine)
                 }
             }
         }

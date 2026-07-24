@@ -75,6 +75,7 @@ struct VoiceQuickAddView: View {
                 ProgressView()
                 Text("Drafting your entry…").font(Theme.Typography.body)
             }
+            .accessibilityElement(children: .combine)
         case .failed(let failure):
             failureView(failure)
         }

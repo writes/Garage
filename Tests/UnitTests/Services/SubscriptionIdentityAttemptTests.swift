@@ -89,15 +89,39 @@ struct SubscriptionIdentityAttemptTests {
         #expect(sink.envelopes.map(\.event) == [.revokedAll])
     }
 
-    @Test func signOutNeverCallsRevenueCatLogout() async {
+    @Test func signOutQueuesSDKLogoutAfterIdentityWork() async {
         let client = SubscriptionMockClient()
         let gateway = makeGateway(client)
         _ = await gateway.setDesiredFirebaseUID("A")?.awaitValue()
         let result = gateway.setDesiredFirebaseUID(nil)
         #expect(result == nil)
+        // A signed-out status registration queues BEHIND the signOut op; its resolution
+        // proves the serialized logout already executed.
+        _ = await gateway.registerStatus().awaitValue()
+        #expect(client.callLog.contains("logout"))
         #expect(client.loginUIDs == ["A"])
         #expect(gateway.diagnostics.desiredFirebaseUID == nil)
         #expect(gateway.diagnostics.readyLease == nil)
+        #expect(gateway.diagnostics.appliedRevenueCatUID == "anonymous")
+    }
+
+    @Test func signOutSupersededByNewSignInSkipsSDKLogout() async {
+        let client = SubscriptionMockClient()
+        let held = HeldValue<RevenueCatObserved<EntitlementSnapshot>>()
+        client.loginHandler = { _ in await held.load() }
+        let gateway = makeGateway(client)
+        _ = gateway.setDesiredFirebaseUID("A")
+        let firstID = await held.waitForStart()
+        _ = gateway.setDesiredFirebaseUID(nil)
+        let second = gateway.setDesiredFirebaseUID("B")
+        held.resolve(firstID, with: client.observed(.success(SubscriptionFixtures.active), uid: "A"))
+        let secondID = await held.waitForStart()
+        held.resolve(secondID, with: client.observed(.success(SubscriptionFixtures.active), uid: "B"))
+        _ = await second?.awaitValue()
+        // The queued signOut ran between A and B but was superseded by the B sign-in —
+        // executing it would have clobbered B's SDK identity.
+        #expect(!client.callLog.contains("logout"))
+        #expect(client.loginUIDs == ["A", "B"])
     }
 
     private func makeGateway(

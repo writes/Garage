@@ -17,8 +17,7 @@ final class ExportFlowJourneyTests: JourneyTestCase {
             ]
         )
         requireText(containing: "Upgrade to generate a record PDF.", in: app)
-        requireText(containing: "Photo, receipt, and invoice files are not included", in: app)
-        requireText(containing: "sharing or saving are unavailable in this beta.", in: app)
+        requireText(containing: "Photo, receipt, and invoice files are not included.", in: app)
         XCTAssertFalse(app.buttons["export.buildPDF"].exists)
         assertMediaTogglesAreUnavailable(in: app)
         assertLegacyExportCopyIsUnavailable(in: app)
@@ -33,18 +32,13 @@ final class ExportFlowJourneyTests: JourneyTestCase {
 
         require(app.buttons["export.buildPDF"])
         XCTAssertFalse(app.buttons["export.gate.cta"].exists)
-        require(
-            app.staticTexts[
-                "This record-only PDF does not include photo, receipt, " +
-                    "or invoice files. Sharing and saving are unavailable in this beta."
-            ]
-        )
+        require(app.staticTexts["This record-only PDF does not include photo, receipt, or invoice files."])
         assertMediaTogglesAreUnavailable(in: app)
         assertLegacyExportCopyIsUnavailable(in: app)
         revealAndTap(app.buttons["export.buildCSV"], in: app)
         require(app.descendants(matching: .any)["export.shareCSV"])
         revealAndTap(app.buttons["export.buildPDF"], in: app)
-        require(app.descendants(matching: .any)["export.pdfResult"])
+        require(app.descendants(matching: .any)["export.sharePDF"])
     }
 
     private func openExport(in app: XCUIApplication) {

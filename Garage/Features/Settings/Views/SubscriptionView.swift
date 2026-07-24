@@ -44,11 +44,14 @@ private struct SubscriptionContentView: View {
         BottomSheet(title: "Garage Pro") {
             Text("Pro includes up to 5 vehicles, parts, detailing, warranty and recall records, and stats.")
                 .font(Theme.Typography.body)
+            // Offerings load automatically below (.task); this button is now a manual
+            // retry for when that load fails or the connection drops, not the primary trigger.
             PrimaryButton(title: "Refresh Plans") { Task { await model.refreshTapped() } }
                 .disabled(model.isBusy)
                 .accessibilityIdentifier("subscription.refresh")
             Button("Restore Purchases") { Task { await model.restoreTapped() } }
                 .disabled(model.isBusy)
+                .frame(minHeight: 44)
                 .accessibilityIdentifier("subscription.restore")
             policyLinks
             Text("Review the current plan and price before purchasing.")
@@ -67,6 +70,7 @@ private struct SubscriptionContentView: View {
         .onChange(of: model.accountRevision, initial: true) { _, revision in
             model.accountRevisionChanged(to: revision)
         }
+        .task { await model.refreshTapped() }
     }
 
     @ViewBuilder
@@ -85,6 +89,7 @@ private struct SubscriptionContentView: View {
             .disabled(
                 model.isBusy || model.hasPendingReconciliation || dto.period?.isSupportedRenewal != true
             )
+            .frame(minHeight: 44)
             .accessibilityIdentifier("subscription.package.\(offset)")
     }
 

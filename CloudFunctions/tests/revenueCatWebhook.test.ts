@@ -41,12 +41,15 @@ function request(body: unknown, authorization = expectedAuthorization): { body: 
   };
 }
 
+// Renewable grants carry an expiration in production; a grant WITHOUT one is the
+// fail-closed edge exercised explicitly below (override expiration_at_ms: undefined).
 function event(overrides: Record<string, unknown> = {}): { event: Record<string, unknown> } {
   return {
     event: {
       app_user_id: "owner-1",
       entitlement_ids: ["pro"],
       event_timestamp_ms: Date.parse("2026-07-10T10:00:00.000Z"),
+      expiration_at_ms: Date.parse("2026-08-10T10:00:00.000Z"),
       id: "event-1",
       type: "RENEWAL",
       ...overrides,
@@ -58,6 +61,7 @@ function transferEvent(overrides: Record<string, unknown> = {}): { event: Record
   return {
     event: {
       event_timestamp_ms: Date.parse("2026-07-10T10:00:00.000Z"),
+      expiration_at_ms: Date.parse("2026-08-10T10:00:00.000Z"),
       id: "transfer-1",
       transferred_from: ["old-owner"],
       transferred_to: ["new-owner"],
@@ -562,6 +566,197 @@ describe("handleRevenueCatWebhookRequest", () => {
 
     expect(missing.statusCode).toBe(400);
     expect(db.data("revenuecat_events/event-1")).toBeUndefined();
+  });
+
+  it("revokes immediately on a refund (CANCELLATION with cancel_reason CUSTOMER_SUPPORT)", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/owner-1", {
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        updatedAt: "2026-07-09T10:00:00.000Z",
+        expiresAt: "2026-08-10T10:00:00.000Z",
+      },
+    });
+
+    const result = await send(db, event({
+      cancel_reason: "CUSTOMER_SUPPORT",
+      id: "refund-1",
+      type: "CANCELLATION",
+    }));
+
+    expect(result.statusCode).toBe(200);
+    expect(db.data("users/owner-1")).toMatchObject({
+      subscription: { entitlement: "pro", isActive: false, updatedAt: "2026-07-10T10:00:00.000Z" },
+    });
+    expect(db.data("revenuecat_events/refund-1")).toMatchObject({ type: "CANCELLATION" });
+  });
+
+  it("keeps access on a voluntary CANCELLATION (cancel_reason UNSUBSCRIBE)", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/owner-1", {
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        updatedAt: "2026-07-09T10:00:00.000Z",
+        expiresAt: "2026-08-10T10:00:00.000Z",
+      },
+    });
+
+    await send(db, event({
+      cancel_reason: "UNSUBSCRIBE",
+      id: "voluntary-cancel-1",
+      type: "CANCELLATION",
+    }));
+
+    expect(db.data("users/owner-1")).toMatchObject({
+      subscription: { isActive: true, updatedAt: "2026-07-09T10:00:00.000Z" },
+    });
+  });
+
+  it("fails closed on a renewable grant with no expiration and no prior expiry", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/owner-1", { profile: { displayName: "Owner" } });
+
+    const result = await send(db, event({
+      expiration_at_ms: undefined,
+      id: "no-expiry-grant",
+      type: "INITIAL_PURCHASE",
+    }));
+
+    expect(result.statusCode).toBe(200);
+    expect(db.data("users/owner-1")).not.toHaveProperty("subscription");
+    expect(db.data("revenuecat_events/no-expiry-grant")).toMatchObject({ type: "INITIAL_PURCHASE" });
+  });
+
+  it("preserves the prior expiry when a renewable grant omits expiration", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/owner-1", {
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        updatedAt: "2026-07-09T10:00:00.000Z",
+        expiresAt: "2026-08-01T10:00:00.000Z",
+      },
+    });
+
+    await send(db, event({ expiration_at_ms: undefined, id: "no-expiry-renewal" }));
+
+    expect(db.data("users/owner-1")).toMatchObject({
+      subscription: {
+        isActive: true,
+        updatedAt: "2026-07-10T10:00:00.000Z",
+        expiresAt: "2026-08-01T10:00:00.000Z",
+      },
+    });
+  });
+
+  it("grants a lifetime NON_RENEWING_PURCHASE without an expiration", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/owner-1", {});
+
+    await send(db, event({
+      expiration_at_ms: undefined,
+      id: "lifetime-1",
+      type: "NON_RENEWING_PURCHASE",
+    }));
+
+    expect(db.data("users/owner-1")).toMatchObject({
+      subscription: { entitlement: "pro", isActive: true, updatedAt: "2026-07-10T10:00:00.000Z" },
+    });
+    expect(db.data("users/owner-1")?.subscription).not.toHaveProperty("expiresAt");
+  });
+
+  it("re-grants on REFUND_REVERSED and extends expiry on SUBSCRIPTION_EXTENDED", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/owner-1", {
+      subscription: {
+        entitlement: "pro",
+        isActive: false,
+        updatedAt: "2026-07-09T10:00:00.000Z",
+        expiresAt: "2026-07-09T10:00:00.000Z",
+      },
+    });
+
+    await send(db, event({ id: "refund-reversed-1", type: "REFUND_REVERSED" }));
+    expect(db.data("users/owner-1")).toMatchObject({
+      subscription: { isActive: true, expiresAt: "2026-08-10T10:00:00.000Z" },
+    });
+
+    await send(db, event({
+      event_timestamp_ms: Date.parse("2026-07-11T10:00:00.000Z"),
+      expiration_at_ms: Date.parse("2026-09-10T10:00:00.000Z"),
+      id: "extended-1",
+      type: "SUBSCRIPTION_EXTENDED",
+    }));
+    expect(db.data("users/owner-1")).toMatchObject({
+      subscription: { isActive: true, expiresAt: "2026-09-10T10:00:00.000Z" },
+    });
+  });
+
+  it("repairs a skipped transfer destination on re-send once an expiry source exists", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/old-owner", {
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        updatedAt: "2026-07-09T10:00:00.000Z",
+        expiresAt: "2026-07-31T10:00:00.000Z",
+      },
+    });
+
+    await send(db, transferEvent({ expiration_at_ms: undefined, id: "retryable-transfer" }));
+    expect(db.data("users/new-owner")).toBeUndefined();
+    expect(db.data("revenuecat_events/retryable-transfer")).toMatchObject({
+      grantSkippedUserIds: ["new-owner"],
+    });
+
+    // Support heals the destination with an expiry-bearing grant; the SAME event id re-sent
+    // from the RevenueCat dashboard must now reprocess instead of dead-ending on "duplicate".
+    db.seed("users/new-owner", {
+      subscription: {
+        entitlement: "pro",
+        isActive: false,
+        updatedAt: "2026-07-01T10:00:00.000Z",
+        expiresAt: "2026-09-01T10:00:00.000Z",
+      },
+    });
+    const resend = await send(db, transferEvent({ expiration_at_ms: undefined, id: "retryable-transfer" }));
+
+    expect(resend.statusCode).toBe(200);
+    expect(db.data("users/new-owner")).toMatchObject({
+      subscription: { isActive: true, expiresAt: "2026-09-01T10:00:00.000Z" },
+    });
+    expect(db.data("revenuecat_events/retryable-transfer")).not.toHaveProperty("grantSkippedUserIds");
+
+    // With the skip marker cleared, a further re-send is a plain duplicate again.
+    const third = await send(db, transferEvent({ expiration_at_ms: undefined, id: "retryable-transfer" }));
+    expect(third.statusCode).toBe(200);
+    expect(db.transactionTraces()[2].writes).toEqual([]);
+  });
+
+  it("skips a transfer destination grant when the event has no expiration (fail closed)", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/old-owner", {
+      subscription: {
+        entitlement: "pro",
+        isActive: true,
+        updatedAt: "2026-07-09T10:00:00.000Z",
+        expiresAt: "2026-07-31T10:00:00.000Z",
+      },
+    });
+
+    const result = await send(db, transferEvent({
+      expiration_at_ms: undefined,
+      id: "no-expiry-transfer",
+    }));
+
+    expect(result.statusCode).toBe(200);
+    expect(db.data("users/old-owner")).toMatchObject({
+      subscription: { isActive: false, updatedAt: "2026-07-10T10:00:00.000Z" },
+    });
+    expect(db.data("users/new-owner")).toBeUndefined();
+    expect(db.data("revenuecat_events/no-expiry-transfer")).toMatchObject({ type: "TRANSFER" });
   });
 
   it("upserts a missing user and prevents a later stale event from clobbering it", async () => {

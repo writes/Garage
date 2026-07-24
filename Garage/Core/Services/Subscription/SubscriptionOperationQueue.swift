@@ -8,6 +8,7 @@ struct SubscriptionCommerceFlight { let flightID: UInt64 }
 
 enum SubscriptionQueuedOperation {
     case identity(SubscriptionIdentityAttempt)
+    case signOut(generation: UInt64)
     case status(IdentityLease?, OperationTicket<StatusOutcome>)
     case offerings(IdentityLease?, OperationTicket<OfferingsOutcome>)
     case purchase(PackageSelection, IdentityLease?, UInt64, OperationTicket<PurchaseOutcome>)
@@ -52,7 +53,12 @@ final class SubscriptionGatewayState {
         desiredFirebaseUID = uid
         revokeReadiness()
         guard let uid else {
-            return SubscriptionIdentityTransition(changed: true, ticket: nil, appended: false)
+            // The SDK sign-out is QUEUED so it serializes behind any in-flight logIn — a
+            // detached logOut racing a queued logIn was the identity-revert bug class the
+            // 7273915 tri-review flagged. The generation stamp lets a superseding sign-in
+            // cancel it at execution time.
+            operations.append(.signOut(generation: generation))
+            return SubscriptionIdentityTransition(changed: true, ticket: nil, appended: true)
         }
         let ticket = appendIdentityAttempt(uid: uid).ticket
         return SubscriptionIdentityTransition(changed: true, ticket: ticket, appended: true)

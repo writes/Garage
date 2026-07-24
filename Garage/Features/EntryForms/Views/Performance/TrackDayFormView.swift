@@ -9,7 +9,7 @@ struct TrackDayFormView: View {
     @State private var bestLap = ""
 
     var body: some View {
-        EntryFormScaffold(title: "Track Day", viewModel: form, onSave: save) {
+        EntryFormScaffold(title: "Track Day", viewModel: form, onSave: save, onEditEntry: seed) {
             TextField("Venue", text: $venue).textFieldStyle(.roundedBorder)
             Picker("Event Type", selection: $eventType) {
                 ForEach(TrackEventType.allCases, id: \.self) { type in Text(type.displayName).tag(type) }
@@ -17,12 +17,14 @@ struct TrackDayFormView: View {
             TextField("Number of laps", text: $laps).keyboardType(.numberPad).textFieldStyle(.roundedBorder)
             TextField("Best lap time", text: $bestLap).textFieldStyle(.roundedBorder)
         }
-        .task { await prepare() }
     }
 
-    private func prepare() async {
-        guard let vehicleId = appState.currentVehicle?.id else { return }
-        await form.prepare(vehicleId: vehicleId)
+    private func seed(from entry: FirestoreEntry) {
+        guard let details = entry.decodedDetails(as: TrackDayEntry.self) else { return }
+        venue = details.venueName
+        eventType = details.eventType
+        laps = details.numberOfLaps.map(String.init) ?? ""
+        bestLap = details.bestLapTime ?? ""
     }
 
     private func save() async -> Bool {

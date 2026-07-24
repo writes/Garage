@@ -44,6 +44,17 @@ final class LiveRevenueCatClient: RevenueCatClienting {
         }
     }
 
+    func logOut() async -> RevenueCatObserved<EntitlementSnapshot> {
+        await RevenueCatValueMapper.observe(userID: observedUserID) {
+            // Purchases.logOut() throws on an already-anonymous user; that state is the goal,
+            // not a failure, so report the current snapshot instead.
+            guard !Purchases.shared.isAnonymous else {
+                return RevenueCatValueMapper.snapshot(try await Purchases.shared.customerInfo())
+            }
+            return RevenueCatValueMapper.snapshot(try await Purchases.shared.logOut())
+        }
+    }
+
     func customerInfo() async -> RevenueCatObserved<EntitlementSnapshot> {
         await RevenueCatValueMapper.observe(userID: observedUserID) {
             RevenueCatValueMapper.snapshot(try await Purchases.shared.customerInfo())

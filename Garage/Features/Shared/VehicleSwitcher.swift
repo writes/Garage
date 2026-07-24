@@ -36,7 +36,7 @@ struct VehicleSwitcher: View {
             .foregroundStyle(Theme.Colors.textPrimary)
         }
         .accessibilityLabel("Vehicle switcher")
-        .accessibilityValue(appState.currentVehicle?.id ?? "")
+        .accessibilityValue(appState.currentVehicle?.displayName ?? "No vehicle selected")
         .accessibilityIdentifier("vehicle.switcher")
         .task(id: activeUID) {
             guard let uid = activeUID else { return }
@@ -100,6 +100,10 @@ struct VehicleSwitcher: View {
                 for try await envelope in stream {
                     if Task.isCancelled { return }
                     syncService.recordPrimarySnapshot(envelope, session: session)
+                    // The decoded vehicles were previously discarded here (audit #9) — this is
+                    // what keeps AppState.vehicles/currentVehicle live: edits from other
+                    // devices/screens land without a manual refresh.
+                    appState.applyVehicleSnapshot(envelope)
                 }
             } catch {
                 if Task.isCancelled { return }

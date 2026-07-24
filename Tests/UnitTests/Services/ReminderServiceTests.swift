@@ -25,4 +25,14 @@ struct ReminderServiceTests {
 
         #expect(sorted.map(\.id) == ["scheduled", "none"])
     }
+
+    @Test func excludingCompleted_dropsOnlyRemindersWithACompletedAt() {
+        let outstanding = Reminder(id: "outstanding", vehicleId: "vehicle", title: "Outstanding")
+        var completed = Reminder(id: "completed", vehicleId: "vehicle", title: "Completed")
+        completed.completedAt = Date(timeIntervalSince1970: 100)
+
+        let filtered = ReminderService.excludingCompleted([outstanding, completed])
+
+        #expect(filtered.map(\.id) == ["outstanding"])
+    }
 }

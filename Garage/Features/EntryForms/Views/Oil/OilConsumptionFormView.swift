@@ -8,17 +8,19 @@ struct OilConsumptionFormView: View {
     @State private var oilGrade = ""
 
     var body: some View {
-        EntryFormScaffold(title: "Oil Consumption", viewModel: form, onSave: save) {
+        EntryFormScaffold(title: "Oil Consumption", viewModel: form, onSave: save, onEditEntry: seed) {
             TextField("Quarts added", text: $amountAdded).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
             TextField("Oil brand", text: $oilBrand).textFieldStyle(.roundedBorder)
             TextField("Oil grade", text: $oilGrade).textFieldStyle(.roundedBorder)
         }
-        .task { await prepare() }
     }
 
-    private func prepare() async {
-        guard let vehicleId = appState.currentVehicle?.id else { return }
-        await form.prepare(vehicleId: vehicleId)
+    private func seed(from entry: FirestoreEntry) {
+        guard let details = entry.decodedDetails(as: OilConsumptionEntry.self) else { return }
+        amountAdded = details.amountAddedQuarts > 0
+            ? EntryFormViewModel.costString(details.amountAddedQuarts) : ""
+        oilBrand = details.oilBrand ?? ""
+        oilGrade = details.oilGrade ?? ""
     }
 
     private func save() async -> Bool {

@@ -1,5 +1,7 @@
 import { getFirestore } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import * as logger from "firebase-functions/logger";
+import { anthropicApiKey } from "../params";
 
 export type OilAnalysisResponse = {
   labName: string;
@@ -449,11 +451,16 @@ export async function parseOilAnalysisRequest(
       }),
     });
   } catch (error) {
+    // The raw network failure would otherwise be invisible behind the generic client error.
+    logger.error("oil-analysis anthropic request failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
     await refundOilAnalysisQuota(dependencies.db, reservation, now);
     throw new HttpsError("internal", "Claude request failed.");
   }
 
   if (!response.ok) {
+    logger.error("oil-analysis anthropic request rejected", { status: response.status });
     // Anthropic did not complete billable inference on a 5xx response. Other
     // HTTP failures and all HTTP-OK model-output errors keep their quota unit.
     if (response.status >= 500) {
@@ -465,12 +472,17 @@ export async function parseOilAnalysisRequest(
   let payload: unknown;
   try {
     payload = await response.json();
-  } catch {
+  } catch (error) {
+    // Classified reason only: V8 parse errors embed source snippets of the content.
+    logger.error("oil-analysis anthropic response body unreadable", {
+      reason: error instanceof Error ? error.name : "unknown",
+    });
     throw new HttpsError("internal", "Claude returned malformed JSON.");
   }
 
   const text = modelTextFromPayload(payload);
   if (!text) {
+    logger.error("oil-analysis anthropic response had no text block");
     throw new HttpsError("internal", "Claude returned malformed JSON.");
   }
 
@@ -485,15 +497,31 @@ export async function parseOilAnalysisRequest(
     if (error instanceof HttpsError) {
       throw error;
     }
+    // Model-output text is intentionally not logged (it can embed the user's document content) —
+    // including JSON.parse messages, which embed a snippet of the unparseable source.
+    logger.error("oil-analysis model output unparseable", {
+      reason: error instanceof Error ? error.name : "unknown",
+    });
     throw new HttpsError("internal", "Claude returned malformed JSON.");
   }
 }
 
 export const parseOilAnalysis = onCall(
-  { region: "us-central1", enforceAppCheck: true },
-  async (request): Promise<OilAnalysisResponse> => parseOilAnalysisRequest(request, {
-    apiKey: process.env.ANTHROPIC_API_KEY,
-    db: getFirestore() as unknown as QuotaFirestore,
-    fetchImpl: fetch,
-  }),
+  { region: "us-central1", enforceAppCheck: true, secrets: [anthropicApiKey] },
+  async (request): Promise<OilAnalysisResponse> => {
+    try {
+      return await parseOilAnalysisRequest(request, {
+        apiKey: anthropicApiKey.value(),
+        db: getFirestore() as unknown as QuotaFirestore,
+        fetchImpl: fetch,
+      });
+    } catch (error) {
+      logger.error("parseOilAnalysis failed", {
+        uid: request.auth?.uid,
+        code: error instanceof HttpsError ? error.code : "internal",
+        message: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  },
 );

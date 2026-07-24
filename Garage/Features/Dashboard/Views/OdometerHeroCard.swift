@@ -8,23 +8,26 @@ struct OdometerHeroCard: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             VehicleSwitcher()
 
-            Text(vehicle?.displayName ?? "No vehicle selected")
-                .font(Theme.Typography.title)
+            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                Text(vehicle?.displayName ?? "No vehicle selected")
+                    .font(Theme.Typography.title)
 
-            Text("\((vehicle?.currentOdometer ?? 0).formatted()) mi")
-                .font(Theme.Typography.largeTitle)
+                Text("\((vehicle?.currentOdometer ?? 0).formatted()) mi")
+                    .font(Theme.Typography.largeTitle)
 
-            HStack {
-                if hasActiveWarranty {
-                    BadgeView(title: "Under warranty", color: Theme.Colors.success)
-                }
-                if let fuelType = vehicle?.fuelType {
-                    BadgeView(
-                        title: fuelType.displayName,
-                        color: Theme.Colors.accent
-                    )
+                HStack {
+                    if hasActiveWarranty {
+                        BadgeView(title: "Under warranty", color: Theme.Colors.success)
+                    }
+                    if let fuelType = vehicle?.fuelType {
+                        BadgeView(
+                            title: fuelType.displayName,
+                            color: Theme.Colors.accent
+                        )
+                    }
                 }
             }
+            .accessibilityElement(children: .combine)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .garageCard()

@@ -7,8 +7,11 @@ struct CostBreakdownChart: View {
     var body: some View {
         Chart(costGroups, id: \.type) { item in
             BarMark(x: .value("Type", item.type), y: .value("Cost", item.value))
+                .accessibilityLabel(item.type)
+                .accessibilityValue(item.value.currencyText)
         }
         .frame(height: 220)
+        .accessibilityLabel("Cost breakdown by category")
         .garageCard()
     }
 

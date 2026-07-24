@@ -26,5 +26,20 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - run: brew install xcodegen swiftlint
+      # Pinned, not `brew install` (unpinned = nondeterministic: brew always resolves latest).
+      # Versions match the repo-local .tools/bin toolchain: xcodegen 2.45.3, swiftlint 0.63.2.
+      - name: Install pinned xcodegen + swiftlint
+        run: |
+          set -euo pipefail
+          mkdir -p .tools/bin
+          curl -fsSL -o /tmp/xcodegen.zip "https://github.com/yonaskolb/XcodeGen/releases/download/2.45.3/xcodegen.zip"
+          unzip -q -o /tmp/xcodegen.zip -d /tmp/xcodegen-extract
+          cp /tmp/xcodegen-extract/xcodegen/bin/xcodegen .tools/bin/xcodegen
+          curl -fsSL -o /tmp/swiftlint.zip "https://github.com/realm/SwiftLint/releases/download/0.63.2/portable_swiftlint.zip"
+          unzip -q -o /tmp/swiftlint.zip -d /tmp/swiftlint-extract
+          cp /tmp/swiftlint-extract/swiftlint .tools/bin/swiftlint
+          chmod +x .tools/bin/xcodegen .tools/bin/swiftlint
+          .tools/bin/xcodegen --version
+          .tools/bin/swiftlint version
+          echo "$(pwd)/.tools/bin" >> "$GITHUB_PATH"
       - run: ./scripts/ci/verify-ios.sh

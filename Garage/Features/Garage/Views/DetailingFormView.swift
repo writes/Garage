@@ -7,24 +7,40 @@ struct DetailingFormView: View {
     @State private var serviceType: DetailingType = .paintCorrection
     @State private var provider = ""
     @State private var notes = ""
+    @State private var error: AppError?
+    @State private var isSaving = false
     private let service = DetailingService.shared
 
     var body: some View {
         BottomSheet(title: "Add Detailing Record") {
-            TextField("Title", text: $title).textFieldStyle(.roundedBorder)
+            TextField("Title", text: $title)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("detailing.form.title")
             Picker("Type", selection: $serviceType) {
                 ForEach(DetailingType.allCases, id: \.self) { type in Text(type.displayName).tag(type) }
             }
-            TextField("Shop or DIY note", text: $provider).textFieldStyle(.roundedBorder)
-            TextEditor(text: $notes).frame(minHeight: 120).garageCard()
-            PrimaryButton(title: "Save Record") {
+            TextField("Shop or DIY note", text: $provider)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("detailing.form.provider")
+            TextEditor(text: $notes)
+                .frame(minHeight: 120)
+                .garageCard()
+                .accessibilityLabel("Notes")
+                .accessibilityIdentifier("detailing.form.notes")
+            if let error {
+                ErrorBanner(error: error)
+                    .accessibilityIdentifier("detailing.form.error")
+            }
+            PrimaryButton(title: isSaving ? "Saving..." : "Save Record") {
                 Task { await save() }
             }
+            .disabled(isSaving)
+            .accessibilityIdentifier("detailing.form.save")
         }
     }
 
     private func save() async {
-        guard let vehicleId = appState.currentVehicle?.id else { return }
+        guard !isSaving, let vehicleId = appState.currentVehicle?.id else { return }
         let record = DetailingRecord(
             id: UUID().uuidString,
             vehicleId: vehicleId,
@@ -42,7 +58,13 @@ struct DetailingFormView: View {
             notes: notes.isEmpty ? nil : notes,
             attachmentPaths: []
         )
-        try? await service.save(record)
-        dismiss()
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await service.save(record)
+            dismiss()
+        } catch {
+            self.error = AppError(from: error)
+        }
     }
 }

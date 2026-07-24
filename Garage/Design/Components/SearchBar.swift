@@ -8,6 +8,7 @@ struct SearchBar: View {
         HStack(spacing: Theme.Spacing.sm) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(Theme.Colors.textSecondary)
+                .accessibilityHidden(true)
             TextField(placeholder, text: $text)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()

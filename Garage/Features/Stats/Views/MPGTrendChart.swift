@@ -7,8 +7,11 @@ struct MPGTrendChart: View {
     var body: some View {
         Chart(fuelPoints, id: \.date) { point in
             LineMark(x: .value("Date", point.date), y: .value("MPG", point.value))
+                .accessibilityLabel(Formatters.shortDate.string(from: point.date))
+                .accessibilityValue(point.value.mpgText)
         }
         .frame(height: 220)
+        .accessibilityLabel("Fuel economy trend")
         .garageCard()
     }
 

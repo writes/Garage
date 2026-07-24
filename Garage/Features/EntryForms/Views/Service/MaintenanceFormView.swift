@@ -8,7 +8,7 @@ struct MaintenanceFormView: View {
     @State private var dueMileage = ""
 
     var body: some View {
-        EntryFormScaffold(title: "Maintenance", viewModel: form, onSave: save) {
+        EntryFormScaffold(title: "Maintenance", viewModel: form, onSave: save, onEditEntry: seed) {
             Picker("Item", selection: $item) {
                 ForEach(MaintenanceItemKind.allCases, id: \.self) { item in Text(item.displayName).tag(item) }
             }
@@ -19,12 +19,13 @@ struct MaintenanceFormView: View {
                 .keyboardType(.numberPad)
                 .textFieldStyle(.roundedBorder)
         }
-        .task { await prepare() }
     }
 
-    private func prepare() async {
-        guard let vehicleId = appState.currentVehicle?.id else { return }
-        await form.prepare(vehicleId: vehicleId)
+    private func seed(from entry: FirestoreEntry) {
+        guard let details = entry.decodedDetails(as: MaintenanceEntry.self) else { return }
+        item = details.item
+        status = details.status
+        dueMileage = details.nextDueMileage.map(String.init) ?? ""
     }
 
     private func save() async -> Bool {
