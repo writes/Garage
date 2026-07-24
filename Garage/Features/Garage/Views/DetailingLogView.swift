@@ -23,12 +23,14 @@ struct DetailingLogView: View {
                         Text(record.title).font(Theme.Typography.headline)
                         Text(record.serviceType.displayName).font(Theme.Typography.caption)
                     }
+                    .accessibilityElement(children: .combine)
                 }
             }
         }
         .navigationTitle("Detailing")
         .toolbar {
             Button("Add Record") { isShowingForm = true }
+                .accessibilityIdentifier("detailing.add")
         }
         .task(id: appState.currentVehicle?.id) { await load() }
         .sheet(isPresented: $isShowingForm) { DetailingFormView() }

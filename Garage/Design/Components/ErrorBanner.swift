@@ -6,17 +6,22 @@ struct ErrorBanner: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-            Label("Something needs attention", systemImage: "exclamationmark.triangle.fill")
-                .font(Theme.Typography.headline)
-                .foregroundStyle(Theme.Colors.error)
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                Label("Something needs attention", systemImage: "exclamationmark.triangle.fill")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.error)
 
-            Text(error.localizedDescription)
-                .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Colors.textPrimary)
+                Text(error.localizedDescription)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textPrimary)
+            }
+            .accessibilityElement(children: .combine)
 
             if let retry {
                 Button("Try Again", action: retry)
                     .font(Theme.Typography.caption.weight(.semibold))
+                    .frame(minHeight: 44, alignment: .leading)
+                    .accessibilityIdentifier("errorBanner.retry")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

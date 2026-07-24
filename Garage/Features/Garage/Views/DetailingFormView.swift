@@ -13,12 +13,20 @@ struct DetailingFormView: View {
 
     var body: some View {
         BottomSheet(title: "Add Detailing Record") {
-            TextField("Title", text: $title).textFieldStyle(.roundedBorder)
+            TextField("Title", text: $title)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("detailing.form.title")
             Picker("Type", selection: $serviceType) {
                 ForEach(DetailingType.allCases, id: \.self) { type in Text(type.displayName).tag(type) }
             }
-            TextField("Shop or DIY note", text: $provider).textFieldStyle(.roundedBorder)
-            TextEditor(text: $notes).frame(minHeight: 120).garageCard()
+            TextField("Shop or DIY note", text: $provider)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("detailing.form.provider")
+            TextEditor(text: $notes)
+                .frame(minHeight: 120)
+                .garageCard()
+                .accessibilityLabel("Notes")
+                .accessibilityIdentifier("detailing.form.notes")
             if let error {
                 ErrorBanner(error: error)
                     .accessibilityIdentifier("detailing.form.error")
@@ -27,6 +35,7 @@ struct DetailingFormView: View {
                 Task { await save() }
             }
             .disabled(isSaving)
+            .accessibilityIdentifier("detailing.form.save")
         }
     }
 

@@ -19,6 +19,7 @@ struct ReminderCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .garageCard()
+        .accessibilityElement(children: .combine)
         .accessibilityIdentifier("dashboard.reminder.\(reminder.title)")
     }
 }

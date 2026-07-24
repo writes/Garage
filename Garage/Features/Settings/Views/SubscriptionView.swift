@@ -51,6 +51,7 @@ private struct SubscriptionContentView: View {
                 .accessibilityIdentifier("subscription.refresh")
             Button("Restore Purchases") { Task { await model.restoreTapped() } }
                 .disabled(model.isBusy)
+                .frame(minHeight: 44)
                 .accessibilityIdentifier("subscription.restore")
             policyLinks
             Text("Review the current plan and price before purchasing.")
@@ -88,6 +89,7 @@ private struct SubscriptionContentView: View {
             .disabled(
                 model.isBusy || model.hasPendingReconciliation || dto.period?.isSupportedRenewal != true
             )
+            .frame(minHeight: 44)
             .accessibilityIdentifier("subscription.package.\(offset)")
     }
 

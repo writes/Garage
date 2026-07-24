@@ -14,6 +14,10 @@ struct VehicleListView: View {
                     Text(vehicle.displayName).font(Theme.Typography.headline)
                     Text("\(vehicle.currentOdometer.formatted()) mi").font(Theme.Typography.caption)
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(vehicle.displayName)
+                .accessibilityValue("\(vehicle.currentOdometer.formatted()) miles")
+                .accessibilityIdentifier("vehicle.row.\(vehicle.id)")
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button("Delete", role: .destructive) {
                         vehiclePendingDeletion = vehicle
@@ -27,6 +31,7 @@ struct VehicleListView: View {
             Button("Add Vehicle") {
                 router.present(.vehicleForm)
             }
+            .accessibilityIdentifier("vehicle.list.add")
         }
         .confirmationDialog(
             "Delete \(vehiclePendingDeletion?.displayName ?? "vehicle")?",

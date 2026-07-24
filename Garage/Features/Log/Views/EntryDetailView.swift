@@ -29,6 +29,7 @@ struct EntryDetailView: View {
                         Text((entry.details[key]?.value ?? .null).displayString)
                             .font(Theme.Typography.body)
                     }
+                    .accessibilityElement(children: .combine)
                 }
             }
             .padding(Theme.Spacing.md)

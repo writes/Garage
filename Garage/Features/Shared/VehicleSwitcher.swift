@@ -36,7 +36,7 @@ struct VehicleSwitcher: View {
             .foregroundStyle(Theme.Colors.textPrimary)
         }
         .accessibilityLabel("Vehicle switcher")
-        .accessibilityValue(appState.currentVehicle?.id ?? "")
+        .accessibilityValue(appState.currentVehicle?.displayName ?? "No vehicle selected")
         .accessibilityIdentifier("vehicle.switcher")
         .task(id: activeUID) {
             guard let uid = activeUID else { return }

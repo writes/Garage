@@ -99,6 +99,17 @@ struct ReminderConfigView: View {
 private struct ReminderConfigRow: View {
     let reminder: Reminder
 
+    private var statusText: String {
+        var parts: [String] = [reminder.completedAt != nil ? "Done" : "Due"]
+        if let dueMileage = reminder.dueMileage {
+            parts.append("at \(dueMileage.formatted()) mi")
+        }
+        if let dueDate = reminder.dueDate {
+            parts.append(dueDate.shortDisplay)
+        }
+        return parts.joined(separator: ", ")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             HStack {
@@ -122,6 +133,9 @@ private struct ReminderConfigRow: View {
                     .foregroundStyle(Theme.Colors.textSecondary)
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(reminder.title)
+        .accessibilityValue(statusText)
         .accessibilityIdentifier("reminder.row.\(reminder.id)")
     }
 }

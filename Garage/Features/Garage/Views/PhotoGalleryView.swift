@@ -33,6 +33,7 @@ struct PhotoGalleryView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .garageCard()
+                        .accessibilityElement(children: .combine)
                     }
                 }
             }
