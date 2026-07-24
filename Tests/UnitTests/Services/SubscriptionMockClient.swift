@@ -27,6 +27,8 @@ final class SubscriptionMockClient: RevenueCatClienting {
     private(set) var purchaseCalls = 0
     private(set) var restoreCalls = 0
     private(set) var callLog: [String] = []
+    private(set) var customerInfoStreamRequests = 0
+    private var customerInfoContinuation: AsyncStream<EntitlementSnapshot>.Continuation?
 
     func invalidatePackageCache() { invalidationCount += 1 }
 
@@ -82,6 +84,19 @@ final class SubscriptionMockClient: RevenueCatClienting {
         callLog.append("restore")
         if let restoreHandler { return await restoreHandler() }
         return observed(.success(.inactive))
+    }
+
+    /// Controllable, yieldable stand-in for the live RevenueCat customerInfoStream (FIX D).
+    /// Tests drive it with `yieldCustomerInfoUpdate`; production never touches this path.
+    func observeCustomerInfoUpdates() -> AsyncStream<EntitlementSnapshot> {
+        customerInfoStreamRequests += 1
+        return AsyncStream { continuation in
+            self.customerInfoContinuation = continuation
+        }
+    }
+
+    func yieldCustomerInfoUpdate(_ snapshot: EntitlementSnapshot) {
+        customerInfoContinuation?.yield(snapshot)
     }
 
     func observed<Value: Sendable>(

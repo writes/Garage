@@ -178,6 +178,7 @@ private extension SubscriptionViewModel {
         case .activePro: finish(token, state: .purchased, notice: .active)
         case .noEntitlement: finish(token, state: .noEntitlement, notice: .purchaseNoEntitlement)
         case .cancelled: finish(token, state: .cancelled, notice: .cancelled)
+        case .pending: finish(token, state: .pending, notice: .pending)
         case .busy: finish(token, state: .idle, notice: .busy)
         case .notReady: finish(token, state: .unavailable, notice: .notReady)
         case .selectionInvalidated:

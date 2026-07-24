@@ -26,6 +26,7 @@ struct VehicleSwitcher: View {
                 Image(systemName: "car.2.fill")
                 Text(appState.currentVehicle?.displayName ?? "Add your first vehicle")
                     .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                 BadgeView(
                     title: syncService.presentationState.label,
                     color: badgeColor

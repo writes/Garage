@@ -171,8 +171,10 @@ final class SubscriptionReconciliationStore {
             replace(with: PendingSubscriptionReconciliation(kind: .restore, uid: uid))
         case .activeEntitlement where pending?.matches(uid: uid) == true:
             replace(with: nil)
-        case .noActiveEntitlement
-            where pending?.kind == .restore && pending?.matches(uid: uid) == true:
+        case .noActiveEntitlement where pending?.matches(uid: uid) == true:
+            // FIX C: "restore found nothing anywhere" is a legitimate resolution regardless of
+            // which kind was pending — a purchase-kind block must not permanently gate future
+            // purchases just because this identity-correct restore also found nothing.
             replace(with: nil)
         default: break
         }

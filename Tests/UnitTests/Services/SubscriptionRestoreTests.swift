@@ -89,23 +89,31 @@ struct SubscriptionRestoreTests {
         let store = SubscriptionReconciliationStore()
         store.observePurchase(.reconciliationRequired, uid: "account-A")
 
-        store.observeRestore(.noActiveEntitlement, uid: "account-B")
+        store.observeRestore(.reconciliationRequired, uid: "account-B") // already pending: no-op
         #expect(store.kind == .purchase)
-        store.observeRestore(.noActiveEntitlement, uid: "account-A")
+        store.observeRestore(.activeEntitlement, uid: "account-B") // wrong identity: still blocked
         #expect(store.kind == .purchase)
-        store.observeRestore(.reconciliationRequired, uid: "account-B")
+        store.observeRestore(.activeEntitlement, uid: "account-A") // correct identity: clears
+        #expect(store.kind == nil)
+    }
+
+    // FIX C: a genuinely identity-correct "nothing to restore" result is a legitimate
+    // resolution regardless of which kind of reconciliation was pending — it must not leave a
+    // purchase-kind block permanently gating future purchases.
+    @Test func matchingIdentityNoActiveEntitlementClearsPendingRegardlessOfStoredKind() {
+        let store = SubscriptionReconciliationStore()
+        store.observePurchase(.reconciliationRequired, uid: "account-A")
+        store.observeRestore(.noActiveEntitlement, uid: "account-B") // wrong identity: still blocked
         #expect(store.kind == .purchase)
-        store.observeRestore(.activeEntitlement, uid: "account-B")
-        #expect(store.kind == .purchase)
-        store.observeRestore(.activeEntitlement, uid: "account-A")
+        store.observeRestore(.noActiveEntitlement, uid: "account-A") // correct identity: clears (NEW)
         #expect(store.kind == nil)
 
         let restoreStore = SubscriptionReconciliationStore()
         restoreStore.observeRestore(.reconciliationRequired, uid: "account-A")
-        restoreStore.observeRestore(.noActiveEntitlement, uid: "account-B")
+        restoreStore.observeRestore(.noActiveEntitlement, uid: "account-B") // wrong identity
         #expect(restoreStore.kind == .restore)
-        restoreStore.observeRestore(.noActiveEntitlement, uid: "account-A")
-        #expect(restoreStore.kind == nil)
+        restoreStore.observeRestore(.noActiveEntitlement, uid: "account-A") // correct identity: clears
+        #expect(restoreStore.kind == nil) // unchanged: this path already cleared pre-fix
     }
 
     @Test func realServiceWrongAccountRestoreCannotClearPendingPurchase() async {
@@ -121,6 +129,21 @@ struct SubscriptionRestoreTests {
         _ = await service.setDesiredFirebaseUID("A")?.awaitValue()
         client.restoreHandler = { client.observed(.success(SubscriptionFixtures.active)) }
         #expect(await service.restore() == .activeEntitlement)
+        #expect(service.pendingReconciliation == nil)
+    }
+
+    // FIX C, service level: a purchase-kind reconciliation used to permanently gate the
+    // purchase path once the correct account genuinely had nothing to restore. It must clear.
+    @Test func realServiceCorrectIdentityNoActiveEntitlementClearsPurchaseKindReconciliation() async {
+        let client = SubscriptionMockClient()
+        let store = SubscriptionReconciliationStore()
+        store.observePurchase(.reconciliationRequired, uid: "A")
+        let service = makeTestService(client: client, reconciliationStore: store)
+        _ = await service.setDesiredFirebaseUID("A")?.awaitValue()
+        client.restoreHandler = { client.observed(.success(SubscriptionFixtures.inactive)) }
+
+        #expect(service.pendingReconciliation == .purchase)
+        #expect(await service.restore() == .noActiveEntitlement)
         #expect(service.pendingReconciliation == nil)
     }
 

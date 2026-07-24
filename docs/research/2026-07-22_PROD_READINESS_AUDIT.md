@@ -175,6 +175,25 @@ Verification: full `verify-ios.sh` gate + CF `tsc`/52 tests + `test:rules` 13 te
   google-gax chains; two of three under devDep firebase-tools) — no non-major fix exists;
   `overrides` forcing is a documented-but-unapplied operator option.
 
+## ✅ 11th pass (2026-07-24 — QA-readiness cluster: StoreKit lifecycle, icon, Dynamic Type)
+
+- **StoreKit purchase lifecycle AUDITED then FIXED** (7-question adversarial audit: 4 SOLID —
+  cancel, restore, offline, double-tap; 4 gaps fixed): honest **pending** outcome for
+  Ask-to-Buy/SCA (was a scary "you may have been charged" failure); **expiry wake now re-checks
+  the server before clearing Pro** with a bounded 30s fail-closed grace hold on isPro (kills the
+  sandbox-renewal Pro flap QA testers would have hit constantly; review BLOCKER: the first
+  version's refresh didn't gate the live isPro getter — grace hold added, no-flap property now
+  continuously asserted in tests); identity-mismatch purchase gate now clears on an honest
+  empty restore; **customerInfoStream wired** (single-flight observation task) so approved
+  purchases/server entitlement changes surface without relaunch. Subscription surface: 111
+  tests green. Deferred to backlog: operation-queue fast lane for read-only status calls.
+- **Placeholder app icon shipped** (appiconset was EMPTY — a hard upload blocker): 1024px
+  opaque speedometer glyph in the app's Accent (#D97D4A) on charcoal, CoreGraphics-generated;
+  swap real artwork by replacing AppIcon1024.png.
+- **Dynamic Type audited CLEAN** — Theme.Typography was already text-style-based (auto-scales);
+  all fixed sizes are deliberate glyph/chrome cases (documented in the sweep report); one fix:
+  vehicle-switcher name gets minimumScaleFactor so long names shrink instead of truncating.
+
 ## 🔨 Remaining — CODE (recommended next PRs)
 
 - **PDF export scale** (from the pass-3 adversarial review): export accumulates the full
