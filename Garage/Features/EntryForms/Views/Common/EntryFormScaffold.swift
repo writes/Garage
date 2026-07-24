@@ -52,6 +52,8 @@ struct EntryFormScaffold<Content: View>: View {
             )
             .disabled(isMutationLocked)
             content
+            attachmentsSection
+                .disabled(isMutationLocked)
             CostField(cost: guardedBinding($viewModel.cost))
                 .disabled(isMutationLocked)
             ShopDiyToggle(
@@ -109,6 +111,27 @@ struct EntryFormScaffold<Content: View>: View {
 
     private var isMutationLocked: Bool {
         mutationGate?.isMutationLocked ?? false
+    }
+
+    /// Demo/UI-test mode is checked BEFORE the Pro gate and hides the section outright — there's
+    /// no real Storage there, and EntryCreateJourneyTests
+    /// .testFuelEntryFormRetainsSaveAndHidesAttachmentPersistenceUI (launched with UI_TEST_PRO,
+    /// i.e. isPro == true) asserts no attachment control or text is reachable at all.
+    @ViewBuilder
+    private var attachmentsSection: some View {
+        if !AppRuntime.isLocalDemoMode {
+            if appState.isPro {
+                AttachmentPicker(viewModel: viewModel)
+            } else {
+                ProGateView(
+                    title: "Attachments are part of Pro",
+                    message: "Attach receipts, invoices, and photos to your entries with Garage Pro.",
+                    actionIdentifier: "entry.form.attachments.gate"
+                ) {
+                    router.present(.subscription(.attachments))
+                }
+            }
+        }
     }
 
     /// Create shows the true last-recorded odometer; edit shows the validation floor instead

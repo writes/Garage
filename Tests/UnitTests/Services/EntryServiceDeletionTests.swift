@@ -22,6 +22,36 @@ struct EntryServiceDeletionTests {
         #expect(remaining.isEmpty)
     }
 
+    /// Review BLOCKER: the attachment cascade must live at the SERVICE layer (not a view-layer
+    /// call in EntryDetailView alone), because LogView's swipe-delete calls deleteEntry directly
+    /// and never went through EntryDetailView's cascade. This exercises exactly that call site —
+    /// deleteEntry through the hermetic array store, the same seam the log-list path uses — so a
+    /// regression here would have caught the orphaned-attachments bug.
+    @Test func deletingAnEntryWithAttachmentsCascadesTheirRemovalFromTheHermeticAttachmentStore() async throws {
+        let vehicle = testVehicle()
+        let path = "users/user/entry-attachments/vehicle/delete-me/a.jpg"
+        let otherPath = "users/user/entry-attachments/vehicle/keep-me/b.jpg"
+        let entry = makeEntry(id: "delete-me", odometer: vehicle.currentOdometer, attachmentPaths: [path])
+        let attachments = EntryAttachmentService(testUploads: [path: Data(), otherPath: Data()])
+        let service = EntryService(testEntries: [entry], entryAttachmentService: attachments)
+
+        try await service.deleteEntry(entry, updatingVehicle: vehicle)
+
+        #expect(attachments.uploadedPathsForTesting() == [otherPath])
+    }
+
+    @Test func deletingAnEntryWithNoAttachmentsNeverTouchesTheAttachmentStore() async throws {
+        let vehicle = testVehicle()
+        let otherPath = "users/user/entry-attachments/vehicle/keep-me/b.jpg"
+        let entry = makeEntry(id: "delete-me", odometer: vehicle.currentOdometer)
+        let attachments = EntryAttachmentService(testUploads: [otherPath: Data()])
+        let service = EntryService(testEntries: [entry], entryAttachmentService: attachments)
+
+        try await service.deleteEntry(entry, updatingVehicle: vehicle)
+
+        #expect(attachments.uploadedPathsForTesting() == [otherPath])
+    }
+
     // Relaxed from `==` to `>=` (review BLOCKER): a `==`-only trigger could never self-heal an
     // already-stale/"ghost" currentOdometer left behind by an unrelated race — recompute is
     // idempotent and cheap, so `>=` means any accumulated ghost heals on the next qualifying delete.
@@ -67,12 +97,14 @@ struct EntryServiceDeletionTests {
     }
 
     private func makeEntry(
-        id: String = "entry", vehicleId: String = "vehicle", odometer: Int = 12_100
+        id: String = "entry", vehicleId: String = "vehicle", odometer: Int = 12_100,
+        attachmentPaths: [String] = []
     ) -> FirestoreEntry {
         FirestoreEntry(
             id: id, vehicleId: vehicleId, userId: "user", entryType: .fuel,
             entryDate: .now, odometerReading: odometer, cost: nil, isDiy: nil, shopName: nil,
-            notes: nil, attachmentPaths: [], isResolved: nil, details: [:], createdAt: nil, updatedAt: nil
+            notes: nil, attachmentPaths: attachmentPaths, isResolved: nil, details: [:],
+            createdAt: nil, updatedAt: nil
         )
     }
 

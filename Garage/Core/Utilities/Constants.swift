@@ -9,6 +9,10 @@ enum Constants {
     static let annualPlanIdentifier = "garage_pro_annual"
     static let monthlyPlanIdentifier = "garage_pro_monthly"
     static let appleSignInTimeoutNanoseconds: UInt64 = 15_000_000_000
+    /// Headroom under firebase.storage.rules' 25MB owner-write ceiling for entry attachments —
+    /// checked client-side (AttachmentPicker) before a PDF is ever read into memory, so an
+    /// oversized pick fails fast with a clear error instead of a late Storage-rules rejection.
+    static let maxAttachmentBytes = 20 * 1024 * 1024
     // Operator action required before App Store submission: replace each
     // clearly-invalid placeholder with the published policy destination.
     static let privacyPolicyURLString = "https://OPERATOR-REPLACE-PRIVACY-POLICY.invalid"
@@ -72,6 +76,13 @@ enum FirestorePaths {
 }
 
 enum StoragePaths {
+    /// Real attachments pipeline (external audit: "attachments retain filenames rather than
+    /// evidence"). Under users/{uid}/ so the existing owner-only/<=25MB/image-or-pdf Storage
+    /// rules and the deleteAccount cascade already cover it without a rules change.
+    static func entryAttachment(userId: String, vehicleId: String, entryId: String, filename: String) -> String {
+        "users/\(userId)/entry-attachments/\(vehicleId)/\(entryId)/\(filename)"
+    }
+
     static func receipt(userId: String, vehicleId: String, entryId: String, filename: String) -> String {
         "users/\(userId)/vehicles/\(vehicleId)/receipts/\(entryId)/\(filename)"
     }

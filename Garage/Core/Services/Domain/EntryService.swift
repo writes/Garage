@@ -22,6 +22,11 @@ struct EntryCursor { let document: DocumentSnapshot?
     // needs these to route deleteEntry through the same testEntries/demo/live modes as save().
     let liveDependenciesProvider: () -> EntryServiceDependencies
     let isLocalDemoMode: () -> Bool
+    // `internal`: EntryService+Mutations.swift's cascadeDeleteAttachments uses this. Service-layer
+    // (not view-layer) cascade — review BLOCKER: LogView's swipe-delete called deleteEntry
+    // directly and never went through EntryDetailView's (now-removed) cascade, orphaning
+    // attachments. Putting it here means every caller gets it for free.
+    let entryAttachmentService: EntryAttachmentService
     var testEntries: [FirestoreEntry]?
 #if DEBUG
     private let hermeticSaveFailure: ((FirestoreEntry) -> Error?)?
@@ -29,6 +34,7 @@ struct EntryCursor { let document: DocumentSnapshot?
 #endif
     private init() {
         isLocalDemoMode = { AppRuntime.isLocalDemoMode }
+        entryAttachmentService = .shared
 #if DEBUG
         hermeticSaveFailure = nil
         usesHermeticSave = false
@@ -48,21 +54,24 @@ struct EntryCursor { let document: DocumentSnapshot?
     }
 #if DEBUG
     init(testEntries: [FirestoreEntry], dependencies: EntryServiceDependencies? = nil,
-         hermeticSaveFailure: @escaping (FirestoreEntry) -> Error? = { _ in nil }, usesHermeticSave: Bool = true) {
+         hermeticSaveFailure: @escaping (FirestoreEntry) -> Error? = { _ in nil }, usesHermeticSave: Bool = true,
+         entryAttachmentService: EntryAttachmentService = .shared) {
         self.testEntries = testEntries
         isLocalDemoMode = { false }
         self.hermeticSaveFailure = hermeticSaveFailure
         self.usesHermeticSave = usesHermeticSave
+        self.entryAttachmentService = entryAttachmentService
         liveDependenciesProvider = {
             guard let dependencies else { fatalError("Hermetic EntryService must not resolve live dependencies") }
             return dependencies
         }
     }
-    init(dependencies: EntryServiceDependencies) {
+    init(dependencies: EntryServiceDependencies, entryAttachmentService: EntryAttachmentService = .shared) {
         testEntries = nil
         isLocalDemoMode = { false }
         hermeticSaveFailure = nil
         usesHermeticSave = false
+        self.entryAttachmentService = entryAttachmentService
         liveDependenciesProvider = { dependencies }
     }
 #endif

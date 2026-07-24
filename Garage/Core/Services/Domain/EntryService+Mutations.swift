@@ -18,6 +18,7 @@ extension EntryService {
 #if DEBUG
             if !usesHermeticSave {
                 try await deleteLive(entry, updatingVehicle: vehicle)
+                await cascadeDeleteAttachments(for: entry)
                 return
             }
 #endif
@@ -25,15 +26,29 @@ extension EntryService {
             // regardless of what `vehicle` is passed. See EntryServiceTests for the explicit note.
             testEntries.removeAll { $0.id == entry.id }
             self.testEntries = testEntries
+            await cascadeDeleteAttachments(for: entry)
             return
         }
 #if DEBUG
         if isLocalDemoMode() {
             deleteDemo(entry, updatingVehicle: vehicle)
+            await cascadeDeleteAttachments(for: entry)
             return
         }
 #endif
         try await deleteLive(entry, updatingVehicle: vehicle)
+        await cascadeDeleteAttachments(for: entry)
+    }
+
+    /// Best-effort, only ever reached after the entry-doc delete already succeeded above: an
+    /// orphaned Storage blob is a cheap, unlinked cost; a delete flow blocked on Storage
+    /// availability is not (mirrors EntryAttachmentService.deleteAttachments' own fail-soft
+    /// contract — it already logs-and-swallows its own failures, never throws). Living at the
+    /// SERVICE layer, not the view layer, means every caller — LogView's swipe-delete,
+    /// EntryDetailView's toolbar delete, anything else that calls deleteEntry — cascades
+    /// identically; there is exactly one cascade site.
+    private func cascadeDeleteAttachments(for entry: FirestoreEntry) async {
+        await entryAttachmentService.deleteAttachments(paths: entry.attachmentPaths)
     }
 
     private func deleteLive(_ entry: FirestoreEntry, updatingVehicle vehicle: Vehicle?) async throws {

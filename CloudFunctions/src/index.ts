@@ -5,14 +5,18 @@ import { handleRevenueCatWebhook } from "./functions/revenueCatWebhook";
 import { lookupRecalls } from "./functions/nhtsaRecalls";
 import { deleteAccount } from "./functions/deleteAccount";
 import { deleteVehicle } from "./functions/deleteVehicle";
+import { recomputeVehicleOdometer } from "./functions/recomputeVehicleOdometer";
+import { enforceAttachmentProGate } from "./functions/enforceAttachmentProGate";
 
 initializeApp();
 
 export {
   deleteAccount,
   deleteVehicle,
+  enforceAttachmentProGate,
   handleRevenueCatWebhook,
   lookupRecalls,
   parseOilAnalysis,
+  recomputeVehicleOdometer,
   voiceQuickAdd,
 };

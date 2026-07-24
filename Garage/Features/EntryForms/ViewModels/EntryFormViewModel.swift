@@ -8,11 +8,15 @@ final class EntryFormViewModel {
         @MainActor @Sendable () async -> Void
     ) async -> Void
 
-    private let entryService: EntryService
-    private let vehicleService: VehicleService
+    // `internal`: EntryFormViewModel+DetailsEncoding.swift's trackFirstEntryIfNeeded and
+    // +Attachments.swift's upload methods use these three (same split-file precedent as
+    // pendingEntryID etc. below).
+    let entryService: EntryService
+    let vehicleService: VehicleService
+    let analytics: any AnalyticsTracking
+    let entryAttachmentService: EntryAttachmentService
     private let syncService: SyncService
     private let userID: () -> String?
-    private let analytics: any AnalyticsTracking
     private let firstEntryFollowUp: FirstEntryFollowUp
 
     var syncServiceIdentity: ObjectIdentifier { ObjectIdentifier(syncService) }
@@ -24,6 +28,11 @@ final class EntryFormViewModel {
     var shopName = ""
     var notes = ""
     var attachmentPaths: [String] = []
+    // `internal`: EntryFormViewModel+Attachments.swift's methods and AttachmentPicker (a plain
+    // reader, standard internal access) use these three.
+    var pendingAttachments: [PendingAttachment] = []
+    var queuedAttachmentRemovals: [String] = []
+    var uploadingAttachmentID: PendingAttachment.ID?
     var lastKnownOdometer: Int?
     private(set) var isSaving = false
     private(set) var error: AppError?
@@ -43,6 +52,7 @@ final class EntryFormViewModel {
         entryService: EntryService = .shared,
         vehicleService: VehicleService = .shared,
         syncService: SyncService = .shared,
+        entryAttachmentService: EntryAttachmentService = .shared,
         analytics: any AnalyticsTracking = AnalyticsService.shared,
         firstEntryFollowUp: @escaping FirstEntryFollowUp = { operation in
             await operation()
@@ -54,6 +64,7 @@ final class EntryFormViewModel {
         self.entryService = entryService
         self.vehicleService = vehicleService
         self.syncService = syncService
+        self.entryAttachmentService = entryAttachmentService
         self.analytics = analytics
         self.firstEntryFollowUp = firstEntryFollowUp
         self.userID = userID
@@ -114,8 +125,18 @@ final class EntryFormViewModel {
         isSaving = true
         defer { isSaving = false }
 
+        let entryID = pendingEntryID ?? UUID().uuidString
+        pendingEntryID = entryID
+
         do {
-            let entry = try makePendingEntry(vehicle: vehicle, entryType: entryType, details: details, uid: uid)
+            // Uploads FIRST (review-mandated ordering): a failure here aborts before the entry
+            // doc/vehicle patch are touched, so nothing is ever half-written. Already-uploaded
+            // removals are the mirror image — deferred until AFTER the write succeeds, below.
+            try await uploadPendingAttachments(uid: uid, vehicleId: vehicle.id, entryId: entryID)
+
+            let entry = try makePendingEntry(
+                entryID: entryID, vehicle: vehicle, entryType: entryType, details: details, uid: uid
+            )
             // Fresh, NOT the cached lastKnownOdometer: a stale cache (another device's write
             // landing between prepare() and here) could write a ghost currentOdometer matching no
             // entry. The cache stays cached only for the floor/UI hint.
@@ -129,6 +150,7 @@ final class EntryFormViewModel {
             if disposition == .entryOnlyAcceptedForHermeticStore {
                 try await vehicleService.updateVehicle(updatedVehicle)
             }
+            await applyQueuedAttachmentRemovals()
 
             // These all rotate only after local acceptance completes.
             pendingEntryID = nil
@@ -165,10 +187,8 @@ final class EntryFormViewModel {
     }
 
     private func makePendingEntry<T: Encodable>(
-        vehicle: Vehicle, entryType: EntryType, details: T, uid: String
+        entryID: String, vehicle: Vehicle, entryType: EntryType, details: T, uid: String
     ) throws -> FirestoreEntry {
-        let entryID = pendingEntryID ?? UUID().uuidString
-        pendingEntryID = entryID
         let detailsMap = try Self.makeAnyCodableMap(from: details)
         return FirestoreEntry(
             id: entryID,
@@ -196,52 +216,6 @@ final class EntryFormViewModel {
             await firstEntryFollowUp {
                 await self.trackFirstEntryIfNeeded(vehicleId: vehicleId, entryType: entryType)
             }
-        }
-    }
-}
-
-// MARK: - Details-map encoding + first-entry analytics (kept out of the class body, cap)
-
-private extension EntryFormViewModel {
-    static func makeAnyCodableMap<T: Encodable>(from value: T) throws -> [String: AnyCodable] {
-        let data = try JSONEncoder().encode(value)
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return [:]
-        }
-        return object.mapValues(Self.wrap(any:))
-    }
-
-    func trackFirstEntryIfNeeded(vehicleId: String, entryType: EntryType) async {
-        guard let vehicles = try? await vehicleService.fetchVehicles() else { return }
-        let vehicleIDs = Set(vehicles.map(\.id)).union([vehicleId])
-        var entryCount = 0
-
-        for id in vehicleIDs {
-            guard let entries = try? await entryService.fetchRecent(vehicleId: id, limit: 2) else { return }
-            entryCount += entries.count
-            guard entryCount <= 1 else { return }
-        }
-
-        guard entryCount == 1 else { return }
-        analytics.track(.firstEntryAdded(entryType: entryType))
-    }
-
-    static func wrap(any: Any) -> AnyCodable {
-        switch any {
-        case let value as String:
-            return AnyCodable(value)
-        case let value as Int:
-            return AnyCodable(value)
-        case let value as Double:
-            return AnyCodable(value)
-        case let value as Bool:
-            return AnyCodable(value)
-        case let value as [String: Any]:
-            return AnyCodable(value.mapValues(wrap(any:)))
-        case let value as [Any]:
-            return AnyCodable(value.map(wrap(any:)))
-        default:
-            return AnyCodable("")
         }
     }
 }

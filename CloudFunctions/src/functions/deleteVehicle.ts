@@ -1,6 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 
 export interface DeleteVehicleRequest {
   auth: { uid: string } | null;
@@ -22,11 +23,20 @@ export interface DeleteVehicleDeps {
   claimVehicle(uid: string, vehicleId: string): Promise<"claimed" | "already-claimed" | "not-found">;
   /** Recursively delete the vehicle doc AND its subcollections (safe on an already-deleted doc). */
   purgeSubcollections(vehicleId: string): Promise<void>;
+  /**
+   * Delete every Storage object under this vehicle's attachment prefix
+   * (users/{uid}/entry-attachments/{vehicleId}/...). Safe on a prefix with no objects. May throw —
+   * the orchestration below treats that as fail-soft (see the comment at the call site).
+   */
+  purgeStorage(uid: string, vehicleId: string): Promise<void>;
 }
 
 export interface DeleteVehicleResult {
   deleted: true;
   alreadyDeleted: boolean;
+  storagePurged: boolean;
+  /** Present only when storagePurged is false — the underlying error message, for structured logging. */
+  storagePurgeError?: string;
 }
 
 export function vehicleIdFromData(data: unknown): string | undefined {
@@ -57,15 +67,41 @@ export async function deleteVehicleRequest(
   // tombstone sweep, and by deleteAccount's userId query — so orphaned subcollections always
   // converge to deleted. Only a fully successful purge removes the doc itself.
   const claim = await deps.claimVehicle(uid, vehicleId);
-  await deps.purgeSubcollections(vehicleId);
 
-  return { deleted: true, alreadyDeleted: claim === "not-found" };
+  // Firestore subcollections and Storage objects are independent resources, so both purges start
+  // together (right after the claim) instead of one blocking the other.
+  const subcollectionsPurge = deps.purgeSubcollections(vehicleId);
+  const storagePurge = deps.purgeStorage(uid, vehicleId).then(
+    () => ({ purged: true as const, error: undefined as string | undefined }),
+    (error: unknown) => ({ purged: false as const, error: error instanceof Error ? error.message : String(error) }),
+  );
+
+  // Subcollection purge is on the hard-fail path: Firestore is the source of truth for "this
+  // vehicle's data is gone," so a real failure here must fail the whole call and stay retryable.
+  await subcollectionsPurge;
+
+  // Storage purge is fail-soft: by the time it could fail, the claim + Firestore purge have
+  // already succeeded, so the vehicle and all its documents are truly gone — only orphaned
+  // attachment files would remain. Failing the whole call here would surface an error to the user
+  // for data that IS deleted, and it isn't necessary: the client's tombstone sweep and
+  // deleteAccount's own deleteUserStorage both re-sweep this exact users/{uid}/entry-attachments/
+  // prefix, so any objects left behind by a transient Storage error still converge to deleted on
+  // the next pass. Log-and-continue, never throw.
+  const storageResult = await storagePurge;
+
+  return {
+    deleted: true,
+    alreadyDeleted: claim === "not-found",
+    storagePurged: storageResult.purged,
+    ...(storageResult.purged ? {} : { storagePurgeError: storageResult.error }),
+  };
 }
 
 export const deleteVehicle = onCall(
   { region: "us-central1", enforceAppCheck: true, timeoutSeconds: 120, memory: "256MiB" },
   async (request): Promise<DeleteVehicleResult> => {
     const db = getFirestore();
+    const bucket = getStorage().bucket();
     const uid = request.auth?.uid;
     try {
       const result = await deleteVehicleRequest(
@@ -105,13 +141,29 @@ export const deleteVehicle = onCall(
             // cleans orphaned subcollections when the parent doc is already gone.
             await db.recursiveDelete(db.collection("vehicles").doc(vehicleId));
           },
+          async purgeStorage(ownerUid, vehicleId) {
+            // Mirrors deleteAccount's deleteUserStorage (same bucket.deleteFiles-by-prefix
+            // pattern), scoped to just this vehicle's attachments instead of the whole user.
+            await bucket.deleteFiles({ prefix: `users/${ownerUid}/entry-attachments/${vehicleId}/` });
+          },
         },
       );
       logger.info("vehicle deleted", {
         uid,
         vehicleId: vehicleIdFromData(request.data),
         alreadyDeleted: result.alreadyDeleted,
+        storagePurged: result.storagePurged,
       });
+      if (!result.storagePurged) {
+        // Non-fatal (see the fail-soft comment in deleteVehicleRequest) but worth a signal: an
+        // operator watching logs can spot a persistently-failing bucket instead of relying purely
+        // on the client sweep / deleteAccount convergence to quietly clean it up later.
+        logger.warn("vehicle storage purge failed; deferring to client sweep / deleteAccount convergence", {
+          uid,
+          vehicleId: vehicleIdFromData(request.data),
+          message: result.storagePurgeError,
+        });
+      }
       return result;
     } catch (error) {
       logger.error("vehicle deletion failed", {
