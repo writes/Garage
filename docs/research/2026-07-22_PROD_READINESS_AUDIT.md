@@ -123,14 +123,39 @@ Verification: full `verify-ios.sh` gate + CF `tsc`/52 tests + `test:rules` 13 te
 - **Reminders lifecycle** — completedAt, delete/markCompleted, list with swipe actions;
   upcoming excludes completed.
 - **AttachmentPicker** — confirmed UNWIRED dead code (zero call sites); warning comment added
-  so nobody ships filename-only "attachments".
+  so nobody ships filename-only "attachments". *(Superseded in the 8th pass: rebuilt as the
+  real pipeline below.)*
+
+## ✅ 6th–7th pass (2026-07-23/24 — edit-in-place rebuilt, a11y sweep)
+
+- **Entry EDIT-IN-PLACE rebuilt correctly** per the review that cut it: per-form details
+  seeding across all 12 forms (decodedDetails + scaffold onEditEntry), edit-aware odometer
+  (floor excludes the edited entry; vehicle odometer = fresh-max re-fetch at save, closing the
+  ghost-value race; delete reconcile relaxed to >=), createdAt preserved, cross-vehicle
+  reparenting blocked, fuel MPG previous-lookup date-bounded. Second adversarial round: 4
+  confirmed findings fixed, 1 refuted.
+- **Bounded a11y sweep** (20 files, modifiers only): combined VoiceOver rows, 44pt targets,
+  identifiers on new surfaces, switcher announces vehicle NAME not UUID.
+
+## ✅ 8th pass (2026-07-24 — real attachments pipeline + CF hardening; gate GREEN @ cc94164)
+
+- **Attachments SHIPPED end-to-end (Pro)** — EntryAttachmentService (live/hermetic/demo),
+  rewritten AttachmentPicker wired into the scaffold (Pro-gated, hidden in demo/UI-test),
+  pending-queue upload-BEFORE-entry-write (failed uploads clean up their own batch),
+  EntryDetailView rendering, service-layer delete cascade, 20MB PDF cap with pre-read size
+  check, image downsample to 2048px/JPEG 0.8 with **pixel-scale normalization** (3x-retina
+  captures no longer upload 9x bytes — unit-pinned, incl. a scale-1 fixture fix and a
+  Release-only `#if DEBUG` use-site fix that the archive phase caught).
+- **CF `recomputeVehicleOdometer`** — onDocumentWritten trigger, authoritative odometer
+  self-heal (update() never resurrects a deleted vehicle; gRPC NOT_FOUND handled). The former
+  "deploy-phase backlog" item is now BUILT; deploy still operator-gated.
+- **CF `deleteVehicle` storage purge** — vehicle-scoped `users/{uid}/entry-attachments/
+  {vehicleId}/` prefix delete, fail-soft with structured logging (Firestore purge stays
+  hard-fail); claim-first ordering unchanged.
+- **CF `enforceAttachmentProGate`** — onObjectFinalized reaper deletes non-Pro uploads
+  (Storage rules can't read Firestore; the client gate alone is cosmetic). CF suite 102/102.
 
 ## 🔨 Remaining — CODE (recommended next PRs)
-
-- **Deploy-phase backlog:** Cloud Function trigger recomputing vehicles/{id}.currentOdometer
-  from the entries max on every entry write — full elimination of the client-side odometer
-  race (client layers: fresh-max re-fetch at save + >= delete reconciliation, shipped in the
-  edit-in-place pass, shrink it to milliseconds and self-heal residuals).
 
 - **#18/#20/#22 — Perf/scale**: Stats over newest 100, Log search over newest 500 (comment claims
   full history); Dashboard re-runs 5 Firestore fetches on every tab switch; up to 500 docs decoded
@@ -145,11 +170,16 @@ Verification: full `verify-ios.sh` gate + CF `tsc`/52 tests + `test:rules` 13 te
   next expiry-bearing event.
 - ~~#4/#15, #8, #9, #11, #12, #13/#14/#19/#23, #24, #25/#26~~ — all closed (3rd pass above +
   earlier passes).
-- **Completeness gaps** to schedule: no Firestore cascade delete; no push-notification delivery
-  wired (Messaging linked, unused) so reminders/recalls never fire; Dynamic Type unaudited; photo
-  downsampling/caching unmeasured; currency/rounding unaudited; client StoreKit purchase lifecycle
-  (pending/deferred/cancel) unaudited; App Check **backend** enforcement is a console toggle to
-  verify.
+- **Completeness gaps** to schedule: no push-notification delivery wired (Messaging linked,
+  unused) so reminders/recalls never fire; Dynamic Type unaudited; currency/rounding unaudited;
+  client StoreKit purchase lifecycle (pending/deferred/cancel) unaudited; App Check **backend**
+  enforcement is a console toggle to verify; QuickLook preview for PDF attachments (thumbnails
+  render, PDFs list-only). ~~Firestore cascade delete~~ (deleteVehicle recursiveDelete +
+  deleteAccount, 8th pass) and ~~photo downsampling unmeasured~~ (bounded + unit-pinned, 8th
+  pass) are closed.
+- **Deploy list (operator-gated):** 3 new/updated CFs — `recomputeVehicleOdometer`,
+  `enforceAttachmentProGate`, `deleteVehicle` (storage purge) — plus rules + composite indexes
+  per `DEPLOY_RUNBOOK.md` (backfill → rules → binary order).
 
 ---
 
