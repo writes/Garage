@@ -78,6 +78,18 @@ targets:
         Release:
           CODE_SIGN_ENTITLEMENTS: Garage.entitlements
           PRODUCT_BUNDLE_IDENTIFIER: com.writes.harrysplayhouse
+          # Distribution signing (operator-approved 2026-07-24; rationale + the three failed
+          # alternatives in docs/research/2026-07-24_SIGNING_CONFIG_PROPOSAL.md). These MUST be
+          # target-scoped: passing them as xcodebuild command-line overrides applies them to
+          # every SPM package target too, and ~25 of them fail "does not support provisioning
+          # profiles". verify-ios.sh stays unsigned and green because its own command-line
+          # overrides (CODE_SIGNING_ALLOWED=NO ...) take precedence over these.
+          CODE_SIGN_STYLE: Manual
+          DEVELOPMENT_TEAM: V32WV64X82
+          # NOT "Apple Distribution": cert SUR3K7JZ7F is type IOS_DISTRIBUTION, whose common
+          # name is "iPhone Distribution: ...". xcodebuild matches on a CN prefix.
+          CODE_SIGN_IDENTITY: iPhone Distribution
+          PROVISIONING_PROFILE_SPECIFIER: Garage App Store
           SWIFT_COMPILATION_MODE: wholemodule
           COPY_PHASE_STRIP: YES
           DEAD_CODE_STRIPPING: YES
