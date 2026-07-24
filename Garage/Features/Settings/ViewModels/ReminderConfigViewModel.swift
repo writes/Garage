@@ -5,10 +5,22 @@ import Observation
 @Observable
 final class ReminderConfigViewModel {
     private let reminderService: ReminderService
+    private let notificationCoordinator: ReminderNotificationCoordinator
 
     var title = "Oil change"
     var dueMileage = ""
     var dueMonths = ""
+    /// Off by default: most reminders here are odometer/repeat-interval only (existing shape).
+    /// Turning this on is what makes the reminder date-based and eligible for a local
+    /// notification — see ReminderNotificationCoordinator.plan.
+    var hasDueDate = false
+    /// BLOCKER review finding: an untouched picker used to default to `Date.now`'s exact
+    /// instant, which read as already-past by the time save() ran moments later —
+    /// ReminderNotificationCoordinator.plan requires `dueDate > now`, so it silently returned
+    /// nil and nothing ever scheduled (no error, no hint — "Reminder saved" just lied). Defaults
+    /// to tomorrow 9am local instead, so an untouched "Remind me on a date" save always lands on
+    /// a genuinely future instant; save() additionally canonicalizes whatever day is picked.
+    var dueDate = ReminderConfigViewModel.defaultDueDate()
     private(set) var error: AppError?
     /// Backs the management list above the create form (D: reminders lifecycle) — every
     /// reminder for the vehicle, completed or not, soonest-due first via ReminderService.fetchAll.
@@ -19,22 +31,34 @@ final class ReminderConfigViewModel {
     /// `reminders`/`error` overwrite what the newer call already resolved.
     private var loadToken = 0
 
-    init(reminderService: ReminderService = .shared) {
-        self.reminderService = reminderService
+    /// Forwards ReminderNotificationCoordinator.isAuthorizationDenied (same pattern as
+    /// AppState.isPro forwarding PurchaseService.isPro) — true only after a date-based save
+    /// found notification permission denied. Drives the one-line hint in ReminderConfigView.
+    var isNotificationAuthorizationDenied: Bool {
+        notificationCoordinator.isAuthorizationDenied
     }
 
-    func save(vehicleId: String) async -> Bool {
+    init(
+        reminderService: ReminderService = .shared,
+        notificationCoordinator: ReminderNotificationCoordinator = .shared
+    ) {
+        self.reminderService = reminderService
+        self.notificationCoordinator = notificationCoordinator
+    }
+
+    func save(vehicleId: String, vehicleName: String? = nil) async -> Bool {
         do {
             let reminder = Reminder(
                 id: UUID().uuidString,
                 vehicleId: vehicleId,
                 title: title,
+                dueDate: hasDueDate ? Self.canonicalDueInstant(for: dueDate) : nil,
                 dueMileage: Int(dueMileage),
                 repeatIntervalMonths: Int(dueMonths),
                 repeatIntervalMiles: Int(dueMileage),
                 isProFeature: false
             )
-            try await reminderService.save(reminder)
+            try await reminderService.save(reminder, vehicleName: vehicleName)
             error = nil
             await load(vehicleId: vehicleId)
             return true
@@ -80,5 +104,37 @@ final class ReminderConfigViewModel {
         } catch {
             self.error = AppError(from: error)
         }
+    }
+
+    /// Tomorrow at 09:00 local. Internal (not private) and parameterized over `now`/`calendar` —
+    /// exposed for direct unit testing, mirroring ReminderNotificationCoordinator.plan's
+    /// precedent. Falls back to now+24h in the (practically unreachable) case the calendar can't
+    /// produce a startOfDay/9h instant.
+    static func defaultDueDate(now: Date = .now, calendar: Calendar = .current) -> Date {
+        let startOfToday = calendar.startOfDay(for: now)
+        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: startOfToday),
+              let tomorrowAt9 = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow) else {
+            return now.addingTimeInterval(24 * 60 * 60)
+        }
+        return tomorrowAt9
+    }
+
+    /// Canonicalizes whatever DAY the picker landed on to a fixed local time-of-day (09:00), so a
+    /// future day always yields a future instant regardless of what wall-clock time-of-day the
+    /// picker's value happens to carry (BLOCKER fix: an untouched picker previously kept
+    /// `Date.now`'s exact instant, which read as already-past moments later). A TODAY selection
+    /// that still normalizes into the past must not silently skip scheduling — it falls forward
+    /// to now+5min instead. Internal, exposed for direct unit testing.
+    static func canonicalDueInstant(for pickedDate: Date, now: Date = .now, calendar: Calendar = .current) -> Date {
+        let normalized = calendar.date(
+            bySettingHour: 9, minute: 0, second: 0, of: calendar.startOfDay(for: pickedDate)
+        ) ?? pickedDate
+        if normalized > now {
+            return normalized
+        }
+        if calendar.isDate(pickedDate, inSameDayAs: now) {
+            return now.addingTimeInterval(5 * 60)
+        }
+        return normalized
     }
 }

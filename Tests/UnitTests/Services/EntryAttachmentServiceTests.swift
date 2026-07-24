@@ -58,4 +58,27 @@ struct EntryAttachmentServiceTests {
         let service = EntryAttachmentService(testUploads: ["users/u/entry-attachments/v/e/seed.jpg": Data()])
         #expect(service.uploadedPathsForTesting() == ["users/u/entry-attachments/v/e/seed.jpg"])
     }
+
+    @Test func downloadData_hermeticModeReturnsTheStoredBytes() async throws {
+        let service = EntryAttachmentService(uuidProvider: { "fixed-uuid" })
+        let bytes = Data([0x25, 0x50, 0x44, 0x46]) // "%PDF"
+        let path = try await service.uploadPDFAttachment(bytes, uid: "u", vehicleId: "v", entryId: "e")
+
+        let downloaded = try await service.downloadData(for: path)
+        #expect(downloaded == bytes)
+    }
+
+    @Test func downloadData_hermeticModeThrowsForAnUnknownPath() async {
+        let service = EntryAttachmentService()
+        await #expect(throws: (any Error).self) {
+            _ = try await service.downloadData(for: "users/u/entry-attachments/v/e/missing.pdf")
+        }
+    }
+
+    @Test func downloadData_seededTestUploadsAreReadableWithoutAnUploadCall() async throws {
+        let bytes = Data([0x01, 0x02, 0x03])
+        let service = EntryAttachmentService(testUploads: ["users/u/entry-attachments/v/e/seed.pdf": bytes])
+        let downloaded = try await service.downloadData(for: "users/u/entry-attachments/v/e/seed.pdf")
+        #expect(downloaded == bytes)
+    }
 }

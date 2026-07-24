@@ -1,24 +1,6 @@
 import Foundation
 import Observation
 
-enum SyncStatus: String, Sendable {
-    case idle
-    case upToDate
-    case syncing
-    case offline
-    case attentionNeeded
-
-    var label: String {
-        switch self {
-        case .idle: return "Up to date"
-        case .upToDate: return "Up to date"
-        case .syncing: return "Syncing"
-        case .offline: return "Offline"
-        case .attentionNeeded: return "Needs attention"
-        }
-    }
-}
-
 @MainActor
 @Observable
 final class AppState {
@@ -29,6 +11,7 @@ final class AppState {
     private let profileStore: any ProfileStore
     private let analytics: any AnalyticsTracking
     private let crashReporter: any CrashReporting
+    private let notificationCoordinator: ReminderNotificationCoordinator
 
     var selectedTab: AppTab = .dashboard
     var currentVehicle: Vehicle?
@@ -48,7 +31,8 @@ final class AppState {
         syncService: SyncService = .shared,
         analytics: any AnalyticsTracking = AnalyticsService.shared,
         crashReporter: (any CrashReporting)? = nil,
-        profileStore: (any ProfileStore)? = nil
+        profileStore: (any ProfileStore)? = nil,
+        notificationCoordinator: ReminderNotificationCoordinator = .shared
     ) {
         self.authService = authService
         self.vehicleService = vehicleService
@@ -57,6 +41,7 @@ final class AppState {
         self.analytics = analytics
         self.crashReporter = crashReporter ?? CrashReporter.shared
         self.profileStore = profileStore ?? ProfileStoreFactory.makeDefault()
+        self.notificationCoordinator = notificationCoordinator
         analytics.setEnabled(false)
         // Crashlytics rides Analytics's consent lifecycle (#23): fail closed until profile load.
         self.crashReporter.setEnabled(false)
@@ -242,6 +227,12 @@ final class AppState {
             currentVehicle = nil
             hasCompletedInitialVehicleLoad = false
             AccentStore.shared.scheme = .classic
+            // Review findings: neither scheduled local reminder notifications nor QuickLook
+            // preview temp-file residue were ever cleared here — the next person on this device
+            // (a plain re-sign-in, OR account deletion, which funnels through this same
+            // signOut()) could otherwise inherit the prior user's reminders/attachment bytes.
+            notificationCoordinator.cancelAll()
+            PDFPreviewTempFile.removeAll()
             authenticationRevision += 1
         } catch {
             AppLogger.shared.error("Sign out failed: \(error.localizedDescription)")

@@ -14,6 +14,13 @@ struct GarageApp: App {
     private let modelContainer = GarageApp.makeModelContainer()
 
     init() {
+        // Best-effort, every bootstrap mode (uiTest/localDemo/localSetupRequired/production all
+        // reach this before any mode-specific branching below): QuickLook preview temp-file
+        // residue must not survive process death into a fresh launch — tmp is OS-purgable, but
+        // sensitive attachment bytes shouldn't rely on that. Mirrors the same cleanup call at the
+        // sign-out choke point (AppState.signOut()).
+        PDFPreviewTempFile.removeAll()
+
         let bootstrapMode = Self.resolveBootstrapMode()
         self.bootstrapMode = bootstrapMode
 

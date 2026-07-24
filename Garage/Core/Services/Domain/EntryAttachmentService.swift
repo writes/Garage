@@ -2,6 +2,14 @@
 import Foundation
 import Observation
 
+/// Thrown only by downloadData(for:)'s hermetic/demo branches (a live-Storage miss instead
+/// throws Firebase's own FIRStorageErrorDomain NSError, which AppError(from:) already maps to
+/// .storage(...)). Mirrors VehicleListenerError's LocalizedError-wrapper precedent.
+struct EntryAttachmentDownloadError: Error, Sendable, Equatable, LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
 /// Real attachments pipeline (external audit's top product-truth gap: "attachments retain
 /// filenames rather than evidence"). Uploads/deletes/resolves already-prepared bytes only —
 /// downsampling happens earlier, in AttachmentImageProcessor, before a photo ever reaches here.
@@ -107,7 +115,33 @@ final class EntryAttachmentService {
     }
 
     private static func placeholderURL(for path: String) -> URL {
-        URL(string: "https://example.invalid/\(path)") ?? URL(fileURLWithPath: "/dev/null")
+        // Custom scheme, not https://example.invalid: release-checks.sh blocks ".invalid" anywhere
+        // in app sources (it hunts unreplaced operator placeholders), and this hermetic/demo
+        // placeholder must not trip that gate. Nothing ever resolves this URL.
+        URL(string: "garage-hermetic://attachment/\(path)") ?? URL(fileURLWithPath: "/dev/null")
+    }
+
+    /// EntryDetailView's PDF preview flow needs local bytes — QuickLook can't render the
+    /// placeholder URL hermetic/demo's downloadURL(for:) returns the way AsyncImage tolerates it
+    /// for thumbnails. Mirrors upload/deleteAttachments/downloadURL's exact mode pattern: hermetic
+    /// and demo are served straight from their in-memory stores, never touching real Storage.
+    func downloadData(for path: String) async throws -> Data {
+        #if DEBUG
+        if let testUploads {
+            guard let data = testUploads[path] else {
+                throw EntryAttachmentDownloadError(message: "No stored test bytes for \(path).")
+            }
+            return data
+        }
+        #endif
+        if isLocalDemoMode() {
+            guard let data = Self.demoUploads[path] else {
+                throw EntryAttachmentDownloadError(message: "No demo bytes for \(path).")
+            }
+            return data
+        }
+        return try await rootReferenceProvider().child(path)
+            .data(maxSize: Int64(Constants.maxAttachmentDownloadBytes))
     }
 
 #if DEBUG

@@ -13,6 +13,11 @@ enum Constants {
     /// checked client-side (AttachmentPicker) before a PDF is ever read into memory, so an
     /// oversized pick fails fast with a clear error instead of a late Storage-rules rejection.
     static let maxAttachmentBytes = 20 * 1024 * 1024
+    /// Ceiling for EntryAttachmentService.downloadData(for:)'s StorageReference.data(maxSize:) —
+    /// matches firebase.storage.rules' <25MB write ceiling exactly (not maxAttachmentBytes' 20MB
+    /// upload headroom) so a legitimately-stored attachment near that ceiling is never truncated
+    /// on download.
+    static let maxAttachmentDownloadBytes = 25 * 1024 * 1024
     // Operator action required before App Store submission: replace each
     // clearly-invalid placeholder with the published policy destination.
     static let privacyPolicyURLString = "https://OPERATOR-REPLACE-PRIVACY-POLICY.invalid"
