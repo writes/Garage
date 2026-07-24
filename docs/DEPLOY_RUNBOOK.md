@@ -36,6 +36,33 @@ Functions: `parseOilAnalysis`, `voiceQuickAdd`, `handleRevenueCatWebhook`, `look
 `deleteAccount`, `deleteVehicle`, `recomputeVehicleOdometer` (Firestore trigger),
 `enforceAttachmentProGate` (Storage trigger) (region `us-central1`; callables enforce App Check).
 
+### ⚠️ The FIRST functions deploy to a project always fails — twice. Budget for it.
+Observed on dev 2026-07-24, immediately after enabling Blaze. Both failures are expected and
+transient; neither means the code is wrong.
+
+**Failure 1 — IAM service agents not provisioned.** `Error: We failed to modify the IAM policy
+for the project.` v2 functions with Eventarc/Storage/Firestore triggers need four service-agent
+bindings that don't exist on a fresh project. The CLI prints the exact commands; run them (add
+`--condition=None` or gcloud prompts interactively and hangs a non-interactive shell):
+```bash
+P=<project-id>; N=<project-number>
+gcloud projects add-iam-policy-binding $P --condition=None \
+  --member=serviceAccount:service-$N@gs-project-accounts.iam.gserviceaccount.com --role=roles/pubsub.publisher
+gcloud projects add-iam-policy-binding $P --condition=None \
+  --member=serviceAccount:service-$N@gcp-sa-pubsub.iam.gserviceaccount.com --role=roles/iam.serviceAccountTokenCreator
+gcloud projects add-iam-policy-binding $P --condition=None \
+  --member=serviceAccount:$N-compute@developer.gserviceaccount.com --role=roles/run.invoker
+gcloud projects add-iam-policy-binding $P --condition=None \
+  --member=serviceAccount:$N-compute@developer.gserviceaccount.com --role=roles/eventarc.eventReceiver
+```
+**Failure 2 — propagation + a source-bucket race.** The retry still partially fails: trigger
+functions get `400 … Permission denied while using the Eventarc Service Agent … may take a few
+minutes before all necessary permissions are propagated`, and several functions race to create
+`gcf-v2-sources-<N>-us-central1`, so all but one get `409 Could not create bucket`. **Wait ~2
+minutes and deploy again** — the bucket now exists and the bindings have propagated. Deploying
+one function first (`--only functions:deleteVehicle`) to create the bucket, then the rest, also
+works. Do NOT start debugging the functions; nothing is wrong with them.
+
 ## 3. Firestore + Storage rules
 
 **RULES-1 rollout order is mandatory: backfill → rules → app binary.** The counted-create rules
