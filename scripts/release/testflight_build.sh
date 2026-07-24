@@ -172,16 +172,29 @@ ARCHIVE_PATH="$BUILD_DIR/Garage.xcarchive"
 EXPORT_PATH="$BUILD_DIR/export"
 rm -rf "$ARCHIVE_PATH" "$EXPORT_PATH"
 
-echo "==> Archiving (Release, signed)"
+# Signing settings are deliberately NOT passed here. project.yml carries them scoped to the
+# Garage target (commit 1a665d0); passing them on the command line applies them to every SPM
+# package target too, and ~25 of them fail "does not support provisioning profiles". Verified
+# the hard way — this script used to do exactly that and broke every build.
+# Confirm project.yml agrees with the flags the caller supplied, so a stale --profile/--team-id
+# fails loudly here instead of silently signing with something else.
+# NB: BSD sed's ERE has no \S — use [^[:space:]] or this silently matches nothing.
+PROJECT_TEAM="$(sed -nE 's/^[[:space:]]*DEVELOPMENT_TEAM:[[:space:]]*([^[:space:]]+).*/\1/p' project.yml | head -1)"
+PROJECT_PROFILE="$(sed -nE 's/^[[:space:]]*PROVISIONING_PROFILE_SPECIFIER:[[:space:]]*(.+)$/\1/p' project.yml | head -1)"
+[[ -n "$PROJECT_TEAM" ]] || fail "project.yml has no DEVELOPMENT_TEAM — see docs/research/2026-07-24_SIGNING_CONFIG_PROPOSAL.md"
+if [[ "$PROJECT_TEAM" != "$TEAM_ID" ]]; then
+  fail "--team-id $TEAM_ID does not match project.yml ($PROJECT_TEAM). The project wins; fix the flag."
+fi
+if [[ -n "$PROJECT_PROFILE" && "$PROJECT_PROFILE" != "$PROFILE_NAME" ]]; then
+  fail "--profile '$PROFILE_NAME' does not match project.yml ('$PROJECT_PROFILE'). The project wins; fix the flag."
+fi
+
+echo "==> Archiving (Release, signed via project.yml)"
 xcodebuild \
   -project Garage.xcodeproj \
   -scheme Garage \
   -configuration Release \
   -destination 'generic/platform=iOS' \
-  DEVELOPMENT_TEAM="$TEAM_ID" \
-  CODE_SIGN_STYLE=Manual \
-  PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
-  CODE_SIGN_IDENTITY="$SIGN_IDENTITY" \
   archive \
   -archivePath "$ARCHIVE_PATH"
 
