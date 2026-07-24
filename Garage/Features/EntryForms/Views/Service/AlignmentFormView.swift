@@ -6,15 +6,14 @@ struct AlignmentFormView: View {
     @State private var shopNotes = ""
 
     var body: some View {
-        EntryFormScaffold(title: "Alignment", viewModel: form, onSave: save) {
+        EntryFormScaffold(title: "Alignment", viewModel: form, onSave: save, onEditEntry: seed) {
             TextField("Alignment notes", text: $shopNotes).textFieldStyle(.roundedBorder)
         }
-        .task { await prepare() }
     }
 
-    private func prepare() async {
-        guard let vehicleId = appState.currentVehicle?.id else { return }
-        await form.prepare(vehicleId: vehicleId)
+    private func seed(from entry: FirestoreEntry) {
+        guard let details = entry.decodedDetails(as: AlignmentEntry.self) else { return }
+        shopNotes = details.shopNotes ?? ""
     }
 
     private func save() async -> Bool {

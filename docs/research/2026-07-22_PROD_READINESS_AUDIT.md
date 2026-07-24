@@ -127,6 +127,11 @@ Verification: full `verify-ios.sh` gate + CF `tsc`/52 tests + `test:rules` 13 te
 
 ## 🔨 Remaining — CODE (recommended next PRs)
 
+- **Deploy-phase backlog:** Cloud Function trigger recomputing vehicles/{id}.currentOdometer
+  from the entries max on every entry write — full elimination of the client-side odometer
+  race (client layers: fresh-max re-fetch at save + >= delete reconciliation, shipped in the
+  edit-in-place pass, shrink it to milliseconds and self-heal residuals).
+
 - **#18/#20/#22 — Perf/scale**: Stats over newest 100, Log search over newest 500 (comment claims
   full history); Dashboard re-runs 5 Firestore fetches on every tab switch; up to 500 docs decoded
   on the main actor. Also (from the pass-3 adversarial review): PDF export now accumulates the

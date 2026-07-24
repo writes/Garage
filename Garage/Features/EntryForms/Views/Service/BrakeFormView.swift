@@ -9,7 +9,7 @@ struct BrakeFormView: View {
     @State private var padCompound = ""
 
     var body: some View {
-        EntryFormScaffold(title: "Brake Service", viewModel: form, onSave: save) {
+        EntryFormScaffold(title: "Brake Service", viewModel: form, onSave: save, onEditEntry: seed) {
             Picker("Action", selection: $action) {
                 ForEach(BrakeServiceAction.allCases, id: \.self) { action in Text(action.displayName).tag(action) }
             }
@@ -21,12 +21,14 @@ struct BrakeFormView: View {
             TextField("Pad brand", text: $padBrand).textFieldStyle(.roundedBorder)
             TextField("Pad compound", text: $padCompound).textFieldStyle(.roundedBorder)
         }
-        .task { await prepare() }
     }
 
-    private func prepare() async {
-        guard let vehicleId = appState.currentVehicle?.id else { return }
-        await form.prepare(vehicleId: vehicleId)
+    private func seed(from entry: FirestoreEntry) {
+        guard let details = entry.decodedDetails(as: BrakeEntry.self) else { return }
+        action = details.action
+        position = details.position
+        padBrand = details.padBrand ?? ""
+        padCompound = details.padCompound ?? ""
     }
 
     private func save() async -> Bool {

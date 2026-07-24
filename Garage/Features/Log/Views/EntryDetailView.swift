@@ -5,6 +5,7 @@ struct EntryDetailView: View {
     private let entryService: EntryService
 
     @Environment(AppState.self) private var appState
+    @Environment(AppRouter.self) private var router
     @Environment(\.dismiss) private var dismiss
     @State private var isShowingDeleteConfirmation = false
     @State private var isDeleting = false
@@ -34,17 +35,22 @@ struct EntryDetailView: View {
         }
         .navigationTitle(entry.entryType.displayName)
         .toolbar {
-            // Edit-in-place was deferred after adversarial review: forms never re-seed the
-            // type-specific `details` map, so a save-over-existing silently wiped it, and
-            // odometer-monotonicity validation/vehicle.currentOdometer corrupt on any entry that
-            // isn't the vehicle's current max. The correction path is delete + re-add until
-            // per-form details seeding lands. See git history for the removed implementation.
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Delete", role: .destructive) {
                     isShowingDeleteConfirmation = true
                 }
                 .disabled(isDeleting)
                 .accessibilityIdentifier("entry.detail.delete")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Edit") {
+                    // Same "present the next sheet, then dismiss this one" ordering
+                    // presentVoicePrefilledForm uses when VoiceQuickAddView hands off to a form.
+                    router.presentEditForm(for: entry)
+                    dismiss()
+                }
+                .disabled(isDeleting)
+                .accessibilityIdentifier("entry.detail.edit")
             }
         }
         .confirmationDialog(

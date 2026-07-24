@@ -9,7 +9,7 @@ struct OilChangeFormView: View {
     @State private var filterBrand = ""
 
     var body: some View {
-        EntryFormScaffold(title: "Oil Change", viewModel: form, onSave: save) {
+        EntryFormScaffold(title: "Oil Change", viewModel: form, onSave: save, onEditEntry: seed) {
             TextField("Oil brand", text: $oilBrand).textFieldStyle(.roundedBorder)
             TextField("Oil grade", text: $oilGrade).textFieldStyle(.roundedBorder)
             TextField("Quantity (quarts)", text: $quantityQuarts)
@@ -17,12 +17,14 @@ struct OilChangeFormView: View {
                 .textFieldStyle(.roundedBorder)
             TextField("Filter brand", text: $filterBrand).textFieldStyle(.roundedBorder)
         }
-        .task { await prepare() }
     }
 
-    private func prepare() async {
-        guard let vehicleId = appState.currentVehicle?.id else { return }
-        await form.prepare(vehicleId: vehicleId)
+    private func seed(from entry: FirestoreEntry) {
+        guard let details = entry.decodedDetails(as: OilChangeEntry.self) else { return }
+        oilBrand = details.oilBrand
+        oilGrade = details.oilGrade
+        quantityQuarts = details.quantityQuarts > 0 ? EntryFormViewModel.costString(details.quantityQuarts) : ""
+        filterBrand = details.filterBrand ?? ""
     }
 
     private func save() async -> Bool {

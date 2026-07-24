@@ -28,9 +28,49 @@ struct EntryServiceQueryTests {
             makeEntry(id: "highest-odometer", type: .repair, odometer: 32_000, date: 200)
         ])
         let odometer = try await service.fetchLatestOdometer(vehicleId: "vehicle")
-        let fuel = try await service.lastFuelEntry(vehicleId: "vehicle")
+        let fuel = try await service.lastFuelEntry(vehicleId: "vehicle", before: Date(timeIntervalSince1970: 1_000))
         #expect(odometer == 32_000)
         #expect(fuel?.id == "latest-fuel")
+    }
+    // Edit-in-place (review finding): editing the entry that holds the vehicle's current max
+    // odometer, or the most recent fuel fill-up, must not have that entry find ITSELF as the
+    // "other entry" to floor/compare against.
+    @Test func fetchLatestOdometer_excludingEntryID_skipsTheExcludedEvenWhenItIsTheMax() async throws {
+        let service = EntryService(testEntries: [
+            makeEntry(id: "high", odometer: 30_000, date: 300),
+            makeEntry(id: "mid", odometer: 20_000, date: 200)
+        ])
+        let excludingHigh = try await service.fetchLatestOdometer(vehicleId: "vehicle", excludingEntryID: "high")
+        let includingAll = try await service.fetchLatestOdometer(vehicleId: "vehicle")
+        #expect(excludingHigh == 20_000)
+        #expect(includingAll == 30_000)
+    }
+    @Test func lastFuelEntry_excludingEntryID_skipsTheEditedEntryItself() async throws {
+        let service = EntryService(testEntries: [
+            makeEntry(id: "fuel-a", type: .fuel, odometer: 10_000, date: 100),
+            makeEntry(id: "fuel-b", type: .fuel, odometer: 10_300, date: 200)
+        ])
+        let farFuture = Date(timeIntervalSince1970: 1_000)
+        let excludingSelf = try await service.lastFuelEntry(
+            vehicleId: "vehicle", before: farFuture, excludingEntryID: "fuel-b"
+        )
+        let includingAll = try await service.lastFuelEntry(vehicleId: "vehicle", before: farFuture)
+        #expect(excludingSelf?.id == "fuel-a")
+        #expect(includingAll?.id == "fuel-b")
+    }
+    // Review MAJOR: editing a non-latest fuel entry must find the entry chronologically BEFORE
+    // it, never one that's actually later — an unbounded "newest OTHER entry" lookup would have
+    // picked "late" here, corrupting MPG against a fill-up that hasn't happened yet.
+    @Test func lastFuelEntry_editingAMiddleEntryFindsThePriorFillUpNotAFutureOne() async throws {
+        let service = EntryService(testEntries: [
+            makeEntry(id: "early", type: .fuel, odometer: 9_000, date: 100),
+            makeEntry(id: "middle", type: .fuel, odometer: 9_300, date: 200),
+            makeEntry(id: "late", type: .fuel, odometer: 9_600, date: 300)
+        ])
+        let previous = try await service.lastFuelEntry(
+            vehicleId: "vehicle", before: Date(timeIntervalSince1970: 200), excludingEntryID: "middle"
+        )
+        #expect(previous?.id == "early")
     }
     @Test func fetchEntries_pagesStablyAcrossEqualTimestampBoundaries() async throws {
         let entries = (0..<1_203).map {

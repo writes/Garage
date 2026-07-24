@@ -72,10 +72,42 @@ struct AppRouterTests {
         #expect(router.pendingVoicePrefill != nil)
     }
 
+    @Test func presentEditFormSeedsAOneShotPendingEditEntryAndGoesThroughTheVehicleGate() {
+        let router = AppRouter(hasVehicles: { true })
+        let entry = makeEntry()
+        router.presentEditForm(for: entry)
+        #expect(router.activeSheet == .entryForm(.maintenance))
+        #expect(router.consumeEditEntry() == entry)
+        #expect(router.consumeEditEntry() == nil)
+    }
+
+    @Test func presentEditFormWithNoVehiclesRedirectsToVehicleCreationAndDropsThePendingEdit() {
+        let router = AppRouter(hasVehicles: { false })
+        router.presentEditForm(for: makeEntry())
+        #expect(router.activeSheet == .vehicleForm)
+        #expect(router.consumeEditEntry() == nil)
+    }
+
+    @Test func dismissSheetClearsActiveSheetButNotPendingEditEntry() {
+        let router = AppRouter(hasVehicles: { true })
+        router.presentEditForm(for: makeEntry())
+        router.dismissSheet()
+        #expect(router.activeSheet == nil)
+        #expect(router.pendingEditEntry != nil)
+    }
+
     private func proposal() -> VoiceEntryProposal {
         VoiceEntryProposal(
             entryType: .maintenance, odometerReading: 100, cost: nil,
             shopName: nil, isDiy: nil, entryDate: nil, notes: nil
+        )
+    }
+
+    private func makeEntry() -> FirestoreEntry {
+        FirestoreEntry(
+            id: "entry", vehicleId: "vehicle", userId: "user", entryType: .maintenance,
+            entryDate: .now, odometerReading: 100, cost: nil, isDiy: nil, shopName: nil,
+            notes: nil, attachmentPaths: [], isResolved: nil, details: [:], createdAt: nil, updatedAt: nil
         )
     }
 }

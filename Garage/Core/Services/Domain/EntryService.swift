@@ -98,7 +98,14 @@ struct EntryCursor { let document: DocumentSnapshot?
               entry.userId == vehicle.userId else {
             throw AppError.auth("The active account no longer owns this entry.")
         }
-        guard entry.vehicleId == vehicle.id, vehicle.currentOdometer == entry.odometerReading else {
+        // VALIDATION-SEMANTICS CHANGE (relaxed from `==`): editing a non-max-odometer entry
+        // passes an `updatedVehicle.currentOdometer` that's the RECOMPUTED max across every
+        // OTHER entry (EntryFormViewModel.updatedVehicle), which is >= — and can be strictly
+        // greater than — the edited entry's own odometerReading whenever another entry still
+        // outranks it. `==` assumed every save's entry IS the vehicle's new max, true only for
+        // create. `>=` still rejects the entry-is-ahead-of-the-vehicle corruption signal `==` was
+        // guarding against; it just no longer requires the entry being saved to BE the max.
+        guard entry.vehicleId == vehicle.id, vehicle.currentOdometer >= entry.odometerReading else {
             throw AppError.validation("The entry must update its matching vehicle odometer.")
         }
         let entryData: [String: Any], encodedVehicle: [String: Any]
@@ -199,35 +206,9 @@ struct EntryCursor { let document: DocumentSnapshot?
         let nextCursor = hasMore ? Self.cursor(document: pageDocuments.last, entry: entries.last) : nil
         return EntryPage(entries: Self.filter(entries, with: query.searchText), nextCursor: nextCursor)
     }
-    func fetchLatestOdometer(vehicleId: String) async throws -> Int? {
-        if let testEntries { return Self.latestOdometer(in: testEntries, vehicleId: vehicleId) }
-#if DEBUG
-        if AppRuntime.isLocalDemoMode {
-            let entries = DemoSessionStore.shared.entries(for: vehicleId)
-            return Self.latestOdometer(in: entries, vehicleId: vehicleId)
-        }
-#endif
-        let snapshot = try await firestore.db.collection(
-            FirestorePaths.vehicleEntries(vehicleId: vehicleId)
-        ).order(by: "odometerReading", descending: true).limit(to: 1).getDocuments()
-        return try snapshot.documents.first.map {
-            try firestore.decode(FirestoreEntry.self, from: $0.data()).odometerReading
-        }
-    }
-    func lastFuelEntry(vehicleId: String) async throws -> FirestoreEntry? {
-        if let testEntries { return Self.latestFuelEntry(in: testEntries, vehicleId: vehicleId) }
-#if DEBUG
-        if AppRuntime.isLocalDemoMode {
-            let entries = DemoSessionStore.shared.entries(for: vehicleId)
-            return Self.latestFuelEntry(in: entries, vehicleId: vehicleId)
-        }
-#endif
-        let snapshot = try await firestore.db.collection(
-            FirestorePaths.vehicleEntries(vehicleId: vehicleId)
-        ).whereField("entryType", isEqualTo: EntryType.fuel.rawValue)
-            .order(by: "entryDate", descending: true).limit(to: 1).getDocuments()
-        return try snapshot.documents.first.map { try firestore.decode(FirestoreEntry.self, from: $0.data()) }
-    }
+    // fetchLatestOdometer / lastFuelEntry (both with an excludingEntryID overload for edit-in-
+    // place) moved to EntryService+Paging.swift, alongside the in-memory helpers they share —
+    // split out to stay under the file cap.
 }
 extension EntryService {
     private func vehiclePatch(

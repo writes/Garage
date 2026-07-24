@@ -8,19 +8,20 @@ struct DMEReportFormView: View {
     @State private var summary = ""
 
     var body: some View {
-        EntryFormScaffold(title: "DME Report", viewModel: form, onSave: save) {
+        EntryFormScaffold(title: "DME Report", viewModel: form, onSave: save, onEditEntry: seed) {
             TextField("Provider", text: $provider).textFieldStyle(.roundedBorder)
             Picker("Report type", selection: $reportType) {
                 ForEach(DMEReportType.allCases, id: \.self) { type in Text(type.displayName).tag(type) }
             }
             TextField("Summary", text: $summary).textFieldStyle(.roundedBorder)
         }
-        .task { await prepare() }
     }
 
-    private func prepare() async {
-        guard let vehicleId = appState.currentVehicle?.id else { return }
-        await form.prepare(vehicleId: vehicleId)
+    private func seed(from entry: FirestoreEntry) {
+        guard let details = entry.decodedDetails(as: DMEReportEntry.self) else { return }
+        provider = details.providerName
+        reportType = details.reportType
+        summary = details.summary ?? ""
     }
 
     private func save() async -> Bool {

@@ -36,6 +36,10 @@ final class AppRouter {
     /// by the form that appears next, so a manually-opened form never picks up a stale prefill.
     private(set) var pendingVoicePrefill: VoiceEntryProposal?
 
+    /// Carries an existing entry from EntryDetailView to the edit form it opens. Same one-shot
+    /// pattern as pendingVoicePrefill: consumed once by the form that appears next.
+    private(set) var pendingEditEntry: FirestoreEntry?
+
     init(hasVehicles: @escaping () -> Bool = { true }) {
         self.hasVehicles = hasVehicles
     }
@@ -44,8 +48,8 @@ final class AppRouter {
     /// opening the entry picker, voice capture, or an entry form leads straight to a save that
     /// silently no-ops (EntryFormScaffold.saveIfAdmitted -> appState.currentVehicle == nil).
     /// Redirect those three sheets to vehicle creation instead so first use always has a path
-    /// forward. Also drops any pending one-shot prefill so a later real entry-form presentation
-    /// never consumes stale state from the redirected attempt.
+    /// forward. Also drops any pending one-shot prefill/edit so a later real entry-form
+    /// presentation never consumes stale state from the redirected attempt.
     ///
     /// Deliberately split pattern-matching from the guard (not `case .a, .b, .c where cond:`) —
     /// review caught that Swift's `where` after a comma-list only binds to the LAST pattern, so
@@ -65,6 +69,7 @@ final class AppRouter {
             return
         }
         pendingVoicePrefill = nil
+        pendingEditEntry = nil
         activeSheet = .vehicleForm
     }
 
@@ -81,5 +86,18 @@ final class AppRouter {
     func consumeVoicePrefill() -> VoiceEntryProposal? {
         defer { pendingVoicePrefill = nil }
         return pendingVoicePrefill
+    }
+
+    /// Opens the edit form for an existing entry, seeding it via the same one-shot handoff as
+    /// voice prefill. Goes through `present` (not a raw `activeSheet` assignment) so the
+    /// zero-vehicle gate still applies to it like every other entry-form presentation.
+    func presentEditForm(for entry: FirestoreEntry) {
+        pendingEditEntry = entry
+        present(.entryForm(entry.entryType))
+    }
+
+    func consumeEditEntry() -> FirestoreEntry? {
+        defer { pendingEditEntry = nil }
+        return pendingEditEntry
     }
 }

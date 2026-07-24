@@ -41,7 +41,7 @@ extension EntryService {
         try await firestore.db.collection(
             FirestorePaths.vehicleEntries(vehicleId: entry.vehicleId)
         ).document(entry.id).delete()
-        if Self.isCurrentOdometerEntry(entry, for: vehicle) {
+        if Self.shouldReconcileOdometer(afterDeleting: entry, from: vehicle) {
             let remainingMax = try await fetchLatestOdometer(vehicleId: entry.vehicleId) ?? 0
             try await firestore.db.collection(FirestorePaths.vehicles).document(entry.vehicleId).setData(
                 ["currentOdometer": remainingMax, "updatedAt": Timestamp(date: .now)], merge: true
@@ -53,7 +53,7 @@ extension EntryService {
 #if DEBUG
     private func deleteDemo(_ entry: FirestoreEntry, updatingVehicle vehicle: Vehicle?) {
         DemoSessionStore.shared.deleteEntry(id: entry.id)
-        guard Self.isCurrentOdometerEntry(entry, for: vehicle),
+        guard Self.shouldReconcileOdometer(afterDeleting: entry, from: vehicle),
               var demoVehicle = DemoSessionStore.shared.vehicles().first(where: { $0.id == entry.vehicleId })
         else { return }
         demoVehicle.currentOdometer = Self.latestOdometer(
@@ -64,10 +64,15 @@ extension EntryService {
     }
 #endif
 
-    /// Pure predicate (independently testable without Firestore/DemoSessionStore): the deleted
-    /// entry was the one backing the vehicle's currentOdometer, so a reconciliation write is due.
-    static func isCurrentOdometerEntry(_ entry: FirestoreEntry, for vehicle: Vehicle?) -> Bool {
+    /// Pure predicate (independently testable without Firestore/DemoSessionStore): whether
+    /// deleting `entry` might leave `vehicle.currentOdometer` pointing at something no longer
+    /// backed by any entry, so a reconciliation recompute+write is due. Relaxed from `==` to `>=`
+    /// (review BLOCKER): a `==`-only trigger could never self-heal an already-stale/"ghost"
+    /// currentOdometer left behind by an unrelated race — recompute is idempotent and cheap, so
+    /// triggering on `>=` means any accumulated ghost value heals the next time an entry at or
+    /// below it is deleted.
+    static func shouldReconcileOdometer(afterDeleting entry: FirestoreEntry, from vehicle: Vehicle?) -> Bool {
         guard let vehicle else { return false }
-        return vehicle.id == entry.vehicleId && vehicle.currentOdometer == entry.odometerReading
+        return vehicle.id == entry.vehicleId && vehicle.currentOdometer >= entry.odometerReading
     }
 }

@@ -11,7 +11,7 @@ struct TireFormView: View {
     @State private var rearSize = ""
 
     var body: some View {
-        EntryFormScaffold(title: "Tire Service", viewModel: form, onSave: save) {
+        EntryFormScaffold(title: "Tire Service", viewModel: form, onSave: save, onEditEntry: seed) {
             Picker("Action", selection: $actionType) {
                 ForEach(TireActionType.allCases, id: \.self) { action in Text(action.displayName).tag(action) }
             }
@@ -23,12 +23,16 @@ struct TireFormView: View {
             TextField("Front size", text: $frontSize).textFieldStyle(.roundedBorder)
             TextField("Rear size", text: $rearSize).textFieldStyle(.roundedBorder)
         }
-        .task { await prepare() }
     }
 
-    private func prepare() async {
-        guard let vehicleId = appState.currentVehicle?.id else { return }
-        await form.prepare(vehicleId: vehicleId)
+    private func seed(from entry: FirestoreEntry) {
+        guard let details = entry.decodedDetails(as: TireEntry.self) else { return }
+        actionType = details.actionType
+        brand = details.tireBrand
+        model = details.tireModel
+        position = details.position
+        frontSize = details.tireSizeFront ?? ""
+        rearSize = details.tireSizeRear ?? ""
     }
 
     private func save() async -> Bool {

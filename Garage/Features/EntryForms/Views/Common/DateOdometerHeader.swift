@@ -3,7 +3,11 @@ import SwiftUI
 struct DateOdometerHeader: View {
     @Binding var entryDate: Date
     @Binding var odometerReading: String
+    /// Create: the vehicle's actual last-recorded odometer. Edit: the caller passes
+    /// viewModel.odometerFloor instead (the validation floor, which can differ from the true
+    /// last-recorded value) — `isEditing` switches the label to match what's actually being shown.
     var lastKnownOdometer: Int?
+    var isEditing = false
 
     var body: some View {
         VStack(spacing: Theme.Spacing.md) {
@@ -22,7 +26,9 @@ struct DateOdometerHeader: View {
                     .accessibilityIdentifier("entry.form.odometer")
 
                 if let lastKnownOdometer {
-                    Text("Last recorded: \(lastKnownOdometer.formatted()) mi")
+                    Text(isEditing
+                        ? "Minimum allowed: \(lastKnownOdometer.formatted()) mi"
+                        : "Last recorded: \(lastKnownOdometer.formatted()) mi")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }

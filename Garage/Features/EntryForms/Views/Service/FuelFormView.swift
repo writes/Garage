@@ -10,7 +10,7 @@ struct FuelFormView: View {
     @State private var fuelGrade: FuelType = .premium93
 
     var body: some View {
-        EntryFormScaffold(title: "Fuel Fill-up", viewModel: form, onSave: save) {
+        EntryFormScaffold(title: "Fuel Fill-up", viewModel: form, onSave: save, onEditEntry: seed) {
             TextField("Gallons", text: $gallons)
                 .keyboardType(.decimalPad)
                 .textFieldStyle(.roundedBorder)
@@ -32,19 +32,26 @@ struct FuelFormView: View {
                 }
             }
         }
-        .task { await prepare() }
     }
 
-    private func prepare() async {
-        guard let vehicleId = appState.currentVehicle?.id else { return }
-        await form.prepare(vehicleId: vehicleId)
+    private func seed(from entry: FirestoreEntry) {
+        guard let details = entry.decodedDetails(as: FuelEntry.self) else { return }
+        gallons = details.gallons > 0 ? EntryFormViewModel.costString(details.gallons) : ""
+        pricePerGallon = details.pricePerGallon > 0 ? EntryFormViewModel.costString(details.pricePerGallon) : ""
+        totalCost = details.totalCost > 0 ? EntryFormViewModel.costString(details.totalCost) : ""
+        stationName = details.stationName ?? ""
+        fuelGrade = details.fuelGrade
+        // calculatedMPG is intentionally not seeded — save() always recomputes it fresh below.
     }
 
     private func save() async -> Bool {
         guard let vehicle = appState.currentVehicle else { return false }
         let gallonsValue = Double(gallons) ?? 0
         let currentOdometer = Int(form.odometerReading) ?? 0
-        let mpg = await Self.mpg(vehicleId: vehicle.id, currentOdometer: currentOdometer, gallons: gallonsValue)
+        let mpg = await Self.mpg(
+            vehicleId: vehicle.id, currentOdometer: currentOdometer, gallons: gallonsValue,
+            before: form.entryDate, excludingEntryID: form.editingEntryID
+        )
         let details = FuelEntry(
             gallons: gallonsValue,
             pricePerGallon: Double(pricePerGallon) ?? 0,
@@ -56,12 +63,17 @@ struct FuelFormView: View {
         return await form.save(vehicle: vehicle, entryType: .fuel, details: details)
     }
 
-    /// The newest existing fuel entry is the previous fill-up by construction: odometer readings
-    /// are validated non-decreasing across every entry type (Validators.odometer), so whatever
-    /// EntryService.lastFuelEntry returns already has a lower odometer than the one being saved.
-    /// Nil on a first-ever fill-up (no prior fuel entry) or a fetch failure — MPG is best-effort.
-    private static func mpg(vehicleId: String, currentOdometer: Int, gallons: Double) async -> Double? {
-        guard let previous = try? await EntryService.shared.lastFuelEntry(vehicleId: vehicleId) else { return nil }
+    /// The previous fill-up is the newest fuel entry strictly BEFORE this entry's own (current
+    /// form) date — not just "the newest OTHER fuel entry" (review MAJOR): that unbounded lookup
+    /// could pick a chronologically LATER entry as "previous" when editing any non-latest fill-up,
+    /// corrupting MPG. `excludingEntryID` additionally keeps an unmoved edit from finding itself.
+    /// Nil on a first-ever fill-up (nothing before it) or a fetch failure — MPG is best-effort.
+    private static func mpg(
+        vehicleId: String, currentOdometer: Int, gallons: Double, before: Date, excludingEntryID: String?
+    ) async -> Double? {
+        guard let previous = try? await EntryService.shared.lastFuelEntry(
+            vehicleId: vehicleId, before: before, excludingEntryID: excludingEntryID
+        ) else { return nil }
         return FuelEntry.calculatedMPG(
             currentOdometer: currentOdometer, previousOdometer: previous.odometerReading, gallons: gallons
         )

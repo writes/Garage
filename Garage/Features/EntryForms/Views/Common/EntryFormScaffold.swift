@@ -2,103 +2,16 @@ import Foundation
 import Observation
 import SwiftUI
 
-@MainActor
-protocol EntryFormMutationGating: AnyObject {
-    var mutationEpoch: UInt64 { get }
-    var isMutationLocked: Bool { get }
-    func acceptsUserMutation(epoch: UInt64) -> Bool
-    func beginSave() -> UInt64?
-    func canCommitSave(epoch: UInt64) -> Bool
-}
-
-struct OilAnalysisImportPrefill: Equatable, Sendable {
-    let labName: String
-    let viscosity: String?
-    let milesOnOil: Int?
-    let iron: Double?
-    let aluminum: Double?
-    let labRecommendation: String?
-
-    init(entry: OilAnalysisEntry) {
-        labName = entry.labName
-        viscosity = entry.viscosity
-        milesOnOil = entry.milesOnOil
-        iron = entry.iron
-        aluminum = entry.aluminum
-        labRecommendation = entry.labRecommendation
-    }
-}
-
-struct OilAnalysisEditableFields: Equatable, Sendable {
-    var labName = "Blackstone"
-    var viscosity = ""
-    var milesOnOil = ""
-    var iron = ""
-    var aluminum = ""
-    var labRecommendation = ""
-
-    mutating func apply(_ prefill: OilAnalysisImportPrefill) {
-        labName = prefill.labName
-        if let viscosity = prefill.viscosity { self.viscosity = viscosity }
-        if let milesOnOil = prefill.milesOnOil { self.milesOnOil = String(milesOnOil) }
-        if let iron = prefill.iron { self.iron = String(iron) }
-        if let aluminum = prefill.aluminum { self.aluminum = String(aluminum) }
-        if let labRecommendation = prefill.labRecommendation {
-            self.labRecommendation = labRecommendation
-        }
-    }
-}
-
-enum OilAnalysisImportOutcome: Equatable, Sendable {
-    case idle
-    case prefill(OilAnalysisImportPrefill)
-    case showPaywall
-    case syncPending
-    case dailyQuota(resetAt: Date)
-    case inlineError(AppError)
-}
-
-@MainActor
-@Observable
-final class OilAnalysisDraft: OilAnalysisPrefillApplying {
-    var editableFields = OilAnalysisEditableFields()
-    private var authorizedOwnerID: UUID?
-
-    func textBinding(
-        _ keyPath: WritableKeyPath<OilAnalysisEditableFields, String>,
-        gate: any EntryFormMutationGating
-    ) -> Binding<String> {
-        let epoch = gate.mutationEpoch
-        return Binding(
-            get: { self.editableFields[keyPath: keyPath] },
-            set: { [weak self, weak gate] value in
-                guard let self, let gate, gate.acceptsUserMutation(epoch: epoch) else { return }
-                self.editableFields[keyPath: keyPath] = value
-            }
-        )
-    }
-
-    func beginAuthorizedImport(ownerID: UUID) {
-        guard authorizedOwnerID == nil else { return }
-        authorizedOwnerID = ownerID
-    }
-
-    func commitImportedPrefill(_ prefill: OilAnalysisImportPrefill, ownerID: UUID) {
-        guard authorizedOwnerID == ownerID else { return }
-        editableFields.apply(prefill)
-        authorizedOwnerID = nil
-    }
-
-    func abortAuthorizedImport(ownerID: UUID) {
-        guard authorizedOwnerID == ownerID else { return }
-        authorizedOwnerID = nil
-    }
-}
+// Oil-analysis draft/mutation-gating types (EntryFormMutationGating, OilAnalysisDraft, etc.) live
+// in OilAnalysisDraft.swift — split out to stay under this file's cap.
 
 struct EntryFormScaffold<Content: View>: View {
     let title: String
     @Bindable var viewModel: EntryFormViewModel
     var onSave: () async -> Bool
+    /// Fires once, only when opened via AppRouter.presentEditForm(for:) — mirrors onSave as the
+    /// per-form opt-in point. Each form's own seed(from:) reads its own `entry.details` keys.
+    var onEditEntry: ((FirestoreEntry) -> Void)?
     /// Nil by default so every non-oil form preserves its existing behavior. The oil-analysis
     /// form opts in to live epoch-checked bindings while an authorized import owns its draft.
     var mutationGate: (any EntryFormMutationGating)?
@@ -117,12 +30,14 @@ struct EntryFormScaffold<Content: View>: View {
         title: String,
         viewModel: EntryFormViewModel,
         onSave: @escaping () async -> Bool,
+        onEditEntry: ((FirestoreEntry) -> Void)? = nil,
         mutationGate: (any EntryFormMutationGating)? = nil,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
         _viewModel = Bindable(wrappedValue: viewModel)
         self.onSave = onSave
+        self.onEditEntry = onEditEntry
         self.mutationGate = mutationGate
         self.content = content()
     }
@@ -132,7 +47,8 @@ struct EntryFormScaffold<Content: View>: View {
             DateOdometerHeader(
                 entryDate: guardedBinding($viewModel.entryDate),
                 odometerReading: guardedBinding($viewModel.odometerReading),
-                lastKnownOdometer: viewModel.lastKnownOdometer
+                lastKnownOdometer: odometerHint,
+                isEditing: viewModel.editingEntryID != nil
             )
             .disabled(isMutationLocked)
             content
@@ -176,11 +92,29 @@ struct EntryFormScaffold<Content: View>: View {
             if let prefill = router.consumeVoicePrefill() {
                 viewModel.applyVoicePrefill(prefill)
             }
+            // One-shot, same pattern: only the form opened via presentEditForm(for:) sees a
+            // pending edit. Sequenced strictly before prepare() below (same task, in order) so
+            // editingEntryID is always set before prepare() reads it — no ordering race against a
+            // form's own separate .task, which two independent .task blocks could not guarantee.
+            if let editEntry = router.consumeEditEntry() {
+                viewModel.applyExistingEntry(editEntry)
+                onEditEntry?(editEntry)
+            }
+            // Centralized (not per-form) so every form gets it for free, always after the above.
+            if let vehicleId = appState.currentVehicle?.id {
+                await viewModel.prepare(vehicleId: vehicleId)
+            }
         }
     }
 
     private var isMutationLocked: Bool {
         mutationGate?.isMutationLocked ?? false
+    }
+
+    /// Create shows the true last-recorded odometer; edit shows the validation floor instead
+    /// (DateOdometerHeader picks the matching label for whichever this is).
+    private var odometerHint: Int? {
+        viewModel.editingEntryID == nil ? viewModel.lastKnownOdometer : viewModel.odometerFloor
     }
 
     private var canAdmitSave: Bool {
