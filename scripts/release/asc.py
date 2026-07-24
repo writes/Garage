@@ -1979,7 +1979,9 @@ def command_upload(args: argparse.Namespace) -> CommandResult:
         credentials.issuer_id,
     ]
     try:
-        if args.json:
+        # `--json` is not guaranteed to be present on this subparser; match emit_result's
+        # defensive read rather than assuming the flag was registered.
+        if getattr(args, "json", False):
             completed = subprocess.run(command, check=False, text=True, capture_output=True)
             return CommandResult(
                 {
