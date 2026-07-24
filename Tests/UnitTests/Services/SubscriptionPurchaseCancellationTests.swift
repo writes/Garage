@@ -27,6 +27,22 @@ struct SubscriptionPurchaseCancellationTests {
         #expect(result?.result == .success(.cancelled))
     }
 
+    // FIX A: Ask-to-Buy/SCA deferral throws paymentPendingError promptly (never hangs) —
+    // mirrors the cancellation detection above exactly, both raw-thrown and NSError-bridged.
+    @Test func thrownRevenueCatPaymentPendingIsNormalizedByAdapter() async {
+        let adapter = makeAdapter { _, _, _, _, _ in throw ErrorCode.paymentPendingError }
+        let result = await purchaseFirstPackage(adapter)
+        #expect(result?.result == .success(.pending))
+    }
+
+    @Test func bridgedNSErrorPaymentPendingIsNormalizedByAdapter() async {
+        let adapter = makeAdapter { _, _, _, _, _ in
+            throw ErrorCode.paymentPendingError as NSError
+        }
+        let result = await purchaseFirstPackage(adapter)
+        #expect(result?.result == .success(.pending))
+    }
+
     @Test func staleCancelledGatewayFlightRemainsCancelled() async {
         let client = SubscriptionMockClient()
         let held = HeldValue<RevenueCatObserved<ClientPurchasePayload>>()

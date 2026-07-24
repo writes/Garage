@@ -5,10 +5,16 @@ final class SubscriptionGateway {
     let client: any RevenueCatClienting
     let relay: SubscriptionCommitRelay
     let state = SubscriptionGatewayState()
+    private var customerInfoTask: Task<Void, Never>?
 
     init(client: any RevenueCatClienting, relay: SubscriptionCommitRelay) {
         self.client = client
         self.relay = relay
+        startObservingCustomerInfo()
+    }
+
+    deinit {
+        customerInfoTask?.cancel()
     }
 
     @discardableResult
@@ -219,5 +225,24 @@ final class SubscriptionGateway {
     func emit(_ event: SubscriptionCommitEvent) {
         let stamp = state.nextStamp()
         relay.deliver(StampedSubscriptionCommit(stamp: stamp, event: event))
+    }
+}
+
+extension SubscriptionGateway {
+    // FIX D (audited money-path fix): a single long-lived task for the gateway's whole
+    // lifetime, not restarted per sign-in/out. registerStatus() already re-validates identity/
+    // lease/staleness on every call, so there's no correctness reason to tear down and restart
+    // on re-identify — a single task also trivially rules out duplicate-consumption races. Each
+    // update is just a wake-up signal; the resulting registerStatus() call is what actually
+    // converges entitlement state (idempotent — see FIX B's interaction note).
+    private func startObservingCustomerInfo() {
+        guard customerInfoTask == nil else { return }
+        let stream = client.observeCustomerInfoUpdates()
+        customerInfoTask = Task { @MainActor [weak self] in
+            for await _ in stream {
+                guard let self else { return }
+                _ = self.registerStatus()
+            }
+        }
     }
 }

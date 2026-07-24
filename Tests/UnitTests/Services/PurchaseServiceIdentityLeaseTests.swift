@@ -35,7 +35,7 @@ struct PurchaseServiceIdentityLeaseTests {
         #expect(!service.isPro)
     }
 
-    @Test func finiteProofExpiresAgainstTheSingleInjectedClock() {
+    @Test func finiteProofExpiresAgainstTheSingleInjectedClock() async {
         let now = Date(timeIntervalSince1970: 3_000)
         let clock = AdjustableEntitlementClock(now)
         let scheduler = ManualExpiryScheduler()
@@ -59,6 +59,10 @@ struct PurchaseServiceIdentityLeaseTests {
         #expect(scheduler.replacements == [60])
         clock.value = now.addingTimeInterval(60)
         scheduler.fire()
+        // FIX B routes the clear through an async server-refresh attempt first (gateway
+        // identity was never established here, so it resolves .notReady and falls back).
+        let cleared = await eventually { !service.diagnostics.proofIsPresent }
+        #expect(cleared)
         #expect(!service.isPro)
         #expect(service.accountRevision == 0)
         #expect(service.diagnostics.currentReadyLease == SubscriptionFixtures.leaseA)
@@ -137,5 +141,13 @@ struct PurchaseServiceIdentityLeaseTests {
             await Task.yield()
         }
         return counters.allSatisfy { $0.value == 1 }
+    }
+
+    private func eventually(_ predicate: @escaping @MainActor () -> Bool) async -> Bool {
+        for _ in 0..<50 {
+            if predicate() { return true }
+            try? await Task<Never, Never>.sleep(nanoseconds: 10_000_000)
+        }
+        return predicate()
     }
 }

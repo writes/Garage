@@ -17,6 +17,9 @@ protocol RevenueCatClienting: AnyObject {
         analyticsProduct: AnalyticsProductID
     ) async -> RevenueCatObserved<ClientPurchasePayload>
     func restore() async -> RevenueCatObserved<EntitlementSnapshot>
+    /// A live push channel for entitlement changes (FIX D): server-side or later-approved
+    /// (Ask-to-Buy/SCA) purchases converge without waiting for relaunch or paywall reopen.
+    func observeCustomerInfoUpdates() -> AsyncStream<EntitlementSnapshot>
 }
 
 struct RawPurchaseResult: Equatable, Sendable {
@@ -125,6 +128,12 @@ enum RevenueCatValueMapper {
 
     static func isCancellation(_ error: Error) -> Bool {
         (error as NSError).asErrorCode == .purchaseCancelledError
+    }
+
+    /// Ask-to-Buy/SCA deferred to an approver — the SDK throws this promptly (never hangs).
+    /// Mirrors `isCancellation` exactly: same NSError-bridged ErrorCode detection (FIX A).
+    static func isPaymentPending(_ error: Error) -> Bool {
+        (error as NSError).asErrorCode == .paymentPendingError
     }
 
     private static func period(_ period: SubscriptionPeriod?) -> SubscriptionPeriodDTO? {

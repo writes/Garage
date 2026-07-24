@@ -27,13 +27,14 @@ final class PurchaseService: SubscriptionCommitSink, SubscriptionFacading {
     )
 
     private let relay: SubscriptionCommitRelay
-    private let gateway: SubscriptionGateway?
+    let gateway: SubscriptionGateway? // internal: read by PurchaseService+ExpiryRefresh.swift (FIX B)
     private let monitor: SubscriptionRecoveryMonitor?
     private let expiryScheduler: any EntitlementExpiryScheduling
-    private let clock: any EntitlementClock
+    let clock: any EntitlementClock
     private let analytics: any AnalyticsTracking
     private let reconciliationStore: SubscriptionReconciliationStore
-    private var state = PurchaseServiceState()
+    var state = PurchaseServiceState()
+    var expiryRefreshTask: Task<Void, Never>? // FIX B single-flight handle; awaitable by tests
 
     var isPro: Bool { state.isPro { clock.now() } }
     var plans: OfferingsSnapshot? { state.plans }
@@ -198,13 +199,13 @@ final class PurchaseService: SubscriptionCommitSink, SubscriptionFacading {
     }
 }
 
-private extension PurchaseService {
-    func performProofMutation<Value>(_ mutation: () -> Value) -> Value {
+extension PurchaseService {
+    private func performProofMutation<Value>(_ mutation: () -> Value) -> Value {
         expiryScheduler.cancelWake()
         return mutation()
     }
 
-    func applyStateEvent(_ event: SubscriptionCommitEvent) -> PurchaseStateEffects {
+    private func applyStateEvent(_ event: SubscriptionCommitEvent) -> PurchaseStateEffects {
         switch event {
         case .offeringsLoaded(let lease, _) where lease == state.currentReadyLease,
              .offeringsUnavailable(let lease, _) where lease == state.currentReadyLease:
@@ -216,17 +217,15 @@ private extension PurchaseService {
         }
     }
 
-    func perform(_ effects: PurchaseStateEffects) {
+    private func perform(_ effects: PurchaseStateEffects) {
         if let expiry = effects.expiry, case .rearm(let delay) = expiry {
             expiryScheduler.replaceWake(after: delay)
         }
         if let event = effects.analytics { analytics.track(event) }
     }
 
-    func reevaluateEntitlementExpiry() {
-        let now = state.proof?.isActive == true && state.proof?.expirationDate != nil
-            ? clock.now()
-            : nil
+    func applyLocalExpiryFallback(now: Date?) { // bridges FIX B's refresh (PurchaseService+ExpiryRefresh.swift)
+        state.expiryGraceUntil = nil
         let expiry = performProofMutation { state.reevaluate(now: now) }
         perform(PurchaseStateEffects(expiry: expiry, analytics: nil, violations: []))
     }

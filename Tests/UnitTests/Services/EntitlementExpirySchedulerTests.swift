@@ -132,10 +132,13 @@ struct EntitlementExpirySchedulerTests {
         #expect(service.contains("performProofMutation { state.reevaluate(now: now) }"))
         #expect(state.contains("proof.lease == currentReadyLease"))
         #expect(state.contains("proof.isActive else"))
-        #expect(state.contains("return proof.expirationDate.map { $0 > now() } ?? true"))
+        // FIX B: isPro consults the bounded grace hold instead of reading the stale
+        // expirationDate unconditionally — pins that the grace check is still wired in.
+        #expect(state.contains("guard let expirationDate = proof.expirationDate else { return true }"))
+        #expect(state.contains("expiryGraceUntil.map { instant < $0 } ?? false"))
     }
 
-    @Test func expiryClearsOnlyProofAndLeavesAccountContextIntact() {
+    @Test func expiryClearsOnlyProofAndLeavesAccountContextIntact() async {
         let now = Date(timeIntervalSince1970: 500)
         let clock = AdjustableEntitlementClock(now)
         let scheduler = ManualExpiryScheduler()
@@ -155,6 +158,10 @@ struct EntitlementExpirySchedulerTests {
         ))
         clock.value = now.addingTimeInterval(2)
         scheduler.fire()
+        // FIX B routes the clear through an async server-refresh attempt first (gateway
+        // identity was never established here, so it resolves .notReady and falls back).
+        let cleared = await eventually { !service.diagnostics.proofIsPresent }
+        #expect(cleared)
         #expect(!service.isPro)
         #expect(service.accountRevision == 0)
         #expect(service.diagnostics.currentReadyLease == SubscriptionFixtures.leaseA)

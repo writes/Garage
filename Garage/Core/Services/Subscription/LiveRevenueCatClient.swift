@@ -108,6 +108,7 @@ final class LiveRevenueCatClient: RevenueCatClienting {
             return observed(.success(.completed(snapshot: result.snapshot, product: analyticsProduct)))
         } catch {
             if RevenueCatValueMapper.isCancellation(error) { return observed(.success(.cancelled)) }
+            if RevenueCatValueMapper.isPaymentPending(error) { return observed(.success(.pending)) }
             return observed(.failure(SubscriptionOutcomeClassifier.error(error)))
         }
     }
@@ -115,6 +116,18 @@ final class LiveRevenueCatClient: RevenueCatClienting {
     func restore() async -> RevenueCatObserved<EntitlementSnapshot> {
         await RevenueCatValueMapper.observe(userID: observedUserID) {
             RevenueCatValueMapper.snapshot(try await Purchases.shared.restorePurchases())
+        }
+    }
+
+    func observeCustomerInfoUpdates() -> AsyncStream<EntitlementSnapshot> {
+        AsyncStream { continuation in
+            let task = Task {
+                for await info in Purchases.shared.customerInfoStream {
+                    continuation.yield(RevenueCatValueMapper.snapshot(info))
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 

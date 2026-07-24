@@ -10,6 +10,7 @@ enum ObservedOperationDisposition<Value: Sendable>: Sendable {
 enum PurchaseOperationDisposition: Sendable {
     case selectionInvalidated(revoke: Bool)
     case cancelled(revoke: Bool)
+    case pending(revoke: Bool)
     case reconciliationRequired(revoke: Bool)
     case failed(SubscriptionError)
     case completed(EntitlementSnapshot, AnalyticsProductID)
@@ -67,6 +68,11 @@ enum SubscriptionOutcomeClassifier {
             return .selectionInvalidated(revoke: isCurrent && mismatched)
         case .success(.cancelled):
             return .cancelled(revoke: isCurrent && mismatched)
+        case .success(.pending):
+            // A deferred (Ask-to-Buy/SCA) purchase hasn't charged or completed anything yet —
+            // treat it like cancellation for identity/staleness purposes, not like a completed
+            // purchase that would need reconciliation (FIX A).
+            return .pending(revoke: isCurrent && mismatched)
         default: break
         }
         guard isCurrent else { return .reconciliationRequired(revoke: false) }
@@ -142,6 +148,8 @@ enum SubscriptionOutcomeClassifier {
             return resolution(.selectionInvalidated, effect: revoke ? .revoke : .none)
         case .cancelled(let revoke):
             return resolution(.cancelled, effect: revoke ? .revoke : .none)
+        case .pending(let revoke):
+            return resolution(.pending, effect: revoke ? .revoke : .none)
         case .reconciliationRequired(let revoke):
             return resolution(.reconciliationRequired, effect: revoke ? .revoke : .none)
         case .failed(let error):

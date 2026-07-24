@@ -47,11 +47,17 @@ struct PurchaseServiceState {
     var storedSelection: PackageSelection?
     var plans: OfferingsSnapshot?
     var accountRevision: UInt64 = 0
+    /// FIX B bounded grace: while an expiry-wake server refresh is in flight, isPro reads true
+    /// past the stale local expirationDate instead of flapping false — capped, so a hung/
+    /// offline refresh still fails closed once this deadline passes.
+    var expiryGraceUntil: Date?
 
     func isPro(now: () -> Date) -> Bool {
         guard let currentReadyLease, let proof,
               proof.lease == currentReadyLease, proof.isActive else { return false }
-        return proof.expirationDate.map { $0 > now() } ?? true
+        guard let expirationDate = proof.expirationDate else { return true }
+        let instant = now()
+        return expirationDate > instant || (expiryGraceUntil.map { instant < $0 } ?? false)
     }
 
     mutating func makeSelection(for dto: PackageDTO, enabled: Bool) -> PackageSelection? {
@@ -161,6 +167,7 @@ struct PurchaseServiceState {
     private mutating func assignProof(
         _ newProof: EntitlementProof?, now: Date?) -> EntitlementExpiryDisposition {
         proof = newProof
+        expiryGraceUntil = nil // any commit resolves the hold
         let result = EntitlementExpiryReducer.disposition(
             currentReadyLease: currentReadyLease, proof: proof, now: now)
         if result == .clearProof { proof = nil }
@@ -170,6 +177,7 @@ struct PurchaseServiceState {
     private mutating func revoke(leaseMismatch: Bool) -> PurchaseStateEffects {
         currentReadyLease = nil
         proof = nil
+        expiryGraceUntil = nil
         plans = nil
         storedSelection = nil
         let prior = accountRevision

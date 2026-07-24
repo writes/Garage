@@ -19,6 +19,7 @@ enum ClientOfferingsPayload: Equatable, Sendable {
 enum ClientPurchasePayload: Equatable, Sendable {
     case completed(snapshot: EntitlementSnapshot, product: AnalyticsProductID)
     case cancelled
+    case pending
     case selectionInvalidated
 }
 
@@ -54,6 +55,7 @@ enum PurchaseOutcome: Equatable, Sendable {
     case activePro
     case noEntitlement
     case cancelled
+    case pending
     case busy
     case notReady
     case selectionInvalidated
@@ -73,7 +75,7 @@ enum RestoreOutcome: Equatable, Sendable {
 enum SubscriptionReconciliationKind: String, Codable, Equatable, Sendable { case purchase, restore }
 
 enum SubscriptionPresentationState: Equatable, Sendable {
-    case idle, loadingPlans, purchasing, restoring, purchased, cancelled
+    case idle, loadingPlans, purchasing, restoring, purchased, cancelled, pending
     case noEntitlement, selectionInvalidated, unavailable
     case reconciliationRequired(SubscriptionReconciliationKind)
     case failure(AppError)
@@ -81,7 +83,7 @@ enum SubscriptionPresentationState: Equatable, Sendable {
 
 enum SubscriptionNotice: Equatable, Sendable {
     case plansUnavailable, notReady, busy, selectionInvalidated, active
-    case purchaseNoEntitlement, restoreNoActive, cancelled
+    case purchaseNoEntitlement, restoreNoActive, cancelled, pending
 
     var text: String {
         switch self {
@@ -98,6 +100,9 @@ enum SubscriptionNotice: Equatable, Sendable {
         case .restoreNoActive:
             return "No active subscription was found for this account. Nothing was charged."
         case .cancelled: return "Purchase cancelled. Nothing was charged."
+        case .pending:
+            return "Waiting for approval — nothing has been charged yet. " +
+                "Pro unlocks automatically once the purchase is approved."
         }
     }
 }
