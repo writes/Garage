@@ -81,15 +81,32 @@ enum Secrets {
 
 ## 7. App Store Connect / TestFlight
 - Version/build from `project.yml` (`CFBundleShortVersionString` / bundle version).
-- **Privacy manifest** (`Garage/Resources/PrivacyInfo.xcprivacy` EXISTS but is likely incomplete):
-  `NSPrivacyAccessedAPITypes` is empty, but the app uses `UserDefaults` directly
-  (SubscriptionReconciliationStore) → add category `NSPrivacyAccessedAPICategoryUserDefaults`
-  with reason `CA92.1`. Data types declared: UserID, Email, OtherUserContent, ProductInteraction
-  — consider adding **Purchases** (RevenueCat) and **Crash/Diagnostics** (Crashlytics). Verify
-  against the audit's appstore-compliance findings before submission.
+- **Privacy manifest** (`Garage/Resources/PrivacyInfo.xcprivacy`) — ✅ **complete as of
+  2026-07-24.** `NSPrivacyAccessedAPICategoryUserDefaults` / `CA92.1` IS declared (an earlier
+  note here claiming `NSPrivacyAccessedAPITypes` was empty was stale — landmine #9). Verified no
+  other required-reason API is used: no file-timestamp (`C617.1`), disk-space (`E174.1`),
+  active-keyboard, or boot-time (`35F9.1`) calls anywhere in `Garage/`. Data types declared:
+  UserID, Email, OtherUserContent, ProductInteraction. **Purchases** (RevenueCat) and
+  **Crash/Diagnostics** (Crashlytics) are covered by those SDKs' own bundled privacy manifests,
+  which Apple aggregates — re-check if either SDK is ever vendored rather than linked via SPM.
 - App Privacy "nutrition label": declare data collected (account, purchases, diagnostics via
   Crashlytics/Analytics).
 - Export compliance (uses standard encryption only → usually exempt; declare it).
+- 🔴 **The App Store name is a PLACEHOLDER — change it before the first public release.**
+  The record was created as **"Harry's Playhouse"** (2026-07-24) purely so an app record could
+  exist while the naming/trademark workstream was still open
+  (`docs/research/2026-07-24_underhood_trademark_preclearance.md`). It matches the bundle ID /
+  Firebase project on purpose and is deliberately un-shippable-looking. The name is freely
+  editable in ASC until the first public release; **after** a release it can only change with a
+  new version. `python3 scripts/release/asc.py audit` re-raises this as a blocker on every run
+  until the record carries a real, trademark-cleared name.
+- **EU trader status (DSA) — OPERATOR-ONLY, HARD BLOCKER for EU distribution.** App Store
+  Connect → **Business** → Trader Status. Only an **Account Holder or Admin** can set it; no
+  agent, script, or build step can. Apple removes apps from the EU storefront until it is
+  provided, and new versions/updates cannot be submitted without it. Declaring as a trader
+  publishes the trader contact details (name, address, phone, email) on the EU App Store
+  listing and requires Apple to verify them — allow lead time before a submission deadline.
+  Declaring non-trader means no EU distribution.
 - Policy + Terms URLs (required for a subscription app).
 - Screenshots, description, subscription group + localized pricing.
 - Confirm the **restore-purchases** path is reachable (Settings → Manage/Upgrade).
