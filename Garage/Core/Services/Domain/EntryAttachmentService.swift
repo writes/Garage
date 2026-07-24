@@ -70,11 +70,13 @@ final class EntryAttachmentService {
     /// success. An orphaned blob is a cheap, unlinked cost; a stuck delete/save flow is not.
     func deleteAttachments(paths: [String]) async {
         guard !paths.isEmpty else { return }
+        #if DEBUG
         if var testUploads {
             for path in paths { testUploads[path] = nil }
             self.testUploads = testUploads
             return
         }
+        #endif
         if isLocalDemoMode() {
             for path in paths { Self.demoUploads[path] = nil }
             return
@@ -93,10 +95,19 @@ final class EntryAttachmentService {
     /// modes return a placeholder URL — nothing there actually serves the bytes back, which is
     /// fine: those paths never render through real AsyncImage/QuickLook UI.
     func downloadURL(for path: String) async throws -> URL {
-        if testUploads != nil || isLocalDemoMode() {
-            return URL(string: "https://example.invalid/\(path)") ?? URL(fileURLWithPath: "/dev/null")
+        #if DEBUG
+        if testUploads != nil {
+            return Self.placeholderURL(for: path)
+        }
+        #endif
+        if isLocalDemoMode() {
+            return Self.placeholderURL(for: path)
         }
         return try await rootReferenceProvider().child(path).downloadURL()
+    }
+
+    private static func placeholderURL(for path: String) -> URL {
+        URL(string: "https://example.invalid/\(path)") ?? URL(fileURLWithPath: "/dev/null")
     }
 
 #if DEBUG
@@ -116,12 +127,14 @@ final class EntryAttachmentService {
             userId: uid, vehicleId: vehicleId, entryId: entryId,
             filename: "\(uuidProvider()).\(fileExtension)"
         )
+        #if DEBUG
         if var testUploads {
             try testUploadInterceptor?()
             testUploads[path] = data
             self.testUploads = testUploads
             return path
         }
+        #endif
         if isLocalDemoMode() {
             Self.demoUploads[path] = data
             return path
