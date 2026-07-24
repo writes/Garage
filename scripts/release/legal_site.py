@@ -187,7 +187,12 @@ def apply_substitutions(markdown: str, subs: dict[str, str]) -> str:
 
 
 def assert_no_placeholders(text: str, source: str) -> None:
-    guarded = MARKDOWN_LINK_RE.sub("", text)
+    # Collapse `[text](target)` to just `target` rather than dropping the whole construct.
+    # Dropping it hid placeholders sitting in the LINK TARGET — `[Privacy Policy]([URL])`
+    # scanned clean and rendered as href="[URL]" in a published legal page. Keeping the target
+    # means a placeholder there is still caught, while the bracketed link *text* is not
+    # mistaken for one.
+    guarded = MARKDOWN_LINK_RE.sub(lambda m: m.group(2), text)
     leftovers = sorted({m.group(0) for m in PLACEHOLDER_RE.finditer(guarded)})
     if leftovers:
         raise RenderError(
@@ -389,6 +394,12 @@ def selftest() -> int:
         check("markdown link not mistaken for placeholder", True)
     except RenderError:
         check("markdown link not mistaken for placeholder", False)
+
+    try:
+        assert_no_placeholders("See the [Privacy Policy]([URL]).", "t.md")
+        check("placeholder in a link TARGET rejected", False)
+    except RenderError:
+        check("placeholder in a link TARGET rejected", True)
 
     rendered = markdown_to_html("## Head\n\n- one\n- two\n\nA **bold** para.")
     check("h2 rendered", "<h2>Head</h2>" in rendered)
