@@ -105,13 +105,21 @@ final class ExportViewModel {
             } while cursor != nil
             let resolvedEntries = filterByDate(entries, start: windowStart, end: windowEnd)
             guard operationIsCurrent(operationID), authorization() == expectedAuthorization else { return }
-            exportData = try pdfExportService.buildReport(
+            // buildReport now renders off the main actor (detached task) and cooperatively yields
+            // across a large entry list, so it suspends here — unlike the rest of this function,
+            // the MainActor is free to run other work (a session change, a new export) while it's
+            // in flight. Land the render into a local first and re-check currency before touching
+            // any `self.` state, so a stale/cancelled operation can't resurrect exportData or
+            // persist a PDF after discardExportArtifacts() already cleared it.
+            let renderedData = try await pdfExportService.buildReport(
                 vehicle: vehicle,
                 entries: resolvedEntries,
                 galleryPhotos: [],
                 selectedSections: selectedSections,
                 includeReceipts: false
             )
+            guard operationIsCurrent(operationID), authorization() == expectedAuthorization else { return }
+            exportData = renderedData
             // Persisted before pdfAuthorization is set, so a write failure leaves both
             // authorizedPDFData(for:) and authorizedPDFURL(for:) unauthorized/nil together —
             // no half-authorized state for ExportView to render.
