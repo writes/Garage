@@ -343,4 +343,45 @@ describe("parseOilAnalysisRequest", () => {
 
     expect(result).toEqual({ labName: "Lab", iron: 8 });
   });
+
+  it("reads the text block when extended thinking puts a thinking block first", async () => {
+    // Extended thinking is enabled on this call, so Anthropic returns [thinking, text].
+    // Indexing content[0] yields the thinking block, which has no `text` — extraction would
+    // return undefined, surface as an HTTP-OK model-output error, and (by the refund matrix)
+    // consume the user's quota unit on every single request.
+    const db = new InMemoryFirestore();
+    const fetchImpl = async (): Promise<Response> =>
+      new Response(
+        JSON.stringify({
+          content: [
+            { type: "thinking", thinking: "Checking the iron row against the lab's units." },
+            { type: "text", text: '{"labName":"Blackstone","iron":12}' },
+          ],
+        }),
+        { status: 200 },
+      );
+
+    const result = await parseOilAnalysisRequest(request(), {
+      ...dependencies(db),
+      fetchImpl,
+    });
+
+    expect(result).toEqual({ labName: "Blackstone", iron: 12 });
+    expect(db.data("usage_quotas/owner-1_lifetime")).toMatchObject({ count: 1 });
+  });
+
+  it("ignores a thinking block that has no text block alongside it", async () => {
+    // A thinking-only response is a genuine model-output error and must NOT be mistaken for
+    // a successful parse just because the scan skips non-text blocks.
+    const db = new InMemoryFirestore();
+    const fetchImpl = async (): Promise<Response> =>
+      new Response(
+        JSON.stringify({ content: [{ type: "thinking", thinking: "..." }] }),
+        { status: 200 },
+      );
+
+    await expect(
+      parseOilAnalysisRequest(request(), { ...dependencies(db), fetchImpl }),
+    ).rejects.toMatchObject({ code: "internal" });
+  });
 });

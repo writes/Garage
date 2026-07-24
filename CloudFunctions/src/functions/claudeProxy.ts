@@ -378,10 +378,18 @@ function modelTextFromPayload(payload: unknown): string | undefined {
     return undefined;
   }
 
-  const firstContentBlock = payload.content[0];
-  return isRecord(firstContentBlock) && typeof firstContentBlock.text === "string"
-    ? firstContentBlock.text
-    : undefined;
+  // Find the text block rather than assuming content[0]. With extended thinking enabled the
+  // response is [thinking, text] — indexing [0] yields the thinking block, which has no `.text`,
+  // so extraction silently returns undefined. That path is an HTTP-OK model-output error, which
+  // by design does NOT refund the quota unit: every request would burn a user's daily AI credit
+  // and fail. Scanning for type === "text" is correct with or without thinking.
+  // Match on the presence of a string `text`, not on `type`: only text blocks carry it
+  // (thinking exposes `thinking`, redacted_thinking exposes `data`, tool_use exposes `input`),
+  // so this skips them without depending on a discriminator the fixtures don't all set.
+  const textBlock = payload.content.find(
+    (block) => isRecord(block) && typeof block.text === "string",
+  );
+  return isRecord(textBlock) && typeof textBlock.text === "string" ? textBlock.text : undefined;
 }
 
 export async function parseOilAnalysisRequest(
@@ -427,8 +435,17 @@ export async function parseOilAnalysisRequest(
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 2000,
+        // Haiku 4.5 with extended thinking (operator directive 2026-07-24). Sonnet 4 was
+        // deprecated (retires 2026-06-15) and cost 3x for a bounded extraction task.
+        // NOTE: `output_config.effort` is NOT supported on Haiku 4.5 — it errors. The
+        // low/medium/high/xhigh/max ladder starts at Opus 4.5 / Sonnet 4.6. On this model
+        // reasoning depth is controlled only by budget_tokens below.
+        model: "claude-haiku-4-5",
+        // budget_tokens must be < max_tokens (min 1024). Thinking tokens bill as OUTPUT
+        // ($5/MTok), so max_tokens is the real cost ceiling per parse, not just a truncation
+        // guard: 4000 output tokens = $0.020, which is most of a parse's cost.
+        max_tokens: 4000,
+        thinking: { type: "enabled", budget_tokens: 2000 },
         messages: [
           {
             role: "user",
