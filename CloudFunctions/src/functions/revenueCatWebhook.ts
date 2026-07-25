@@ -300,6 +300,22 @@ export async function handleRevenueCatWebhookRequest(
     return;
   }
 
+  // RevenueCat's "Send test event" button posts type: "TEST" with entitlement_ids: null, which
+  // the parser below rightly rejects (every non-TRANSFER event needs a string array there).
+  // Answering 400 makes the dashboard's connectivity test permanently red and makes RevenueCat
+  // treat each ping as a failed delivery worth retrying. A TEST event carries no entitlement to
+  // act on, so acknowledge it and do nothing. This runs AFTER the authorization check, so it is
+  // not an unauthenticated bypass.
+  const requestBody = request.body;
+  const testEventType = isRecord(requestBody) && isRecord(requestBody.event)
+    ? requestBody.event.type
+    : undefined;
+  if (testEventType === "TEST") {
+    logger.info("revenuecat webhook: test event acknowledged, nothing to apply");
+    response.status(200).send("ok");
+    return;
+  }
+
   const event = parseRevenueCatEvent(request.body);
   if (!event) {
     const body = request.body;
@@ -485,7 +501,22 @@ export async function handleRevenueCatWebhookRequest(
 }
 
 export const handleRevenueCatWebhook = onRequest(
-  { region: "us-central1", secrets: [revenueCatWebhookAuth] },
+  {
+    region: "us-central1",
+    secrets: [revenueCatWebhookAuth],
+    // Explicit rather than relying on the onRequest default. The first deploy to each project
+    // failed at its IAM step ("We failed to modify the IAM policy for the project"), so the
+    // public invoker binding was never applied and Cloud Run rejected every RevenueCat POST at
+    // the edge with 401 "Authorization header lacked OIDC mandated 'Bearer' prefix" — the
+    // request never reached this function at all. Declaring it here makes each deploy reconcile
+    // the binding instead of depending on a step that already silently failed once.
+    //
+    // "public" is correct, not a weakening: RevenueCat (like any third-party webhook sender)
+    // cannot mint Google OIDC tokens. Authentication is this function's own timing-safe
+    // comparison against REVENUECAT_WEBHOOK_AUTH below, which fails CLOSED with a 503 when the
+    // secret is unset rather than accepting unauthenticated events.
+    invoker: "public",
+  },
   async (request, response) => {
     await handleRevenueCatWebhookRequest(
       request,

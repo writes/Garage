@@ -394,6 +394,41 @@ describe("handleRevenueCatWebhookRequest", () => {
     expect(invalid.statusCode).toBe(401);
   });
 
+  it("acknowledges RevenueCat TEST pings with 200 and applies nothing", async () => {
+    // The dashboard's "Send test event" posts type: "TEST" with entitlement_ids: null, which
+    // the parser rejects. Answering 400 leaves the connectivity test permanently red and makes
+    // RevenueCat retry every ping as a failed delivery.
+    const db = new InMemoryFirestore();
+    db.seed("users/owner-1", {});
+
+    const result = await send(db, event({
+      id: "test-ping-1",
+      type: "TEST",
+      entitlement_ids: null,   // exactly what RevenueCat's test button sends
+      product_id: "test_product",
+      store: "PLAY_STORE",
+      environment: "SANDBOX",
+    }));
+
+    expect(result.statusCode).toBe(200);
+    // Nothing applied: no entitlement change, and no event record written.
+    expect(db.data("users/owner-1")?.subscription).toBeUndefined();
+    expect(db.data("revenuecat_events/test-ping-1")).toBeUndefined();
+  });
+
+  it("still rejects an unauthorized TEST ping", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("users/owner-1", {});
+
+    const result = await send(
+      db,
+      event({ id: "test-ping-2", type: "TEST", entitlement_ids: null }),
+      "wrong-secret",
+    );
+
+    expect(result.statusCode).toBe(401);
+  });
+
   it("fails closed when the webhook authorization environment value is absent", async () => {
     const db = new InMemoryFirestore();
     db.seed("users/owner-1", {});
