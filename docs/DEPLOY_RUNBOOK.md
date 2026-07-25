@@ -63,6 +63,38 @@ minutes and deploy again** — the bucket now exists and the bindings have propa
 one function first (`--only functions:deleteVehicle`) to create the bucket, then the rest, also
 works. Do NOT start debugging the functions; nothing is wrong with them.
 
+**Failure 2 can outlast one retry — the fix is patience, not IAM.** On prod the two
+Eventarc-triggered functions (`enforceAttachmentProGate` on `storage.object.finalized`,
+`recomputeVehicleOdometer` on `firestore.document.written`) still failed on the second attempt —
+one with `403 Permission "storage.buckets.get" denied … verify that [the Eventarc service
+account] has permission`, the other with the same 400 as above. **No manual IAM grant was
+needed.** Deploying just those two later succeeded with no intervention: the service agents
+finish provisioning on their own timescale. Retry the failed subset with
+`--only functions:<a>,functions:<b>` before granting anything by hand.
+
+### The webhook needs a public invoker — verify it, don't assume it
+`onRequest` defaults to a public invoker, but when the **first** deploy fails at its IAM step
+(Failure 1 above) the binding is never applied and Cloud Run rejects every third-party POST at
+the edge with `401 Authorization header lacked OIDC mandated 'Bearer' prefix` — the request
+never reaches your code. `handleRevenueCatWebhook` now declares `invoker: "public"` explicitly so
+each deploy reconciles it. **Verify against the running service, and read the BODY, not just the
+status** — the function also answers 401 for a bad secret, so status alone cannot tell you which
+layer refused:
+
+| Body | Refused by |
+|---|---|
+| HTML + a `www-authenticate: Bearer` header | Cloud Run (function never ran) |
+| plain `Unauthorized.` | the function's own authorization check |
+
+**Secrets must not carry a trailing newline.** `firebase functions:secrets:set --data-file`
+stores the file verbatim, so a file written by `python -c "print(...)"` stores 44 bytes for a
+43-char token and the byte-exact comparison can never match. Write the file with no trailing
+newline (`printf`, or `.strip()` before writing).
+
+**A `.env.<project>` key and a Secret Manager secret of the same name cannot coexist:** the
+deploy fails with `Secret environment variable overlaps non secret environment variable: <NAME>`.
+Keep each secret in exactly one place.
+
 ## 3. Firestore + Storage rules
 
 **RULES-1 rollout order is mandatory: backfill → rules → app binary.** The counted-create rules
