@@ -137,6 +137,35 @@ name.**
 Unverified against Apple's spec. Note the trap: testing an alternate icon requires the variants
 to already ship inside the published binary, so this is gated on a release cycle.
 
+### ⏸ Crashlytics dSYM upload times out — PROTECTED surface, operator only
+The `Upload dSYMs to Crashlytics` build phase timed out on **4 of 5** full gate runs this session:
+
+```
+warning: Crashlytics dSYM upload timed out after 90s; symbolicate manually with upload-symbols.
+```
+
+The phase itself is correctly designed — Release-only, fail-soft, and bounded by a 90 s watchdog
+that exists precisely because the upload tool hangs forever without network/auth (landmine #14).
+Failing soft is right: a network blip must not fail an archive.
+
+**But the consequence is a production blind spot.** If this also times out on the real release
+archive, dSYMs never reach Crashlytics and every production crash arrives as unsymbolicated hex —
+which is the exact moment you most need a readable stack.
+
+Most likely an artifact of this sandboxed build environment having no outbound network for the
+upload, rather than a defect. That is a hypothesis, not a verified finding.
+
+**Cannot be fixed by an agent:** the phase lives in `project.yml`, a PROTECTED surface.
+
+Suggested operator actions:
+1. Confirm whether the upload succeeds on a real release archive (network present, Firebase
+   authed) before relying on Crashlytics.
+2. Consider raising the 90 s watchdog for Release archives — a large dSYM upload can legitimately
+   exceed it.
+3. Add a post-archive dSYM verification step to `scripts/release/testflight_build.sh`, and record
+   the manual fallback command in the runbook:
+   `upload-symbols -gsp <GoogleService-Info.plist> -p ios <path-to-dSYMs>`
+
 ---
 
 ## Toolchain note

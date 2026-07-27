@@ -107,7 +107,42 @@ purchase is settling.
 
 ---
 
-## 3. Known gaps
+## 3. KNOWN DEFECT — sign-in funnel events do not currently emit
+
+**`sign_in_started` / `sign_in_completed` / `sign_in_failed` are inert in production.** They are
+tracked at the right place and are correct code, but the consent gate swallows them:
+
+```
+FirebaseAnalyticsService.isEnabled = false              initial state
+AuthService.applyAuthenticationState -> setEnabled(false)   fires on EVERY auth change
+AppState.applyProfile -> setEnabled(!optOut)            the ONLY place it becomes true
+```
+
+`applyProfile` runs after the user profile loads, which is **after** sign-in completes. So at the
+moment the sign-in events are tracked, `isEnabled` is `false` and `track()` returns early.
+
+The other activation events are unaffected — `paywall_dismissed`, `trial_started` and
+`form_opened` all fire well after profile load.
+
+**Why the tests did not catch it:** the test spy records every event unconditionally. The consent
+gate lives only in `FirebaseAnalyticsService`, which unit tests never exercise. A spy that mirrors
+the real gate would have caught this.
+
+**This is a genuine architectural tension, not a typo.** Consent is not knowable until the profile
+loads, and the profile cannot load until the user is signed in — so a sign-in funnel can never be
+emitted live under a strictly consent-first gate. The only correct fix is to **buffer pre-consent
+events in memory and flush them only once consent is affirmatively granted, discarding them if it
+is denied.** Nothing leaves the device before consent either way.
+
+That fix is not trivial and is deliberately **not** applied unilaterally, because
+`setEnabled(false)` is currently overloaded: it means both "the user opted out" *and* "reset
+because auth state changed". Buffering requires separating those two meanings across
+`AuthService` and `AppState`, and getting it wrong would send analytics for a user who opted out —
+a privacy incident, which is strictly worse than missing a funnel. Operator decision.
+
+---
+
+## 4. Known gaps
 
 **No onboarding step events.** Drop-off between install and first vehicle is invisible — and there
 is currently no onboarding flow to instrument. See
@@ -119,7 +154,7 @@ allow.
 
 ---
 
-## 4. Adding an event
+## 5. Adding an event
 
 1. Add a case to `AnalyticsEvent`.
 2. Add its mapping in `definition` — name plus typed parameters.
@@ -132,7 +167,7 @@ allow.
 
 ---
 
-## 5. Why funnel instrumentation was prioritised
+## 6. Why funnel instrumentation was prioritised
 
 The launch research (`docs/research/2026-07-27_BRANDING_AND_LAUNCH_PLAN.md`) found that **90% of
 trial starts and 44.5% of all purchases occur on Day 0**, and **more than 90% of users churn
