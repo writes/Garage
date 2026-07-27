@@ -90,7 +90,6 @@ struct GarageApp: App {
                         }
                 }
             }
-            .preferredColorScheme(.light)
         }
     }
 }

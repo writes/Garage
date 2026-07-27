@@ -18,10 +18,12 @@ enum Constants {
     /// upload headroom) so a legitimately-stored attachment near that ceiling is never truncated
     /// on download.
     static let maxAttachmentDownloadBytes = 25 * 1024 * 1024
-    // Operator action required before App Store submission: replace each
-    // clearly-invalid placeholder with the published policy destination.
-    static let privacyPolicyURLString = "https://OPERATOR-REPLACE-PRIVACY-POLICY.invalid"
-    static let termsOfUseURLString = "https://OPERATOR-REPLACE-TERMS-OF-USE.invalid"
+    // Published 2026-07-24 to Firebase Hosting on harrys-playhouse-prod, rendered from
+    // docs/legal/*_DRAFT.md by scripts/release/legal_site.py. Re-run `legal_site.py render`
+    // and redeploy hosting after editing either draft — the generator refuses to publish a
+    // document that still contains an unfilled placeholder.
+    static let privacyPolicyURLString = "https://harrys-playhouse-prod.web.app/privacy"
+    static let termsOfUseURLString = "https://harrys-playhouse-prod.web.app/terms"
 }
 
 enum AppRuntime {

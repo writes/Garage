@@ -56,6 +56,14 @@ targets:
         NSMicrophoneUsageDescription: Speak a log entry and Garage drafts it for you to review.
         NSSpeechRecognitionUsageDescription: Turns your spoken log entry into text you confirm before saving.
         CFBundleDisplayName: Garage
+        # XcodeGen writes a hardcoded CFBundleVersion of "1" when it is not declared here — it
+        # does NOT derive it from CURRENT_PROJECT_VERSION. Without these two lines the build
+        # number is frozen at 1 forever and every upload after the first is rejected by App
+        # Store Connect with ENTITY_ERROR.ATTRIBUTE.INVALID.DUPLICATE ("bundle version must be
+        # higher than the previously uploaded version"). Pointing the plist at the build
+        # settings makes bumping CURRENT_PROJECT_VERSION actually take effect.
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
         # App uses only standard/exempt encryption (HTTPS/TLS); declaring this avoids the
         # "Missing Compliance" hold on every TestFlight/App Store upload.
         ITSAppUsesNonExemptEncryption: false
@@ -65,7 +73,12 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.writes.harrysplayhouse
-        CURRENT_PROJECT_VERSION: 1
+        # Without this the AppIcon.appiconset is never compiled: Assets.car ships with zero
+        # appicon entries, Info.plist gets no CFBundleIconName, and App Store Connect rejects
+        # the upload. Verified 2026-07-24 against a real signed archive that had a valid
+        # 1024x1024 icon asset on disk and no icon in the product.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CURRENT_PROJECT_VERSION: 2
         MARKETING_VERSION: 1.0
         DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
         ENABLE_USER_SCRIPT_SANDBOXING: NO
@@ -78,6 +91,18 @@ targets:
         Release:
           CODE_SIGN_ENTITLEMENTS: Garage.entitlements
           PRODUCT_BUNDLE_IDENTIFIER: com.writes.harrysplayhouse
+          # Distribution signing (operator-approved 2026-07-24; rationale + the three failed
+          # alternatives in docs/research/2026-07-24_SIGNING_CONFIG_PROPOSAL.md). These MUST be
+          # target-scoped: passing them as xcodebuild command-line overrides applies them to
+          # every SPM package target too, and ~25 of them fail "does not support provisioning
+          # profiles". verify-ios.sh stays unsigned and green because its own command-line
+          # overrides (CODE_SIGNING_ALLOWED=NO ...) take precedence over these.
+          CODE_SIGN_STYLE: Manual
+          DEVELOPMENT_TEAM: V32WV64X82
+          # NOT "Apple Distribution": cert SUR3K7JZ7F is type IOS_DISTRIBUTION, whose common
+          # name is "iPhone Distribution: ...". xcodebuild matches on a CN prefix.
+          CODE_SIGN_IDENTITY: iPhone Distribution
+          PROVISIONING_PROFILE_SPECIFIER: Garage App Store
           SWIFT_COMPILATION_MODE: wholemodule
           COPY_PHASE_STRIP: YES
           DEAD_CODE_STRIPPING: YES

@@ -9,7 +9,7 @@
 **Effective date:** [DATE] · **Contact:** [SUPPORT EMAIL] · **Provider:** [LEGAL ENTITY]
 
 ## 1. Acceptance
-By using Garage you agree to these Terms and to the [Privacy Policy]([URL]).
+By using Garage you agree to these Terms and to the [Privacy Policy](/privacy).
 
 ## 2. The service
 Garage lets you record and manage vehicle ownership and service history. Free and paid (Pro) tiers
@@ -28,7 +28,7 @@ at any time from Settings → Delete Account.
 - **Manage/cancel** in your Apple ID account settings after purchase. Use **Restore Purchases** in
   the app to restore an active subscription on a new device or account.
 - Prices are shown in-app; unused portions of a free trial (if any) are forfeited on purchase of a
-  subscription. [Adjust to your actual offering.]
+  subscription.
 
 ## 5. Acceptable use
 Do not misuse the service, attempt to breach security or other users' data, upload unlawful content,
@@ -53,4 +53,5 @@ We may suspend or terminate accounts that violate these Terms. You may stop usin
 delete your account at any time.
 
 ## 10. Changes & governing law
-We may update these Terms; continued use means acceptance. Governing law: [JURISDICTION].
+We may update these Terms; continued use means acceptance. Governing law: the State of Texas,
+United States.

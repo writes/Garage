@@ -19,7 +19,7 @@ struct PrimaryButton: View {
             .padding(.vertical, Theme.Spacing.md)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.white)
+        .foregroundStyle(Theme.Colors.onPrimary)
         .background(Theme.Colors.primary)
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
     }

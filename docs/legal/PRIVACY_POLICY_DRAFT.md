@@ -35,8 +35,10 @@ advertising and we do **not** track you across other companies' apps.
 ## Third parties (sub-processors)
 - **Google Firebase** (Authentication, Firestore, Storage, App Check, Crashlytics) — backend + data
   storage. [LINK to Firebase/Google terms]
-- **RevenueCat** — subscription management. [LINK]
-- **Anthropic** — AI processing of the voice transcript / oil-analysis text you submit. [LINK]
+- **RevenueCat** — subscription management.
+  [Privacy policy](https://www.revenuecat.com/privacy)
+- **Anthropic** — AI processing of the voice transcript / oil-analysis text you submit.
+  [Privacy policy](https://www.anthropic.com/legal/privacy)
 - **Apple / Google** — sign-in.
 
 ## Data retention & deletion
@@ -47,7 +49,7 @@ vehicles, logs, photos, records, and account. Deletion is immediate and irrevers
 ## Your rights
 Depending on where you live (e.g. GDPR/CCPA), you may have rights to access, correct, export, or
 delete your data. Account deletion is available in-app; for other requests contact
-[SUPPORT EMAIL]. [Add jurisdiction-specific disclosures as counsel advises.]
+[SUPPORT EMAIL].
 
 ## Children
 Garage is not directed to children under [13/16]. We do not knowingly collect their data.

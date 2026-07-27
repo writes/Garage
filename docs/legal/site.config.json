@@ -1,0 +1,13 @@
+{
+  "effective_date": "July 24, 2026",
+  "support_email": "jonathonhthompson@gmail.com",
+  "legal_entity": "Garage LLC",
+  "legal_address": "1 Big Knob, Houston, TX 77043",
+  "children_age": "13",
+  "app_name": "Garage",
+  "links": {
+    "firebase": "https://firebase.google.com/terms",
+    "revenuecat": "https://www.revenuecat.com/privacy",
+    "anthropic": "https://www.anthropic.com/legal/privacy"
+  }
+}

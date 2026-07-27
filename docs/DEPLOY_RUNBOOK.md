@@ -36,6 +36,65 @@ Functions: `parseOilAnalysis`, `voiceQuickAdd`, `handleRevenueCatWebhook`, `look
 `deleteAccount`, `deleteVehicle`, `recomputeVehicleOdometer` (Firestore trigger),
 `enforceAttachmentProGate` (Storage trigger) (region `us-central1`; callables enforce App Check).
 
+### ⚠️ The FIRST functions deploy to a project always fails — twice. Budget for it.
+Observed on dev 2026-07-24, immediately after enabling Blaze. Both failures are expected and
+transient; neither means the code is wrong.
+
+**Failure 1 — IAM service agents not provisioned.** `Error: We failed to modify the IAM policy
+for the project.` v2 functions with Eventarc/Storage/Firestore triggers need four service-agent
+bindings that don't exist on a fresh project. The CLI prints the exact commands; run them (add
+`--condition=None` or gcloud prompts interactively and hangs a non-interactive shell):
+```bash
+P=<project-id>; N=<project-number>
+gcloud projects add-iam-policy-binding $P --condition=None \
+  --member=serviceAccount:service-$N@gs-project-accounts.iam.gserviceaccount.com --role=roles/pubsub.publisher
+gcloud projects add-iam-policy-binding $P --condition=None \
+  --member=serviceAccount:service-$N@gcp-sa-pubsub.iam.gserviceaccount.com --role=roles/iam.serviceAccountTokenCreator
+gcloud projects add-iam-policy-binding $P --condition=None \
+  --member=serviceAccount:$N-compute@developer.gserviceaccount.com --role=roles/run.invoker
+gcloud projects add-iam-policy-binding $P --condition=None \
+  --member=serviceAccount:$N-compute@developer.gserviceaccount.com --role=roles/eventarc.eventReceiver
+```
+**Failure 2 — propagation + a source-bucket race.** The retry still partially fails: trigger
+functions get `400 … Permission denied while using the Eventarc Service Agent … may take a few
+minutes before all necessary permissions are propagated`, and several functions race to create
+`gcf-v2-sources-<N>-us-central1`, so all but one get `409 Could not create bucket`. **Wait ~2
+minutes and deploy again** — the bucket now exists and the bindings have propagated. Deploying
+one function first (`--only functions:deleteVehicle`) to create the bucket, then the rest, also
+works. Do NOT start debugging the functions; nothing is wrong with them.
+
+**Failure 2 can outlast one retry — the fix is patience, not IAM.** On prod the two
+Eventarc-triggered functions (`enforceAttachmentProGate` on `storage.object.finalized`,
+`recomputeVehicleOdometer` on `firestore.document.written`) still failed on the second attempt —
+one with `403 Permission "storage.buckets.get" denied … verify that [the Eventarc service
+account] has permission`, the other with the same 400 as above. **No manual IAM grant was
+needed.** Deploying just those two later succeeded with no intervention: the service agents
+finish provisioning on their own timescale. Retry the failed subset with
+`--only functions:<a>,functions:<b>` before granting anything by hand.
+
+### The webhook needs a public invoker — verify it, don't assume it
+`onRequest` defaults to a public invoker, but when the **first** deploy fails at its IAM step
+(Failure 1 above) the binding is never applied and Cloud Run rejects every third-party POST at
+the edge with `401 Authorization header lacked OIDC mandated 'Bearer' prefix` — the request
+never reaches your code. `handleRevenueCatWebhook` now declares `invoker: "public"` explicitly so
+each deploy reconciles it. **Verify against the running service, and read the BODY, not just the
+status** — the function also answers 401 for a bad secret, so status alone cannot tell you which
+layer refused:
+
+| Body | Refused by |
+|---|---|
+| HTML + a `www-authenticate: Bearer` header | Cloud Run (function never ran) |
+| plain `Unauthorized.` | the function's own authorization check |
+
+**Secrets must not carry a trailing newline.** `firebase functions:secrets:set --data-file`
+stores the file verbatim, so a file written by `python -c "print(...)"` stores 44 bytes for a
+43-char token and the byte-exact comparison can never match. Write the file with no trailing
+newline (`printf`, or `.strip()` before writing).
+
+**A `.env.<project>` key and a Secret Manager secret of the same name cannot coexist:** the
+deploy fails with `Secret environment variable overlaps non secret environment variable: <NAME>`.
+Keep each secret in exactly one place.
+
 ## 3. Firestore + Storage rules
 
 **RULES-1 rollout order is mandatory: backfill → rules → app binary.** The counted-create rules
@@ -81,15 +140,32 @@ enum Secrets {
 
 ## 7. App Store Connect / TestFlight
 - Version/build from `project.yml` (`CFBundleShortVersionString` / bundle version).
-- **Privacy manifest** (`Garage/Resources/PrivacyInfo.xcprivacy` EXISTS but is likely incomplete):
-  `NSPrivacyAccessedAPITypes` is empty, but the app uses `UserDefaults` directly
-  (SubscriptionReconciliationStore) → add category `NSPrivacyAccessedAPICategoryUserDefaults`
-  with reason `CA92.1`. Data types declared: UserID, Email, OtherUserContent, ProductInteraction
-  — consider adding **Purchases** (RevenueCat) and **Crash/Diagnostics** (Crashlytics). Verify
-  against the audit's appstore-compliance findings before submission.
+- **Privacy manifest** (`Garage/Resources/PrivacyInfo.xcprivacy`) — ✅ **complete as of
+  2026-07-24.** `NSPrivacyAccessedAPICategoryUserDefaults` / `CA92.1` IS declared (an earlier
+  note here claiming `NSPrivacyAccessedAPITypes` was empty was stale — landmine #9). Verified no
+  other required-reason API is used: no file-timestamp (`C617.1`), disk-space (`E174.1`),
+  active-keyboard, or boot-time (`35F9.1`) calls anywhere in `Garage/`. Data types declared:
+  UserID, Email, OtherUserContent, ProductInteraction. **Purchases** (RevenueCat) and
+  **Crash/Diagnostics** (Crashlytics) are covered by those SDKs' own bundled privacy manifests,
+  which Apple aggregates — re-check if either SDK is ever vendored rather than linked via SPM.
 - App Privacy "nutrition label": declare data collected (account, purchases, diagnostics via
   Crashlytics/Analytics).
 - Export compliance (uses standard encryption only → usually exempt; declare it).
+- 🔴 **The App Store name is a PLACEHOLDER — change it before the first public release.**
+  The record was created as **"Harry's Playhouse"** (2026-07-24) purely so an app record could
+  exist while the naming/trademark workstream was still open
+  (`docs/research/2026-07-24_underhood_trademark_preclearance.md`). It matches the bundle ID /
+  Firebase project on purpose and is deliberately un-shippable-looking. The name is freely
+  editable in ASC until the first public release; **after** a release it can only change with a
+  new version. `python3 scripts/release/asc.py audit` re-raises this as a blocker on every run
+  until the record carries a real, trademark-cleared name.
+- **EU trader status (DSA) — OPERATOR-ONLY, HARD BLOCKER for EU distribution.** App Store
+  Connect → **Business** → Trader Status. Only an **Account Holder or Admin** can set it; no
+  agent, script, or build step can. Apple removes apps from the EU storefront until it is
+  provided, and new versions/updates cannot be submitted without it. Declaring as a trader
+  publishes the trader contact details (name, address, phone, email) on the EU App Store
+  listing and requires Apple to verify them — allow lead time before a submission deadline.
+  Declaring non-trader means no EU distribution.
 - Policy + Terms URLs (required for a subscription app).
 - Screenshots, description, subscription group + localized pricing.
 - Confirm the **restore-purchases** path is reachable (Settings → Manage/Upgrade).

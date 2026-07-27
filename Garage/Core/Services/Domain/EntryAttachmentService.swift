@@ -115,9 +115,11 @@ final class EntryAttachmentService {
     }
 
     private static func placeholderURL(for path: String) -> URL {
-        // Custom scheme, not https://example.invalid: release-checks.sh blocks ".invalid" anywhere
-        // in app sources (it hunts unreplaced operator placeholders), and this hermetic/demo
-        // placeholder must not trip that gate. Nothing ever resolves this URL.
+        // Deliberately a custom scheme rather than an https example host: release-checks.sh
+        // greps app sources for unreplaced operator placeholders, and any URL using the
+        // reserved-for-testing TLD would trip that gate — including one written inside a
+        // comment, which is how this note used to fail the check it was describing.
+        // Nothing ever resolves this URL; it exists only for hermetic/demo runs.
         URL(string: "garage-hermetic://attachment/\(path)") ?? URL(fileURLWithPath: "/dev/null")
     }
 
