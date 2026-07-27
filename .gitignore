@@ -34,3 +34,6 @@ CloudFunctions/*-debug.log
 
 # Firebase Hosting deploy cache
 .firebase/
+
+# Machine-brain autonomous worktrees (local only, can reach tens of GB)
+.brain-worktrees/
