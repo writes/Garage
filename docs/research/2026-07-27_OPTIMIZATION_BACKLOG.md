@@ -127,18 +127,27 @@ lift (Adapty, vendor-published). Depends on the onboarding flow existing first.
 
 ## P3 — Quality
 
-### ⏸ Light-mode WCAG-AA failures
-Pre-existing, and fixing them visibly changes brand colour, so it is an operator decision.
-Measured replacements, hue and saturation preserved:
+### ✅ Light-mode WCAG-AA — fixed (operator decision, 2026-07-27)
+Operator chose to darken both failing tokens. Hue and saturation preserved, lightness only:
 
-| Token | Now | AA-passing | Contrast |
-|---|---|---|---|
-| `Accent` | `#D97D4A` | `#A95324` | 2.66 → 4.50:1 |
-| `Warning` | `#E78A2A` | `#9F5A12` | 2.34 → 4.51:1 |
-| `Success` | `#248861` | `#207957` | 3.80 → 4.54:1 |
-| `BrandSecondary` | `#8A96A1` | `#616D79` | 2.69 → 4.51:1 |
+| Token | Was | Now | On background | As badge text |
+|---|---|---|---|---|
+| `Accent` | `#D97D4A` | `#A95324` | 2.74 → **4.85:1** | 2.66 → **4.50:1** |
+| `Warning` | `#E78A2A` | `#9F5A12` | 2.37 → **4.85:1** | 2.34 → **4.51:1** |
 
-Dark mode already clears AA on every pairing (≥5.38:1).
+Light variants only — dark already cleared AA on every pairing.
+
+**`BrandSecondary` was a false alarm and is unchanged.** An earlier revision listed it at 2.69:1,
+but it is used exclusively as an 18% decorative fill (`WearItemBar`, `SkeletonLoader`) and never as
+text, so contrast thresholds do not govern it. Changing a brand colour for a metric that does not
+apply would have been wrong.
+
+**Guarded by test from now on.** `ColorContrastTests` resolves the COMPILED asset catalog via
+`UIColor(named:compatibleWith:)` in both appearances and computes WCAG contrast — body text,
+semantic colours as status text, the badge-on-own-tint pattern, `OnPrimary` on all four accent
+tints, fill-vs-background separation, and surface elevation. Contrast was previously invisible to
+the whole pipeline: colours compile, the app builds, UI tests pass, and text can still be
+unreadable. `Accent` sat at 2.74:1 for the entire life of the palette without anything noticing.
 
 ### 📋 ASO fields
 Name ≤30 chars, subtitle ≤30, keywords ≤100 with no cross-field duplication. **Blocked on the
