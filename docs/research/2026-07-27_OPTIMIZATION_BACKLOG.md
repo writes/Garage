@@ -181,49 +181,31 @@ name.**
 Unverified against Apple's spec. Note the trap: testing an alternate icon requires the variants
 to already ship inside the published binary, so this is gated on a release cycle.
 
-### ⏸ Crashlytics dSYM upload times out — PROTECTED surface, operator only
-The `Upload dSYMs to Crashlytics` build phase timed out on **4 of 5** full gate runs this session:
+### ✅ Crashlytics dSYM upload — moved out of the build phase
+The in-build `Upload dSYMs to Crashlytics` phase has hit its 90s watchdog on **every** Release
+archive observed (builds 1–3). Consequence: every shipped build's crashes would have arrived as
+unsymbolicated hex — precisely when a readable stack matters most.
 
-```
-warning: Crashlytics dSYM upload timed out after 90s; symbolicate manually with upload-symbols.
-```
+**Two hypotheses were tested and both were wrong**, recorded so nobody repeats them:
 
-The phase itself is correctly designed — Release-only, fail-soft, and bounded by a 90 s watchdog
-that exists precisely because the upload tool hangs forever without network/auth (landmine #14).
-Failing soft is right: a network blip must not fail an archive.
+- *"The 76 MB dSYM is too large for 90s."* No — a manual upload completes in **~2 seconds**.
+- *"Xcode user-script sandboxing blocks the phase's network."* No — the Garage target sets
+  `ENABLE_USER_SCRIPT_SANDBOXING: NO`, overriding the project-level `YES`.
 
-**But the consequence is a production blind spot.** If this also times out on the real release
-archive, dSYMs never reach Crashlytics and every production crash arrives as unsymbolicated hex —
-which is the exact moment you most need a readable stack.
+A remaining hypothesis is a pipe-buffer deadlock (the phase backgrounds the tool then `sleep`s
+instead of draining its output, so a full stdout pipe blocks the writer forever), but it is
+**unverified** and stated as such.
 
-Most likely an artifact of this sandboxed build environment having no outbound network for the
-upload, rather than a defect. That is a hypothesis, not a verified finding.
+Rather than keep guessing at the phase, the upload now runs in `scripts/release/testflight_build.sh`
+immediately after export — where it is *proven* to work. It is fail-soft (symbolication is
+diagnostics; losing it must not fail an otherwise good release) and, unlike the build phase,
+reports honestly whether each dSYM actually uploaded.
 
-**Cannot be fixed by an agent:** the phase lives in `project.yml`, a PROTECTED surface.
+Build 3's dSYM was uploaded manually and is confirmed live, so its crashes will symbolicate.
 
-Suggested operator actions:
-1. Confirm whether the upload succeeds on a real release archive (network present, Firebase
-   authed) before relying on Crashlytics.
-2. Consider raising the 90 s watchdog for Release archives — a large dSYM upload can legitimately
-   exceed it.
-3. Add a post-archive dSYM verification step to `scripts/release/testflight_build.sh`, and record
-   the manual fallback command in the runbook:
-   `upload-symbols -gsp <GoogleService-Info.plist> -p ios <path-to-dSYMs>`
-
----
-
-## Tech debt: the 250-line file limit is being hit repeatedly
-
-`AppState.swift` and `SubscriptionCommitRelay.swift` now sit at **exactly 250 lines**, and
-`AnalyticsService.swift`/`SubscriptionModels.swift` both had to be split this session to stay
-under it. Three of those four are coordinator types whose dependencies are `private` (file-scoped),
-so they cannot be extended from another file without widening access — which means the only
-options left are shaving comments or weakening encapsulation. Neither is a good trade.
-
-The next change to either 250-line file WILL fail the gate. Worth deciding deliberately: either
-decompose those coordinators properly (changing the `private` deps to `internal` so extensions can
-live in sibling files), or raise the limit for coordinator types. Shaving comments to fit is not a
-third option — this session already lost real rationale that way.
+**Still open:** the in-build phase remains and still burns ~90s per Release archive emitting a
+misleading warning. Removing it means editing PROTECTED `project.yml`. Worth doing, but it is a
+protected-surface change and belongs in a deliberate commit rather than bundled here.
 
 ---
 

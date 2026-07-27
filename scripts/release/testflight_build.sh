@@ -278,6 +278,57 @@ IPA_PATH="$(ls "$EXPORT_PATH"/*.ipa 2>/dev/null | head -1)"
 [[ -n "$IPA_PATH" ]] || fail "export produced no .ipa in $EXPORT_PATH"
 echo "    exported: $IPA_PATH"
 
+# --- Crashlytics dSYM upload -------------------------------------------------
+# Runs HERE, post-archive, rather than relying on the in-build "Upload dSYMs to
+# Crashlytics" phase. That phase has timed out at its 90s watchdog on every Release
+# archive observed (builds 1-3), so every shipped build's crashes would arrive as
+# unsymbolicated hex.
+#
+# The in-phase hang is NOT root-caused. Two plausible explanations were tested and
+# both are wrong: the dSYM being large (it is 76 MB, but a manual upload completes in
+# ~2s) and Xcode user-script sandboxing (the Garage target sets
+# ENABLE_USER_SCRIPT_SANDBOXING: NO). A remaining hypothesis is a pipe-buffer deadlock
+# — the phase backgrounds the tool and then sleeps instead of draining its output — but
+# that is unverified.
+#
+# Rather than keep guessing, the upload runs where it is PROVEN to work. It is
+# fail-soft: symbolication is diagnostics, and losing it must never fail a release that
+# is otherwise good. Unlike the build phase, this one reports honestly whether it
+# succeeded.
+echo "==> Uploading dSYMs to Crashlytics"
+DSYM_DIR="$ARCHIVE_PATH/dSYMs"
+UPLOAD_TOOL="$(find ~/Library/Developer/Xcode/DerivedData/Garage-*/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/upload-symbols 2>/dev/null | head -1 || true)"
+GSP_PATH="$PWD/Garage/Resources/GoogleService-Info.plist"
+
+if [[ -z "$UPLOAD_TOOL" || ! -x "$UPLOAD_TOOL" ]]; then
+  echo "    WARNING: upload-symbols not found; crashes from this build will NOT symbolicate."
+elif [[ ! -f "$GSP_PATH" ]]; then
+  echo "    WARNING: GoogleService-Info.plist missing; crashes will NOT symbolicate."
+elif [[ ! -d "$DSYM_DIR" ]]; then
+  echo "    WARNING: no dSYMs at $DSYM_DIR; crashes will NOT symbolicate."
+else
+  DSYM_COUNT=0
+  DSYM_FAILED=0
+  for dsym in "$DSYM_DIR"/*.dSYM; do
+    [[ -e "$dsym" ]] || continue
+    DSYM_COUNT=$((DSYM_COUNT + 1))
+    if "$UPLOAD_TOOL" -gsp "$GSP_PATH" -p ios "$dsym" >/dev/null 2>&1; then
+      echo "    uploaded: $(basename "$dsym")"
+    else
+      DSYM_FAILED=$((DSYM_FAILED + 1))
+      echo "    WARNING: upload FAILED for $(basename "$dsym")"
+    fi
+  done
+  if [[ "$DSYM_COUNT" -eq 0 ]]; then
+    echo "    WARNING: no .dSYM bundles found; crashes will NOT symbolicate."
+  elif [[ "$DSYM_FAILED" -gt 0 ]]; then
+    echo "    WARNING: $DSYM_FAILED of $DSYM_COUNT dSYM upload(s) failed. Retry manually:"
+    echo "      '$UPLOAD_TOOL' -gsp '$GSP_PATH' -p ios '$DSYM_DIR'/<name>.dSYM"
+  else
+    echo "    all $DSYM_COUNT dSYM(s) uploaded — crashes from this build will symbolicate."
+  fi
+fi
+
 if [[ "$DO_UPLOAD" -eq 1 ]]; then
   echo "==> Validating with App Store Connect"
   python3 scripts/release/asc.py upload --ipa "$IPA_PATH" --validate
