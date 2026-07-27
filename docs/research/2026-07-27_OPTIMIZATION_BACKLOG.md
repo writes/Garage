@@ -22,6 +22,30 @@ And two things that are **real**, found by reading the flows rather than countin
 
 ---
 
+## P0 — SHIPPED-BLOCKER: plan identifiers did not match App Store Connect
+
+Found 2026-07-27 while the operator was wiring the RevenueCat entitlement. `Constants` carried
+`garage_pro_monthly` / `garage_pro_annual`; App Store Connect only ever had
+`com.writes.harrysplayhouse.pro.monthly` and `...pro.yearly` (note **yearly**, not annual).
+
+**The failure mode is silent.** The offerings pipeline filters every package through
+`AnalyticsProductID(storeProductIdentifier:)`, drops anything unrecognised into
+`omittedUnknownProductIDs`, and renders an **empty paywall** — no error, no crash, nothing to buy.
+RevenueCat's own product list showed both hardcoded IDs as **"Not found"** and the app never
+noticed. Every tester would have hit a paywall with zero plans.
+
+Fixed, plus `PlanIdentifierTests` asserting the invariants that would have caught it: store IDs
+are reverse-DNS under the bundle prefix (a bare `garage_pro_monthly` cannot be a StoreKit product
+for this app), the real IDs round-trip through the analytics mapping, and the stale IDs must NOT
+resolve. Analytics raw values are deliberately left alone — they are stable Firebase labels, not
+store SKUs.
+
+**Operator action:** the two "Not found" products (`garage_pro_annual`, `garage_pro_monthly`,
+created Jul 24) are dead entries pointing at nothing. Detach them from the `pro` entitlement and
+delete them, or they will keep muddying the catalogue.
+
+---
+
 ## P0 — Measurement (you cannot optimise what you do not record)
 
 ### ✅ Pre-consent buffering — repairs the sign-in funnel

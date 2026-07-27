@@ -6,8 +6,23 @@ enum Constants {
     static let pageSize = 20
     static let maxLogEntries = 500
     static let dashboardRecentLimit = 10
-    static let annualPlanIdentifier = "garage_pro_annual"
-    static let monthlyPlanIdentifier = "garage_pro_monthly"
+    /// STORE product identifiers, and they must match App Store Connect **exactly**.
+    ///
+    /// The offerings pipeline filters every package through
+    /// `AnalyticsProductID(storeProductIdentifier:)`, which returns nil for anything it does not
+    /// recognise; unrecognised products are dropped into `omittedUnknownProductIDs` and never
+    /// rendered. So a mismatch here does not fail loudly — **it produces an empty paywall**, with
+    /// no error, no crash, and nothing purchasable.
+    ///
+    /// These previously read `garage_pro_annual` / `garage_pro_monthly`, which exist nowhere in
+    /// App Store Connect (RevenueCat listed both as "Not found"). Note the store uses `yearly`,
+    /// not `annual`.
+    ///
+    /// NOT the same thing as `AnalyticsProductID`'s raw values, which are stable analytics labels
+    /// and deliberately unchanged — renaming those would silently break every saved Firebase
+    /// funnel keyed on `product_id`.
+    static let annualPlanIdentifier = "com.writes.harrysplayhouse.pro.yearly"
+    static let monthlyPlanIdentifier = "com.writes.harrysplayhouse.pro.monthly"
     static let appleSignInTimeoutNanoseconds: UInt64 = 15_000_000_000
     /// Headroom under firebase.storage.rules' 25MB owner-write ceiling for entry attachments —
     /// checked client-side (AttachmentPicker) before a PDF is ever read into memory, so an
