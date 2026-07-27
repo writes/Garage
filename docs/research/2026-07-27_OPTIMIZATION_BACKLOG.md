@@ -88,28 +88,31 @@ for real open → complete numbers rather than being built on assumption.
 
 ## P2 — Conversion (money-path; operator-gated per Law 1)
 
-### ⏸ The paywall buries its own offer
-Current render order in `SubscriptionView`:
+### ✅ Paywall hierarchy — the offer now leads
+Shipped. Previous render order put `PrimaryButton("Refresh Plans")` — a maintenance affordance —
+as the strongest control on a purchase screen, with the actual plans rendering **last**, below
+policy links and disclosure copy.
 
-1. Title + feature sentence
-2. **`PrimaryButton("Refresh Plans")`** ← the most visually prominent control on the paywall
-3. `Restore Purchases`
-4. Policy links
-5. Disclosure copy
-6. Activity indicator
-7. **The actual plans** — last, in whatever order RevenueCat returned them
+New order: feature summary → blocking state (errors/activity) → **plans** → required disclosure →
+policy links → Restore → Refresh (demoted to a plain button).
 
-The single strongest element on a purchase screen is a maintenance affordance, and the offer is
-below the fold. `Refresh Plans` is a legitimate retry for a failed load (the `.task` already loads
-offerings automatically), but it should not outrank the purchase CTA.
-
-**Evidence for the fix:** annual plans generate ~2× the revenue per install of monthly
-(D60 $0.46 vs $0.24), yet the utility/productivity segment under-uses annual-default framing.
-There is currently no annual-forward ordering, no savings callout, and no trial emphasis.
-
-**Why this is ⏸ and not 🔨:** this is money-path UI. Under the repo's trust boundary it should be
-planned, implemented with tests, adversarially reviewed, and operator-gated — not changed
-unilaterally mid-loop.
+- **Annual leads.** Annual generates ~2x the revenue per install of monthly (D60 $0.46 vs $0.24).
+  Ordering only: no plan is hidden, monthly is one tap away, no price or term changed.
+  `SubscriptionPlanOrder` is extracted from the view and unit tested — including that the order is
+  *total* with a deterministic tiebreak, because Swift's sort is not stable and same-rank packages
+  would otherwise be free to swap between renders.
+- **The leading plan gets the PrimaryButton.** Visual emphasis only. Deliberately **no savings
+  percentage**: `PackageDTO` carries localized price *strings*, not decimals, so any computed
+  discount would be fabricated.
+- **Blocking state moved above the offer.** A user who cannot purchase should learn why without
+  scrolling past plans they cannot use.
+- **All required disclosure retained**, and moved to sit directly under the plans it describes:
+  renewal terms per package, the review-before-purchase caption, and policy links. Nothing was
+  removed — that copy is App Review-critical.
+- **Package identifiers are now product-keyed** (`subscription.package.annual`) rather than
+  positional. A positional id silently repoints at a different plan the moment ordering changes.
+  `subscription.refresh` and `subscription.restore` are unchanged because UI journeys key the
+  sheet off them.
 
 ### ⏸ Trial length 7 → 14 days
 Trial-to-paid by length: ≤4 days 25.5% · **5–9 days 37.4%** (current) · 17–32 days 42.5%.
