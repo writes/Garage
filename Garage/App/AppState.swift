@@ -177,10 +177,8 @@ final class AppState {
         analytics.track(.paywallViewed(source: source))
     }
 
-    /// Closes the paywall funnel. Without this, `paywall_viewed` has no exit event and paywall
-    /// conversion is not computable — "viewed and left" looks identical to "viewed and is still
-    /// deciding". Fires on teardown regardless of outcome; abandonment is derived by joining
-    /// against `purchase_completed` in the same session rather than inspecting purchase state here.
+    /// Funnel exit — without it paywall conversion is uncomputable. Carries no outcome flag by
+    /// design; see docs/developer/ANALYTICS_CONTRACT.md.
     func paywallDidDismiss(source: PaywallSource) {
         analytics.track(.paywallDismissed(source: source))
     }
@@ -189,9 +187,8 @@ final class AppState {
         guard profile.id == authService.uid else {
             analytics.setEnabled(false)
             crashReporter.setEnabled(false)
-            // The loaded profile belongs to a different identity than the signed-in user, so any
-            // events held awaiting consent cannot be attributed and must not survive to be
-            // flushed by whoever consents next.
+            // Wrong identity: held pre-consent events must not survive to be flushed by whoever
+            // consents next. See AnalyticsConsentGate.
             analytics.discardPendingEvents()
             return
         }

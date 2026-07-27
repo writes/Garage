@@ -176,6 +176,21 @@ Suggested operator actions:
 
 ---
 
+## Tech debt: the 250-line file limit is being hit repeatedly
+
+`AppState.swift` and `SubscriptionCommitRelay.swift` now sit at **exactly 250 lines**, and
+`AnalyticsService.swift`/`SubscriptionModels.swift` both had to be split this session to stay
+under it. Three of those four are coordinator types whose dependencies are `private` (file-scoped),
+so they cannot be extended from another file without widening access — which means the only
+options left are shaving comments or weakening encapsulation. Neither is a good trade.
+
+The next change to either 250-line file WILL fail the gate. Worth deciding deliberately: either
+decompose those coordinators properly (changing the `private` deps to `internal` so extensions can
+live in sibling files), or raise the limit for coordinator types. Shaving comments to fit is not a
+third option — this session already lost real rationale that way.
+
+---
+
 ## Toolchain note
 
 `.tools/bin/xcodegen` is **2.45.3**; the PATH binary is **2.45.4**. The CI regenerate-equality gate
