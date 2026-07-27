@@ -78,7 +78,7 @@ targets:
         # the upload. Verified 2026-07-24 against a real signed archive that had a valid
         # 1024x1024 icon asset on disk and no icon in the product.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        CURRENT_PROJECT_VERSION: 2
+        CURRENT_PROJECT_VERSION: 3
         MARKETING_VERSION: 1.0
         DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
         ENABLE_USER_SCRIPT_SANDBOXING: NO
