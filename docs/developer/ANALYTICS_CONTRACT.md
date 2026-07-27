@@ -101,6 +101,10 @@ subscription state machine and its ~100 tests. Tracked separately for that reaso
 
 **No onboarding step events.** Drop-off between install and first vehicle is invisible.
 
+**No session-level first-open event.** Day-0 cohorting currently relies on Firebase's automatic
+`first_open`, which cannot be joined to in-app funnel steps as precisely as an owned event would
+allow.
+
 ---
 
 ## 4. Adding an event
