@@ -119,6 +119,9 @@ final class AuthService {
 
     func signOut() throws {
         analytics.setEnabled(false)
+        // This identity is finished: drop anything held awaiting a consent decision, or the next
+        // account to sign in and consent would flush this user's events.
+        analytics.discardPendingEvents()
         if mode == .localDemo {
             isAuthenticated = false
             authenticationRevision += 1

@@ -189,6 +189,10 @@ final class AppState {
         guard profile.id == authService.uid else {
             analytics.setEnabled(false)
             crashReporter.setEnabled(false)
+            // The loaded profile belongs to a different identity than the signed-in user, so any
+            // events held awaiting consent cannot be attributed and must not survive to be
+            // flushed by whoever consents next.
+            analytics.discardPendingEvents()
             return
         }
         userProfile = profile

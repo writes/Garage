@@ -8,12 +8,21 @@ protocol AnalyticsTracking: AnyObject {
     /// Fails closed after a user tries to revoke consent but persistence cannot confirm it.
     /// The suppression deliberately lasts for the current app session.
     func suppressCollectionForCurrentSession()
+    /// Drop any events held awaiting a consent decision, because the identity they belong to is
+    /// gone (sign-out, or a profile that does not match the signed-in uid).
+    ///
+    /// Distinct from `setEnabled(false)`, which only means "consent is not known yet" and
+    /// deliberately keeps held events. Without this separation, one account's pre-consent events
+    /// could flush into the next account's consent grant.
+    func discardPendingEvents()
 }
 
 extension AnalyticsTracking {
     func suppressCollectionForCurrentSession() {
         setEnabled(false)
     }
+
+    func discardPendingEvents() {}
 }
 
 /// The complete v1 product-event contract.
@@ -162,26 +171,39 @@ enum AnalyticsEvent: Equatable, Sendable {
     }
 }
 
+/// Thin adapter over `AnalyticsConsentGate`. All gate/buffer decisions live in that value type so
+/// they are unit-testable without Firebase — the original defect slipped through precisely because
+/// this logic was only reachable through a class that no test exercises.
 @MainActor
 final class FirebaseAnalyticsService: AnalyticsTracking {
-    private var isEnabled = false
-    private var isCollectionSuppressedForCurrentSession = false
+    private var gate = AnalyticsConsentGate()
 
     func track(_ event: AnalyticsEvent) {
-        guard isEnabled else { return }
-        let definition = event.definition
-        Analytics.logEvent(definition.name, parameters: definition.firebaseParameters)
+        send(gate.track(event))
     }
 
     func setEnabled(_ enabled: Bool) {
-        let effectiveEnabled = enabled && !isCollectionSuppressedForCurrentSession
-        isEnabled = effectiveEnabled
-        Analytics.setAnalyticsCollectionEnabled(effectiveEnabled)
+        let released = gate.setEnabled(enabled)
+        Analytics.setAnalyticsCollectionEnabled(gate.isEnabled)
+        // Order matters: collection must be enabled with Firebase before the held events are
+        // logged, or the flush is dropped by the SDK exactly as it was by our own gate.
+        send(released)
     }
 
     func suppressCollectionForCurrentSession() {
-        isCollectionSuppressedForCurrentSession = true
-        setEnabled(false)
+        gate.suppressForSession()
+        Analytics.setAnalyticsCollectionEnabled(false)
+    }
+
+    func discardPendingEvents() {
+        gate.discardPending()
+    }
+
+    private func send(_ events: [AnalyticsEvent]) {
+        for event in events {
+            let definition = event.definition
+            Analytics.logEvent(definition.name, parameters: definition.firebaseParameters)
+        }
     }
 }
 

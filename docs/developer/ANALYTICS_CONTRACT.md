@@ -107,38 +107,45 @@ purchase is settling.
 
 ---
 
-## 3. KNOWN DEFECT — sign-in funnel events do not currently emit
+## 3. Consent gating and the pre-consent buffer
 
-**`sign_in_started` / `sign_in_completed` / `sign_in_failed` are inert in production.** They are
-tracked at the right place and are correct code, but the consent gate swallows them:
+Consent is not knowable until the user profile loads, and the profile cannot load until the user
+has signed in. Under a plain `guard isEnabled` gate that makes the **entire sign-in funnel
+unobservable** — every `sign_in_*` event fires while the gate is still closed. That is exactly
+what shipped on 2026-07-27 and had to be repaired.
 
-```
-FirebaseAnalyticsService.isEnabled = false              initial state
-AuthService.applyAuthenticationState -> setEnabled(false)   fires on EVERY auth change
-AppState.applyProfile -> setEnabled(!optOut)            the ONLY place it becomes true
-```
+`AnalyticsConsentGate` resolves it by holding pre-consent events rather than dropping them:
 
-`applyProfile` runs after the user profile loads, which is **after** sign-in completes. So at the
-moment the sign-in events are tracked, `isEnabled` is `false` and `track()` returns early.
+| Transition | Held events |
+|---|---|
+| `track` while enabled | sent immediately |
+| `track` while consent unknown | **held** (capped at 32, oldest dropped) |
+| `setEnabled(true)` — the only affirmative consent signal | **released, in order** |
+| `setEnabled(false)` — consent merely *unknown* | **retained**, still unsent, still on device |
+| `discardPendingEvents()` — identity gone | **dropped** |
+| `suppressCollectionForCurrentSession()` | **dropped**, and nothing accumulates afterwards |
 
-The other activation events are unaffected — `paywall_dismissed`, `trial_started` and
-`form_opened` all fire well after profile load.
+**Why `setEnabled(false)` does not discard.** It is overloaded in this app: app start, bootstrap,
+and every auth-state change all call it, and at those moments consent is simply *not yet known*.
+Discarding there is what broke the funnel.
 
-**Why the tests did not catch it:** the test spy records every event unconditionally. The consent
-gate lives only in `FirebaseAnalyticsService`, which unit tests never exercise. A spy that mirrors
-the real gate would have caught this.
+**Why identity changes must discard explicitly.** Sign-out and a profile/uid mismatch mean the
+held events belong to an identity that is gone. Retaining them would let one account's
+pre-consent events flush into the *next* account's consent grant — a privacy defect strictly
+worse than the missing funnel it would fix. `AuthService.signOut` and the `applyProfile`
+identity-mismatch branch both call `discardPendingEvents()`.
 
-**This is a genuine architectural tension, not a typo.** Consent is not knowable until the profile
-loads, and the profile cannot load until the user is signed in — so a sign-in funnel can never be
-emitted live under a strictly consent-first gate. The only correct fix is to **buffer pre-consent
-events in memory and flush them only once consent is affirmatively granted, discarding them if it
-is denied.** Nothing leaves the device before consent either way.
+Nothing ever leaves the device before consent is affirmatively granted, in any path.
 
-That fix is not trivial and is deliberately **not** applied unilaterally, because
-`setEnabled(false)` is currently overloaded: it means both "the user opted out" *and* "reset
-because auth state changed". Buffering requires separating those two meanings across
-`AuthService` and `AppState`, and getting it wrong would send analytics for a user who opted out —
-a privacy incident, which is strictly worse than missing a funnel. Operator decision.
+**Why the gate is a pure value type.** The original defect survived a green test run because the
+gate lived only inside `FirebaseAnalyticsService`, which no unit test exercises, while the test
+spies recorded unconditionally. `AnalyticsConsentGate` is directly unit tested — including a
+replay of the exact production sequence that used to release nothing.
+
+> ⚠️ **Test spies do not model the gate.** `AnalyticsSpy` and `NoopAnalyticsService` record or
+> discard unconditionally. They are correct for asserting *"the view model called track"*, but a
+> passing spy assertion is **not** evidence that an event reaches Firebase. For anything that
+> fires early in the lifecycle, assert against `AnalyticsConsentGate` as well.
 
 ---
 

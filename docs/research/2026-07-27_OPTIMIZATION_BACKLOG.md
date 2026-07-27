@@ -24,6 +24,14 @@ And two things that are **real**, found by reading the flows rather than countin
 
 ## P0 — Measurement (you cannot optimise what you do not record)
 
+### ✅ Pre-consent buffering — repairs the sign-in funnel
+Shipped. The sign-in funnel as first written emitted **nothing**: the consent gate is still closed
+when `sign_in_*` fires, because consent is unknowable until the profile loads and the profile
+cannot load until sign-in completes. `AnalyticsConsentGate` now holds pre-consent events and
+releases them only on affirmative consent, while identity changes (sign-out, profile/uid mismatch)
+discard them so one account cannot flush into another's consent. Pure value type, directly tested,
+including a replay of the production sequence that used to release nothing.
+
 ### ✅ Sign-in funnel + paywall exit
 Shipped. `sign_in_started/completed/failed`, `paywall_dismissed`. Before this, paywall conversion
 was not merely inaccurate — it was **uncomputable**, because `paywall_viewed` had no exit event.
