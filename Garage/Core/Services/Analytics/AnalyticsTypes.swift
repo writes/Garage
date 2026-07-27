@@ -62,6 +62,7 @@ enum AnalyticsParameter: Equatable, Sendable {
     case reason(OilAnalysisQuotaDeniedReason)
     case provider(AuthProvider)
     case failureReason(SignInFailureReason)
+    case form(FormKind)
 
     fileprivate var name: String {
         switch self {
@@ -73,6 +74,7 @@ enum AnalyticsParameter: Equatable, Sendable {
         case .reason: return "reason"
         case .provider: return "provider"
         case .failureReason: return "failure_reason"
+        case .form: return "form"
         }
     }
 
@@ -85,6 +87,7 @@ enum AnalyticsParameter: Equatable, Sendable {
         case .reason(let value): return value.rawValue
         case .provider(let value): return value.rawValue
         case .failureReason(let value): return value.rawValue
+        case .form(let value): return value.rawValue
         }
     }
 }
@@ -92,6 +95,20 @@ enum AnalyticsParameter: Equatable, Sendable {
 enum AuthProvider: String, CaseIterable, Equatable, Sendable {
     case apple
     case google
+}
+
+/// Which sheet a `form_opened` event refers to. Records what ACTUALLY opened, not what was
+/// requested — `AppRouter.present` redirects entry sheets to vehicle creation when the account
+/// has no vehicles, and attributing that open to `entry` would misreport the funnel.
+///
+/// The paywall is deliberately absent: it already reports `paywall_viewed`, and adding it here
+/// would double-count the same impression.
+enum FormKind: String, CaseIterable, Equatable, Sendable {
+    case vehicle
+    case entryPicker = "entry_picker"
+    case entry
+    case voiceQuickAdd = "voice_quick_add"
+    case export
 }
 
 /// Closed set of sign-in failure causes. Deliberately coarse: it exists to separate "the user

@@ -37,8 +37,16 @@ Revenue reconciliation is server-side, via the RevenueCat webhook.
 
 | Event | Parameters | Purpose |
 |---|---|---|
+| `form_opened` | `form` | Intent. Pairs with the `first_*` events to give an open → complete rate. |
 | `first_vehicle_added` | — | First real value moment. Per-account-per-device approximation (post-insert `count == 1`). |
 | `first_entry_added` | `entry_type` | The activation event — a vehicle with no records is not an activated user. |
+
+**`form_opened` reports what actually opened, not what was requested.** `AppRouter.present`
+redirects entry sheets to vehicle creation on a zero-vehicle account (a previously-fixed
+activation dead end). Attributing that open to `entry` would claim the user saw a form they never
+saw — and it would do so at exactly the Day-0 moment that matters most. The paywall is excluded
+from this event because it already reports `paywall_viewed`; emitting both would double-count one
+impression.
 
 ### Sign-in funnel
 

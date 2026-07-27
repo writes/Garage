@@ -56,6 +56,10 @@ enum AnalyticsEvent: Equatable, Sendable {
     /// `reason` is a closed enum produced by `SignInFailureClassifier`; raw error text is never
     /// sent, so a provider message containing an email or token cannot reach Analytics.
     case signInFailed(provider: AuthProvider, reason: SignInFailureReason)
+    /// A create/edit sheet actually opened. `first_vehicle_added` and `first_entry_added` record
+    /// completion, but nothing recorded intent — so the open -> complete rate, which is where
+    /// drop-off actually happens, was invisible.
+    case formOpened(form: FormKind)
 
     static let v1Names = [
         "first_vehicle_added",
@@ -77,7 +81,8 @@ enum AnalyticsEvent: Equatable, Sendable {
         "sign_in_started",
         "sign_in_completed",
         "sign_in_failed",
-        "trial_started"
+        "trial_started",
+        "form_opened"
     ]
 
     static var allNames: [String] { v1Names + activationFunnelNames }
@@ -147,6 +152,11 @@ enum AnalyticsEvent: Equatable, Sendable {
             return AnalyticsEventDefinition(
                 name: "sign_in_failed",
                 parameters: [.provider(provider), .failureReason(reason)]
+            )
+        case .formOpened(let form):
+            return AnalyticsEventDefinition(
+                name: "form_opened",
+                parameters: [.form(form)]
             )
         }
     }

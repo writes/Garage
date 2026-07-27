@@ -13,7 +13,8 @@ struct ActivationFunnelAnalyticsTests {
             "sign_in_started",
             "sign_in_completed",
             "sign_in_failed",
-            "trial_started"
+            "trial_started",
+            "form_opened"
         ])
     }
 

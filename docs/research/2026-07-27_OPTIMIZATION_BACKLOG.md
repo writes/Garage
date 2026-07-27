@@ -39,9 +39,14 @@ map to `.unknown`, never `.normal`, so an unmapped phase cannot be silently coun
 Trial-to-paid conversion itself remains a server-side join: StoreKit renews a converting trial
 silently, so no further client purchase event fires.
 
-### 📋 Onboarding step events
-Drop-off between install and first vehicle is invisible. Blocked on there being an onboarding
-flow to instrument (below).
+### ✅ Form-open instrumentation
+Shipped. `form_opened(form:)` fires from `AppRouter.present`, the single choke point every sheet
+passes through. Paired with the existing `first_vehicle_added` / `first_entry_added`, the
+open → complete rate is now measurable — that is where activation drop-off actually happens.
+
+Reports what ACTUALLY opened, not what was requested: `present` redirects entry sheets to vehicle
+creation on a zero-vehicle account, and attributing that to `entry` would claim the user saw a
+form they never saw. The paywall is excluded because it already reports `paywall_viewed`.
 
 ---
 
@@ -62,15 +67,14 @@ vehicle form. Activation is also already instrumented: `first_vehicle_added` and
 
 The genuine remaining gap is narrower and worth stating precisely:
 
-- **Form abandonment is unmeasured.** `first_vehicle_added` fires on success, but nothing fires
-  when the form is *opened*, so the open→complete rate — the step where drop-off actually happens
-  — is invisible. Same for entry forms. This is a real measurement gap and is cheap to close.
+- ~~**Form abandonment is unmeasured.**~~ ✅ Closed by `form_opened` (see P0).
 - **There is no multi-step guided onboarding** (value prop, permission priming, staged setup).
   Whether that beats the current single clear CTA is a **product bet, not a defect**. Building it
   speculatively would be inventing work; it should be justified by the form-abandonment numbers
   once those exist.
 
-**Done means:** instrument form open/abandon first, then decide on guided onboarding from data.
+**Done means:** the instrumentation is now in place. The guided-onboarding decision should wait
+for real open → complete numbers rather than being built on assumption.
 
 ---
 

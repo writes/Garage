@@ -32,6 +32,10 @@ final class AppRouter {
     /// zero-vehicle gate (previews, non-gated tests) keep today's behavior.
     private let hasVehicles: () -> Bool
 
+    /// Injected rather than reached through AppState, so AppRouter stays constructible in
+    /// previews and tests without the whole app-state graph — same reasoning as `hasVehicles`.
+    private let analytics: any AnalyticsTracking
+
     /// Carries a voice proposal from the capture sheet to the entry form it opens. Consumed once
     /// by the form that appears next, so a manually-opened form never picks up a stale prefill.
     private(set) var pendingVoicePrefill: VoiceEntryProposal?
@@ -40,8 +44,12 @@ final class AppRouter {
     /// pattern as pendingVoicePrefill: consumed once by the form that appears next.
     private(set) var pendingEditEntry: FirestoreEntry?
 
-    init(hasVehicles: @escaping () -> Bool = { true }) {
+    init(
+        hasVehicles: @escaping () -> Bool = { true },
+        analytics: any AnalyticsTracking = AnalyticsService.shared
+    ) {
         self.hasVehicles = hasVehicles
+        self.analytics = analytics
     }
 
     /// Audit finding (zero-vehicle activation dead end): a fresh account has no vehicles, so
@@ -66,11 +74,30 @@ final class AppRouter {
 
         guard isGatedSheet, !hasVehicles() else {
             activeSheet = sheet
+            reportOpened(sheet)
             return
         }
         pendingVoicePrefill = nil
         pendingEditEntry = nil
         activeSheet = .vehicleForm
+        // Report the redirect target, not the request: attributing this open to `entry` would
+        // misreport the funnel, since what the user is actually looking at is vehicle creation.
+        reportOpened(.vehicleForm)
+    }
+
+    /// The paywall is excluded because it already reports `paywall_viewed` from its own
+    /// `onAppear`; emitting `form_opened` for it too would double-count one impression.
+    private func reportOpened(_ sheet: Sheet) {
+        let form: FormKind
+        switch sheet {
+        case .vehicleForm: form = .vehicle
+        case .entryPicker: form = .entryPicker
+        case .entryForm: form = .entry
+        case .voiceQuickAdd: form = .voiceQuickAdd
+        case .export: form = .export
+        case .subscription: return
+        }
+        analytics.track(.formOpened(form: form))
     }
 
     func dismissSheet() {
