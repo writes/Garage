@@ -46,7 +46,7 @@ struct VoiceQuickAddView: View {
         } label: {
             Image(systemName: viewModel.isListening ? "stop.fill" : "mic.fill")
                 .font(.system(size: 34, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Theme.Colors.onPrimary)
                 .frame(width: 96, height: 96)
                 .background(viewModel.isListening ? Theme.Colors.error : Theme.Colors.primary)
                 .clipShape(Circle())

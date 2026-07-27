@@ -10,6 +10,13 @@ enum Theme {
         // stored `let`/init or bridge it to UIColor and expect updates. All other tokens stay
         // `static let`. Default (`.classic`) resolves to Color("BrandPrimary"), unchanged.
         @MainActor static var primary: Color { AccentStore.shared.scheme.tint }
+        /// Foreground for content sitting ON a `primary` fill (filled buttons, the FAB).
+        /// It exists because `primary` cannot serve both roles in dark mode: carrying white text
+        /// needs luminance <= 0.183, while reading as text against the dark background needs
+        /// >= 0.215 — no colour satisfies both. So dark mode lightens the accent and flips this
+        /// foreground to near-black; light mode keeps it white. Never hardcode `.white` on a
+        /// `primary` surface.
+        static let onPrimary = Color("OnPrimary")
         static let secondary = Color("BrandSecondary")
         static let accent = Color("Accent")
         static let background = Color("Background")
