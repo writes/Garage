@@ -12,7 +12,8 @@ struct ActivationFunnelAnalyticsTests {
             "paywall_dismissed",
             "sign_in_started",
             "sign_in_completed",
-            "sign_in_failed"
+            "sign_in_failed",
+            "trial_started"
         ])
     }
 

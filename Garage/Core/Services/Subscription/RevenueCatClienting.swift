@@ -91,8 +91,21 @@ enum RevenueCatValueMapper {
         return EntitlementSnapshot(
             isActive: entitlement?.isActive == true,
             expirationDate: entitlement?.expirationDate,
-            productID: entitlement?.productIdentifier
+            productID: entitlement?.productIdentifier,
+            period: period(entitlement?.periodType)
         )
+    }
+
+    /// The single place RevenueCat's `PeriodType` crosses into app types. `prepaid` is Play Store
+    /// only and unreachable on iOS; it and any future case map to `.unknown` rather than
+    /// `.normal`, so an unmapped phase can never be silently counted as a paid purchase.
+    static func period(_ periodType: PeriodType?) -> EntitlementPeriod {
+        switch periodType {
+        case .normal: return .normal
+        case .intro: return .intro
+        case .trial: return .trial
+        default: return .unknown
+        }
     }
 
     static func facts(_ package: Package) -> RawPackageFacts {

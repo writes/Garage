@@ -108,7 +108,9 @@ struct PurchaseServiceState {
             storedSelection = nil
         case .currentError(_, .sdk): return applyVoteC(now: now)
         case .purchaseCompleted(_, let snapshot, let product):
-            return applyActive(snapshot, lease: lease, analytics: .purchaseCompleted(productID: product), now: now)
+            return applyActive(
+                snapshot, lease: lease,
+                analytics: snapshot.purchaseAnalytics(for: product), now: now)
         case .purchaseNoEntitlement(_, let snapshot):
             return applyInactive(snapshot, lease: lease, now: now)
         case .restoreActive(_, let snapshot):

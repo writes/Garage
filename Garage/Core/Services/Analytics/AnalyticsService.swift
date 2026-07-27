@@ -33,7 +33,15 @@ enum AnalyticsEvent: Equatable, Sendable {
     /// abandonment without coupling this view to purchase state at teardown time.
     case paywallDismissed(source: PaywallSource)
     /// A non-authoritative client signal; server-side revenue joins remain the revenue truth.
+    /// MUTUALLY EXCLUSIVE with `trialStarted` — a purchase that begins a free trial emits
+    /// `trial_started` INSTEAD of this, so this count is money actually committed rather than
+    /// money plus trials that may never convert.
     case purchaseCompleted(productID: AnalyticsProductID)
+    /// A purchase that opened a free trial rather than charging immediately. Separating this from
+    /// `purchase_completed` is what makes trial-start rate measurable at all; the trial-to-paid
+    /// conversion itself is a server-side join, since no further client purchase event fires when
+    /// a trial converts.
+    case trialStarted(productID: AnalyticsProductID)
     case purchaseRestored
     case exportCSV(entryCount: Int)
     case exportPDF(entryCount: Int)
@@ -68,7 +76,8 @@ enum AnalyticsEvent: Equatable, Sendable {
         "paywall_dismissed",
         "sign_in_started",
         "sign_in_completed",
-        "sign_in_failed"
+        "sign_in_failed",
+        "trial_started"
     ]
 
     static var allNames: [String] { v1Names + activationFunnelNames }
@@ -96,6 +105,11 @@ enum AnalyticsEvent: Equatable, Sendable {
         case .purchaseCompleted(let productID):
             return AnalyticsEventDefinition(
                 name: "purchase_completed",
+                parameters: [.productID(productID)]
+            )
+        case .trialStarted(let productID):
+            return AnalyticsEventDefinition(
+                name: "trial_started",
                 parameters: [.productID(productID)]
             )
         case .purchaseRestored:

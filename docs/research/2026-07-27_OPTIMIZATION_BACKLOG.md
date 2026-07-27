@@ -29,17 +29,15 @@ Shipped. `sign_in_started/completed/failed`, `paywall_dismissed`. Before this, p
 was not merely inaccurate — it was **uncomputable**, because `paywall_viewed` had no exit event.
 Contract: `docs/developer/ANALYTICS_CONTRACT.md`.
 
-### 🔨 `trial_started`
-`EntitlementSnapshot` discards RevenueCat's `periodType`, so a free-trial start and a paid
-purchase are **indistinguishable client-side**. Consequences:
+### ✅ `trial_started`
+Shipped. `EntitlementPeriod` now rides on `EntitlementSnapshot`, mapped from RevenueCat's
+`PeriodType` at the SDK boundary. A trial-opening purchase emits `trial_started` *instead of*
+`purchase_completed` — mutually exclusive, asserted by test, so the paid count is money actually
+committed rather than money plus trials that may never convert. `prepaid` and any future SDK case
+map to `.unknown`, never `.normal`, so an unmapped phase cannot be silently counted as paid.
 
-- Trial-start rate cannot be measured.
-- Trial-to-paid conversion — which the research calls the decisive metric — cannot be computed.
-- `purchase_completed` counts are inflated by trials that may never convert.
-
-**Done means:** `periodType` threaded through `EntitlementSnapshot`, and a trial start emits
-`trial_started` *instead of* `purchase_completed` (mutually exclusive — emitting both preserves
-the inflation this fixes).
+Trial-to-paid conversion itself remains a server-side join: StoreKit renews a converting trial
+silently, so no further client purchase event fires.
 
 ### 📋 Onboarding step events
 Drop-off between install and first vehicle is invisible. Blocked on there being an onboarding

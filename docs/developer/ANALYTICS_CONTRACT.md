@@ -64,8 +64,23 @@ defect** — only `configuration` reliably indicates a real bug.
 |---|---|---|
 | `paywall_viewed` | `source` | Funnel entry, attributed to the surface that triggered it. |
 | `paywall_dismissed` | `source` | Funnel exit. |
-| `purchase_completed` | `product_id` | Client signal; server is revenue truth. |
+| `purchase_completed` | `product_id` | Money actually committed. Client signal; server is revenue truth. |
+| `trial_started` | `product_id` | A purchase that opened a free trial rather than charging. |
 | `purchase_restored` | — | Restore path reachability. |
+
+**`purchase_completed` and `trial_started` are mutually exclusive.** A purchase that begins a free
+trial emits `trial_started` and *not* `purchase_completed`. Emitting both would leave the paid
+count inflated by trials that may never convert — the exact defect this split exists to remove. A
+test asserts exactly one fires for every billing phase.
+
+The decision is made in `PurchaseServiceState` from `EntitlementSnapshot.period`, which carries
+RevenueCat's `PeriodType` mapped at the SDK boundary in `RevenueCatValueMapper.period`. `prepaid`
+(Play Store only) and any future SDK case map to `.unknown`, never `.normal`, so an unmapped
+phase can never be silently counted as a paid purchase.
+
+**Trial-to-paid conversion is a server-side join, not a client event.** When a trial converts,
+StoreKit renews silently — no further client purchase event fires. The client can measure
+*trial-start rate*; conversion itself comes from RevenueCat.
 
 **Why `paywall_dismissed` had to exist.** With only `paywall_viewed`, "viewed and left" is
 indistinguishable from "viewed and is still deciding" — the funnel has no denominator exit, so
@@ -86,20 +101,9 @@ purchase is settling.
 
 ## 3. Known gaps
 
-**`trial_started` does not exist yet, and `purchase_completed` cannot substitute for it.**
-`EntitlementSnapshot` carries `isActive` / `expirationDate` / `productID` but discards
-RevenueCat's `periodType`, so a free-trial start and a paid purchase are indistinguishable to the
-client. Consequences:
-
-- Trial-start rate cannot be measured.
-- Trial-to-paid conversion — the metric the launch research identifies as decisive — cannot be
-  computed client-side at all.
-- `purchase_completed` counts are inflated by trial starts that may never convert.
-
-Fixing this means threading `periodType` through `EntitlementSnapshot`, which ripples into the
-subscription state machine and its ~100 tests. Tracked separately for that reason.
-
-**No onboarding step events.** Drop-off between install and first vehicle is invisible.
+**No onboarding step events.** Drop-off between install and first vehicle is invisible — and there
+is currently no onboarding flow to instrument. See
+`docs/research/2026-07-27_OPTIMIZATION_BACKLOG.md`.
 
 **No session-level first-open event.** Day-0 cohorting currently relies on Firebase's automatic
 `first_open`, which cannot be joined to in-app funnel steps as precisely as an owned event would

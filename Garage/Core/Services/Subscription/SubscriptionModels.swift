@@ -21,12 +21,28 @@ struct EntitlementSnapshot: Equatable, Sendable {
     let isActive: Bool
     let expirationDate: Date?
     let productID: String?
+    let period: EntitlementPeriod
+
+    /// `period` defaults to `.unknown` so existing construction sites — which predate trial
+    /// detection and are asserting on entitlement validity, not billing phase — stay valid.
+    init(
+        isActive: Bool,
+        expirationDate: Date?,
+        productID: String?,
+        period: EntitlementPeriod = .unknown
+    ) {
+        self.isActive = isActive
+        self.expirationDate = expirationDate
+        self.productID = productID
+        self.period = period
+    }
 
     func disablingEntitlement() -> EntitlementSnapshot {
         EntitlementSnapshot(
             isActive: false,
             expirationDate: expirationDate,
-            productID: productID
+            productID: productID,
+            period: period
         )
     }
 }
