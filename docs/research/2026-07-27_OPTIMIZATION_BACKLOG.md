@@ -50,17 +50,27 @@ flow to instrument (below).
 **Evidence:** 90% of trial starts and 44.5% of all purchases occur on **Day 0**. 84% of
 short-trial cancellations happen by Day 1. More than 90% of users churn within 30 days.
 
-### 📋 There is no onboarding flow — at all
-Zero references to onboarding, welcome, or first-run anywhere in 193 Swift files. A new user
-signs in and lands in an empty app with no guidance toward the one action that predicts
-retention: **adding a vehicle and logging the first record**.
+### 📋 Onboarding: narrower than first reported — CORRECTION
+An earlier revision of this document claimed there was "no onboarding flow at all" and that a new
+user "lands in an empty app with no guidance". **That was wrong**, and it was reached by grepping
+for the word `onboarding` rather than by reading the flow.
 
-This is the single largest activation gap in the product. Everything else in this document is an
-optimisation; this is a missing feature, and it sits precisely where the evidence says the
-business is won or lost.
+What actually exists: `DashboardView.zeroVehicleState` renders a purpose-built empty state —
+title "Add Your First Vehicle", explanatory copy, and a `PrimaryButton` CTA wired directly to the
+vehicle form. Activation is also already instrumented: `first_vehicle_added` and
+`first_entry_added` have shipped since v1. A new user is guided to the right action on arrival.
 
-**Done means:** a short first-run flow that ends with a vehicle created and one record logged,
-instrumented at each step so drop-off becomes visible.
+The genuine remaining gap is narrower and worth stating precisely:
+
+- **Form abandonment is unmeasured.** `first_vehicle_added` fires on success, but nothing fires
+  when the form is *opened*, so the open→complete rate — the step where drop-off actually happens
+  — is invisible. Same for entry forms. This is a real measurement gap and is cheap to close.
+- **There is no multi-step guided onboarding** (value prop, permission priming, staged setup).
+  Whether that beats the current single clear CTA is a **product bet, not a defect**. Building it
+  speculatively would be inventing work; it should be justified by the form-abandonment numbers
+  once those exist.
+
+**Done means:** instrument form open/abandon first, then decide on guided onboarding from data.
 
 ---
 
