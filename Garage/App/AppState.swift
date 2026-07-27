@@ -177,6 +177,14 @@ final class AppState {
         analytics.track(.paywallViewed(source: source))
     }
 
+    /// Closes the paywall funnel. Without this, `paywall_viewed` has no exit event and paywall
+    /// conversion is not computable — "viewed and left" looks identical to "viewed and is still
+    /// deciding". Fires on teardown regardless of outcome; abandonment is derived by joining
+    /// against `purchase_completed` in the same session rather than inspecting purchase state here.
+    func paywallDidDismiss(source: PaywallSource) {
+        analytics.track(.paywallDismissed(source: source))
+    }
+
     func applyProfile(_ profile: UserProfile) {
         guard profile.id == authService.uid else {
             analytics.setEnabled(false)

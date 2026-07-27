@@ -26,6 +26,12 @@ enum AnalyticsEvent: Equatable, Sendable {
     case firstVehicleAdded
     case firstEntryAdded(entryType: EntryType)
     case paywallViewed(source: PaywallSource)
+    /// Closes the paywall funnel. `paywall_viewed` alone gives no denominator exit: without a
+    /// dismissal event, "viewed but did not buy" is indistinguishable from "still deciding", so
+    /// paywall conversion cannot be computed at all. Deliberately carries no outcome flag —
+    /// pairing it with `purchase_completed` / `trial_started` on the same session yields
+    /// abandonment without coupling this view to purchase state at teardown time.
+    case paywallDismissed(source: PaywallSource)
     /// A non-authoritative client signal; server-side revenue joins remain the revenue truth.
     case purchaseCompleted(productID: AnalyticsProductID)
     case purchaseRestored
@@ -34,6 +40,14 @@ enum AnalyticsEvent: Equatable, Sendable {
     case oilAnalysisRequested
     case oilAnalysisSucceeded
     case oilAnalysisQuotaDenied(reason: OilAnalysisQuotaDeniedReason)
+    /// Sign-in funnel. Authentication is the first gate in the app — every later funnel step is
+    /// conditioned on clearing it — yet drop-off here was previously invisible. `started` fires on
+    /// real user intent (button tap), so started -> completed is a true completion rate.
+    case signInStarted(provider: AuthProvider)
+    case signInCompleted(provider: AuthProvider)
+    /// `reason` is a closed enum produced by `SignInFailureClassifier`; raw error text is never
+    /// sent, so a provider message containing an email or token cannot reach Analytics.
+    case signInFailed(provider: AuthProvider, reason: SignInFailureReason)
 
     static let v1Names = [
         "first_vehicle_added",
@@ -48,6 +62,17 @@ enum AnalyticsEvent: Equatable, Sendable {
         "oil_analysis_quota_denied"
     ]
 
+    /// Added in schema v1 (same version — these are additive events, not a breaking change to any
+    /// existing event's shape). Kept as a separate list so the v1 contract stays auditable.
+    static let activationFunnelNames = [
+        "paywall_dismissed",
+        "sign_in_started",
+        "sign_in_completed",
+        "sign_in_failed"
+    ]
+
+    static var allNames: [String] { v1Names + activationFunnelNames }
+
     /// Keeps every v1 event name and parameter definition in one audited mapping.
     var definition: AnalyticsEventDefinition {
         switch self {
@@ -61,6 +86,11 @@ enum AnalyticsEvent: Equatable, Sendable {
         case .paywallViewed(let source):
             return AnalyticsEventDefinition(
                 name: "paywall_viewed",
+                parameters: [.source(source)]
+            )
+        case .paywallDismissed(let source):
+            return AnalyticsEventDefinition(
+                name: "paywall_dismissed",
                 parameters: [.source(source)]
             )
         case .purchaseCompleted(let productID):
@@ -89,81 +119,21 @@ enum AnalyticsEvent: Equatable, Sendable {
                 name: "oil_analysis_quota_denied",
                 parameters: [.reason(reason)]
             )
-        }
-    }
-}
-
-enum PaywallSource: String, CaseIterable, Equatable, Sendable {
-    case settings
-    case garage
-    case reminders
-    case exportPDF = "export_pdf"
-    case stats
-    case themePicker = "theme_picker"
-    case attachments
-}
-
-enum AnalyticsProductID: String, CaseIterable, Equatable, Sendable {
-    case monthly = "garage_pro_monthly"
-    case annual = "garage_pro_annual"
-
-    init?(storeProductIdentifier: String) {
-        switch storeProductIdentifier {
-        case Constants.monthlyPlanIdentifier:
-            self = .monthly
-        case Constants.annualPlanIdentifier:
-            self = .annual
-        default:
-            return nil
-        }
-    }
-}
-
-enum OilAnalysisQuotaDeniedReason: String, CaseIterable, Equatable, Sendable {
-    case freeLifetimeExhausted = "free_lifetime_exhausted"
-    case proDailyExhausted = "pro_daily_exhausted"
-}
-
-struct AnalyticsEventDefinition: Equatable, Sendable {
-    let name: String
-    let parameters: [AnalyticsParameter]
-
-    init(name: String, parameters: [AnalyticsParameter] = []) {
-        self.name = name
-        self.parameters = [.schemaVersion(1)] + parameters
-    }
-
-    var firebaseParameters: [String: Any] {
-        Dictionary(uniqueKeysWithValues: parameters.map { ($0.name, $0.firebaseValue) })
-    }
-}
-
-enum AnalyticsParameter: Equatable, Sendable {
-    case schemaVersion(Int)
-    case entryType(EntryType)
-    case source(PaywallSource)
-    case productID(AnalyticsProductID)
-    case entryCount(Int)
-    case reason(OilAnalysisQuotaDeniedReason)
-
-    fileprivate var name: String {
-        switch self {
-        case .schemaVersion: return "schema_version"
-        case .entryType: return "entry_type"
-        case .source: return "source"
-        case .productID: return "product_id"
-        case .entryCount: return "entry_count"
-        case .reason: return "reason"
-        }
-    }
-
-    fileprivate var firebaseValue: Any {
-        switch self {
-        case .schemaVersion(let value), .entryCount(let value): return value
-        case .entryType(let value): return value.rawValue
-        case .source(let value): return value.rawValue
-        case .productID(let value): return value.rawValue
-        case .reason(let value): return value.rawValue
+        case .signInStarted(let provider):
+            return AnalyticsEventDefinition(
+                name: "sign_in_started",
+                parameters: [.provider(provider)]
+            )
+        case .signInCompleted(let provider):
+            return AnalyticsEventDefinition(
+                name: "sign_in_completed",
+                parameters: [.provider(provider)]
+            )
+        case .signInFailed(let provider, let reason):
+            return AnalyticsEventDefinition(
+                name: "sign_in_failed",
+                parameters: [.provider(provider), .failureReason(reason)]
+            )
         }
     }
 }

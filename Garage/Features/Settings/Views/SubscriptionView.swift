@@ -28,6 +28,7 @@ struct SubscriptionView: View {
     var body: some View {
         SubscriptionContentView(service: appState.purchaseService, source: source)
             .onAppear { appState.paywallDidAppear(source: source) }
+            .onDisappear { appState.paywallDidDismiss(source: source) }
     }
 }
 

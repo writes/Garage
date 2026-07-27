@@ -1,0 +1,125 @@
+# Analytics contract
+
+> The complete set of product events the app emits, why each exists, and the rules any new event
+> must follow. Source of truth: `Garage/Core/Services/Analytics/AnalyticsService.swift`.
+> Name stability is enforced by tests — changing a name is a breaking change to every saved
+> funnel, dashboard, and audience in Firebase.
+
+---
+
+## 1. Non-negotiable rules
+
+**Parameters are closed enums or numbers. Never strings from a caller.**
+`AnalyticsParameter` accepts only `Int` or a `RawRepresentable` enum defined in this codebase.
+This is deliberate and structural: it makes it *impossible* for a call site to pass a UID, email,
+VIN, registration, file name, or provider error message into Analytics. It is not a convention
+that reviewers must police — the type system refuses.
+
+**Every event carries `schema_version`.** Injected by `AnalyticsEventDefinition.init`, so it
+cannot be forgotten. Currently `1`.
+
+**Event names are frozen.** `v1Names` and `activationFunnelNames` are asserted verbatim in tests.
+Renaming an event silently breaks historical continuity in Firebase — old and new names do not
+join, and every funnel built on the old name reports zero without erroring.
+
+**Consent is authoritative and fails closed.** `AppState.applyProfile` drives both Analytics and
+Crashlytics from `profile.analyticsOptOut`. If persistence cannot confirm a revocation,
+`suppressCollectionForCurrentSession()` disables collection for the rest of the session.
+
+**Client revenue events are not revenue truth.** `purchase_completed` is a client signal only.
+Revenue reconciliation is server-side, via the RevenueCat webhook.
+
+---
+
+## 2. Event reference
+
+### Activation
+
+| Event | Parameters | Purpose |
+|---|---|---|
+| `first_vehicle_added` | — | First real value moment. Per-account-per-device approximation (post-insert `count == 1`). |
+| `first_entry_added` | `entry_type` | The activation event — a vehicle with no records is not an activated user. |
+
+### Sign-in funnel
+
+| Event | Parameters | Purpose |
+|---|---|---|
+| `sign_in_started` | `provider` | Fired on button tap — real user intent. |
+| `sign_in_completed` | `provider` | `started → completed` is a true completion rate. |
+| `sign_in_failed` | `provider`, `failure_reason` | Separates "changed their mind" from "app is broken". |
+
+**Why this is instrumented in `AuthViewModel`, not `AuthService`:** the Sign in with Apple flow
+completes Apple's own UI *before* `AuthService.signInWithApple` is ever called. Instrumenting
+deeper would miss every abandonment inside Apple's sheet — the largest drop-off in the funnel.
+`AuthViewModel.perform(provider:)` is the single choke point both providers pass through.
+
+`failure_reason` is produced by `SignInFailureClassifier`, a pure `Error -> enum` function. It
+exists so a cause can be reported without ever sending provider error text, which routinely
+embeds the account email or a token fragment. **`cancelled` is the expected majority and is not a
+defect** — only `configuration` reliably indicates a real bug.
+
+### Monetisation
+
+| Event | Parameters | Purpose |
+|---|---|---|
+| `paywall_viewed` | `source` | Funnel entry, attributed to the surface that triggered it. |
+| `paywall_dismissed` | `source` | Funnel exit. |
+| `purchase_completed` | `product_id` | Client signal; server is revenue truth. |
+| `purchase_restored` | — | Restore path reachability. |
+
+**Why `paywall_dismissed` had to exist.** With only `paywall_viewed`, "viewed and left" is
+indistinguishable from "viewed and is still deciding" — the funnel has no denominator exit, so
+paywall conversion is not merely inaccurate, it is *uncomputable*. It deliberately carries no
+outcome flag; abandonment is derived by joining against `purchase_completed` in the same session.
+Coupling the view's teardown to purchase state would introduce a race at exactly the moment the
+purchase is settling.
+
+### Export and AI
+
+| Event | Parameters |
+|---|---|
+| `export_csv` / `export_pdf` | `entry_count` (clamped `>= 0`) |
+| `oil_analysis_requested` / `oil_analysis_succeeded` | — |
+| `oil_analysis_quota_denied` | `reason` |
+
+---
+
+## 3. Known gaps
+
+**`trial_started` does not exist yet, and `purchase_completed` cannot substitute for it.**
+`EntitlementSnapshot` carries `isActive` / `expirationDate` / `productID` but discards
+RevenueCat's `periodType`, so a free-trial start and a paid purchase are indistinguishable to the
+client. Consequences:
+
+- Trial-start rate cannot be measured.
+- Trial-to-paid conversion — the metric the launch research identifies as decisive — cannot be
+  computed client-side at all.
+- `purchase_completed` counts are inflated by trial starts that may never convert.
+
+Fixing this means threading `periodType` through `EntitlementSnapshot`, which ripples into the
+subscription state machine and its ~100 tests. Tracked separately for that reason.
+
+**No onboarding step events.** Drop-off between install and first vehicle is invisible.
+
+---
+
+## 4. Adding an event
+
+1. Add a case to `AnalyticsEvent`.
+2. Add its mapping in `definition` — name plus typed parameters.
+3. Add the name to `activationFunnelNames` (or a new named group). Never mutate `v1Names`.
+4. If it needs a new parameter, add a case to `AnalyticsParameter` with a closed enum payload.
+   **If you find yourself wanting a `String` payload, stop** — that is the leak this design
+   prevents. Model the values as an enum instead.
+5. Extend the name-stability test.
+6. Fire it from the narrowest choke point that still sees the whole user intent.
+
+---
+
+## 5. Why funnel instrumentation was prioritised
+
+The launch research (`docs/research/2026-07-27_BRANDING_AND_LAUNCH_PLAN.md`) found that **90% of
+trial starts and 44.5% of all purchases occur on Day 0**, and **more than 90% of users churn
+within 30 days**. First-session behaviour therefore dominates the business — and none of the
+sign-in funnel or paywall exit was measurable before this contract was extended. You cannot
+optimise a funnel whose steps you do not record.
