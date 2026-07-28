@@ -76,6 +76,74 @@ extension SpeechTranscriptionService {
         interruptionObservers = []
     }
 
+    /// The recognition callback for one session generation. Explicit `self.` throughout the
+    /// nested closure: the CI toolchain (newer Swift than local) rejects implicit self after
+    /// `guard let self` when the rebinding happens inside a closure nested in another
+    /// [weak self] closure — local Xcode accepts it.
+    func makeRecognitionTask(
+        recognizer: SFSpeechRecognizer,
+        request: SFSpeechAudioBufferRecognitionRequest,
+        onUpdate: @escaping @MainActor (String) -> Void
+    ) -> SFSpeechRecognitionTask {
+        let generation = sessionGeneration
+        return recognizer.recognitionTask(with: request) { [weak self] result, error in
+            Task { @MainActor [weak self] in
+                // A callback from a superseded session must not touch current state: its late
+                // error would otherwise wake the live session's waiter with the wrong transcript.
+                guard let self, generation == self.sessionGeneration else { return }
+                if let result {
+                    self.partialTranscript = result.bestTranscription.formattedString
+                    onUpdate(self.partialTranscript)
+                    // The final result is the rescored one and includes the tail of the sentence.
+                    if result.isFinal { self.resumeFinalContinuation(with: self.partialTranscript) }
+                }
+                if error != nil {
+                    // A recognition error mid-sentence is not fatal — whatever was heard so far
+                    // is still worth offering. It must not hang the caller waiting for a final
+                    // result that will never arrive.
+                    self.resumeFinalContinuation(with: self.partialTranscript)
+                }
+            }
+        }
+    }
+
+    /// Waits for the recogniser's final result, bounded by `finalResultTimeout`.
+    ///
+    /// The `pendingFinalTranscript` check is not belt-and-braces: `endAudio()` can produce the
+    /// final result before this method gets a chance to store its continuation, and a callback
+    /// arriving with no waiter would leave the continuation stored and never resumed — hanging the
+    /// caller on a spinner forever. Recording it instead makes the race harmless in both orders.
+    func awaitFinalTranscript() async -> String {
+        if let alreadyArrived = pendingFinalTranscript {
+            pendingFinalTranscript = nil
+            return alreadyArrived
+        }
+        // On timeout the last partial is returned — exactly the old behaviour, so this path can
+        // only match it, never do worse.
+        let timeout = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.finalResultTimeout)
+            guard !Task.isCancelled, let self else { return }
+            resumeFinalContinuation(with: partialTranscript)
+        }
+        defer { timeout.cancel() }
+        return await withCheckedContinuation { continuation in
+            finalContinuation = continuation
+        }
+    }
+
+    /// A `CheckedContinuation` traps if resumed twice, and both `isFinal` and an error can arrive
+    /// for one session — so every resume goes through here and clears the stored continuation.
+    func resumeFinalContinuation(with text: String) {
+        guard let continuation = finalContinuation else {
+            // Nobody is waiting yet. Hold the result so the waiter that arrives next takes it
+            // rather than blocking on a callback that has already fired.
+            pendingFinalTranscript = text
+            return
+        }
+        finalContinuation = nil
+        continuation.resume(returning: text)
+    }
+
     func configureSession() throws {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.record, mode: .measurement, options: .duckOthers)

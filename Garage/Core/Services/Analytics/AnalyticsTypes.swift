@@ -1,12 +1,12 @@
 import Foundation
 
-/// Supporting types for the analytics contract: the closed enums every event parameter is drawn
-/// from, plus the definition/parameter plumbing.
-///
-/// Split out of AnalyticsService.swift purely for file length. The important property is that
-/// `AnalyticsParameter` admits only `Int` and enums declared here — a call site cannot pass a
-/// caller-supplied String, so a UID, email, VIN or provider error message cannot structurally
-/// reach Analytics. See docs/developer/ANALYTICS_CONTRACT.md.
+// Supporting types for the analytics contract: the closed enums every event parameter is drawn
+// from, plus the definition/parameter plumbing.
+//
+// Split out of AnalyticsService.swift purely for file length. The important property is that
+// `AnalyticsParameter` admits only `Int` and enums declared here — a call site cannot pass a
+// caller-supplied String, so a UID, email, VIN or provider error message cannot structurally
+// reach Analytics. See docs/developer/ANALYTICS_CONTRACT.md.
 
 // `reminders` was removed 2026-07-28: reminders are not Pro-gated, no surface ever presented
 // `.subscription(.reminders)`, and a dead source makes per-surface conversion LOOK complete
