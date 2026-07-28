@@ -211,9 +211,17 @@ protected-surface change and belongs in a deliberate commit rather than bundled 
 
 ## Toolchain note
 
-`.tools/bin/xcodegen` is **2.45.3**; the PATH binary is **2.45.4**. The CI regenerate-equality gate
-uses the pinned one. Regenerating with the PATH binary can fail the gate spuriously — always use
-`.tools/bin/xcodegen generate` before committing a project change.
+`.tools/bin/xcodegen` is **2.45.3**; the PATH binary is **2.45.4**, and they emit DIFFERENT
+pbxproj — 2.45.4 adds `BUNDLE_LOADER` and an `LD_RUNPATH_SEARCH_PATHS` block to the test target.
+
+**This section previously said the gate uses the pinned binary. That was wrong.**
+`scripts/ci/verify-ios.sh` runs a bare `xcodegen generate`, which resolves through PATH, so a
+project regenerated with `.tools/bin/xcodegen` fails the regenerate-equality gate every time. Use
+plain `xcodegen generate` before committing a project change.
+
+Second trap in the same gate: it compares HEAD against freshly generated output, so **any untracked
+`.swift` file under a source root fails it** — an in-progress file left on disk is picked up by
+xcodegen and reads as drift. Finish and commit it, or move it out of the tree before gating.
 
 ---
 

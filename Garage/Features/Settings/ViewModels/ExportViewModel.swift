@@ -20,25 +20,33 @@ final class ExportViewModel {
     }
     private let entryService: EntryService
     private let pdfExportService: PDFExportService
-    private let csvExportService: CSVExportService
-    private let analytics: any AnalyticsTracking
+    // `internal` (not `private`): buildCSV lives in ExportViewModel+CSVArtifact.swift.
+    let csvExportService: CSVExportService
+    // `internal` (not `private`): buildCSV tracks export_csv from the +CSVArtifact file.
+    let analytics: any AnalyticsTracking
     // A closure so tests can substitute a recorder. The DEFAULT is the real store, never a no-op:
     // a feature whose production path needs every call site to opt in is a feature that ships dead.
     private let recordReviewMoment: @MainActor (ReviewMoment) -> Void
+    private let wearFetch: @MainActor (String) async throws -> [WearItem]
+    private let warrantyFetch: @MainActor (String) async throws -> [Warranty]
+    private let recallFetch: @MainActor (String) async throws -> [Recall]
     private let pdfEntryFetch: EntryPageFetch
     // `internal` (not `private`): read by ExportViewModel+CSVArtifact.swift's appendCSVPages.
     let csvPageFetch: EntryPageFetch
-    private let csvURLFactory: () -> URL
+    // `internal` (not `private`): same reason as csvExportService above.
+    let csvURLFactory: () -> URL
     // `internal` (not `private`), matching the EntryService+Mutations split precedent:
     // ExportViewModel+PDFArtifact.swift needs these to persist/expose/discard the PDF temp file.
     let pdfURLFactory: () -> URL
-    private(set) var pdfAuthorization: PDFExportAuthorization?
+    // `internal` setter (not `private(set)`): written by buildCSV in the +CSVArtifact file.
+    var pdfAuthorization: PDFExportAuthorization?
     var pdfExportURL: URL?
     static var livePDFURLs: Set<URL> = []
     // `internal` (not `private`): written by ExportViewModel+CSVArtifact.swift's discardCSVExport.
     var csvAuthorization: ExportSessionAuthorization?
     private var observedSession: ExportSessionAuthorization?
-    private var activeExportOperationID: UUID?
+    // `internal` (not `private`): buildCSV sets this from the CSV-artifact extension file.
+    var activeExportOperationID: UUID?
     // `internal` (not `private`): tracked by ExportViewModel+CSVArtifact.swift's trackCSV/cleanupCSV.
     var activeCSVArtifact: ActiveCSVArtifact?
     private static let recordPDFExcludedSections: Set<ReportSection> = [.photoGallery, .receipts]
@@ -48,10 +56,12 @@ final class ExportViewModel {
     var selectedSections: Set<ReportSection>
     var startDate = Calendar.current.date(byAdding: .year, value: -1, to: Date.now) ?? Date.now
     var endDate = Date.now
-    private(set) var exportData: Data?
+    // `internal` setter (not `private(set)`): written by buildCSV in the +CSVArtifact file.
+    var exportData: Data?
     // `internal` (not `private(set)`): ExportViewModel+CSVArtifact.swift's discardCSVExport clears this.
     var csvExportURL: URL?
-    private(set) var error: AppError?
+    // `internal` setter (not `private(set)`): written by buildCSV in the +CSVArtifact file.
+    var error: AppError?
     var isExporting: Bool { activeExportOperationID != nil }
     init(
         entryService: EntryService = .shared,
@@ -59,6 +69,15 @@ final class ExportViewModel {
         csvExportService: CSVExportService = .shared,
         analytics: any AnalyticsTracking = AnalyticsService.shared,
         recordReviewMoment: @escaping @MainActor (ReviewMoment) -> Void = { ReviewPromptStore.shared.record($0) },
+        wearFetch: @escaping @MainActor (String) async throws -> [WearItem] = {
+            try await WearService.shared.fetchDashboard(vehicleId: $0)
+        },
+        warrantyFetch: @escaping @MainActor (String) async throws -> [Warranty] = {
+            try await WarrantyService.shared.fetchWarranties(vehicleId: $0)
+        },
+        recallFetch: @escaping @MainActor (String) async throws -> [Recall] = {
+            try await WarrantyService.shared.fetchRecalls(vehicleId: $0)
+        },
         pdfEntryFetch: EntryPageFetch? = nil,
         csvPageFetch: EntryPageFetch? = nil,
         csvURLFactory: @escaping () -> URL = {
@@ -75,6 +94,9 @@ final class ExportViewModel {
         self.csvExportService = csvExportService
         self.analytics = analytics
         self.recordReviewMoment = recordReviewMoment
+        self.wearFetch = wearFetch
+        self.warrantyFetch = warrantyFetch
+        self.recallFetch = recallFetch
         self.pdfEntryFetch = pdfEntryFetch ?? { query, limit, cursor in
             try await entryService.fetchEntries(query: query, limit: limit, after: cursor)
         }
@@ -110,72 +132,28 @@ final class ExportViewModel {
             } while cursor != nil
             let resolvedEntries = filterByDate(entries, start: windowStart, end: windowEnd)
             guard operationIsCurrent(operationID), authorization() == expectedAuthorization else { return }
-            // buildReport now renders off the main actor (detached task) and cooperatively yields
-            // across a large entry list, so it suspends here — unlike the rest of this function,
-            // the MainActor is free to run other work (a session change, a new export) while it's
-            // in flight. Land the render into a local first and re-check currency before touching
-            // any `self.` state, so a stale/cancelled operation can't resurrect exportData or
-            // persist a PDF after discardExportArtifacts() already cleared it.
+            // Wear, warranty and recall records are fetched because those sections rendered NOTHING
+            // before — the export screen offered them and ticking them changed the document by zero
+            // bytes. Failures are non-fatal: a missing warranty section is worth far less than
+            // losing the service history it sits beside.
+            async let wear = try? wearFetch(vehicle.id)
+            async let warranty = try? warrantyFetch(vehicle.id)
+            async let recall = try? recallFetch(vehicle.id)
             let renderedData = try await pdfExportService.buildReport(
-                vehicle: vehicle,
-                entries: resolvedEntries,
-                galleryPhotos: [],
-                selectedSections: selectedSections,
-                includeReceipts: false
+                vehicle: vehicle, entries: resolvedEntries, galleryPhotos: [],
+                selectedSections: selectedSections, includeReceipts: false,
+                supplements: DossierSupplements(
+                    wearItems: await wear ?? [], warranties: await warranty ?? [], recalls: await recall ?? []
+                )
             )
             guard operationIsCurrent(operationID), authorization() == expectedAuthorization else { return }
             exportData = renderedData
-            // Persisted before pdfAuthorization is set, so a write failure leaves both
-            // authorizedPDFData(for:) and authorizedPDFURL(for:) unauthorized/nil together —
-            // no half-authorized state for ExportView to render.
             try persistPDFArtifact()
             pdfAuthorization = expectedAuthorization
             analytics.track(.exportPDF(entryCount: resolvedEntries.count))
-            // The dossier is the reason to keep a service log at all — the app's peak-value moment.
             recordReviewMoment(.pdfExported)
         } catch {
             guard operationIsCurrent(operationID), authorization() == expectedAuthorization else { return }
-            self.error = AppError(from: error)
-        }
-    }
-    func buildCSV(
-        vehicle: Vehicle,
-        authorization: @MainActor () -> ExportSessionAuthorization?
-    ) async {
-        guard !isExporting else { return }
-        discardExportArtifacts()
-        guard let expectedAuthorization = authorization() else { return }
-        let operationID = UUID()
-        activeExportOperationID = operationID
-        defer { finishOperation(ifCurrent: operationID) }
-        let url = csvURLFactory()
-        do {
-            let writer = try csvExportService.makeRawExportWriter(at: url)
-            var didFinish = false
-            trackCSV(writer: writer, url: url, operationID: operationID)
-            defer {
-                if !didFinish { cleanupCSV(writer: writer, url: url, operationID: operationID) }
-            }
-            try FileManager.default.setAttributes(
-                [.protectionKey: FileProtectionType.complete], ofItemAtPath: url.path)
-            guard let entryCount = try await appendCSVPages(
-                vehicleID: vehicle.id, writer: writer, operationID: operationID,
-                expectedAuthorization: expectedAuthorization, authorization: authorization
-            ) else { return }
-            try writer.finish()
-            guard operationIsCurrent(operationID),
-                  authorization() == expectedAuthorization else { return }
-            didFinish = true
-            releaseActiveCSV(ifCurrent: operationID)
-            csvExportURL = url
-            csvAuthorization = expectedAuthorization
-            exportData = nil
-            pdfAuthorization = nil
-            analytics.track(.exportCSV(entryCount: entryCount))
-        } catch {
-            Self.removeExportFile(url)
-            guard operationIsCurrent(operationID),
-                  authorization() == expectedAuthorization else { return }
             self.error = AppError(from: error)
         }
     }

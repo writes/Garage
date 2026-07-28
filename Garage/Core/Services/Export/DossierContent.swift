@@ -17,17 +17,29 @@ import Foundation
 /// five sections the export screen offers — cost summary, wear summary, warranties, recalls,
 /// detailing, spare parts — rendered nothing at all, so ticking them changed the document by zero
 /// bytes.
+enum DossierLineStyle: Equatable, Sendable {
+    case title
+    case heading
+    case body
+    case caption
+}
+
+struct DossierLine: Equatable, Sendable {
+    let style: DossierLineStyle
+    let text: String
+}
+
+/// The records the dossier needs beyond entries. Bundled rather than passed as three more
+/// parameters so the render signature stays readable — and so adding a fifth section later is one
+/// field, not another argument threaded through three call sites.
+struct DossierSupplements: Sendable {
+    var wearItems: [WearItem] = []
+    var warranties: [Warranty] = []
+    var recalls: [Recall] = []
+}
+
 enum DossierContent {
-    struct Line: Equatable, Sendable {
-        enum Style: Equatable, Sendable {
-            case title
-            case heading
-            case body
-            case caption
-        }
-        let style: Style
-        let text: String
-    }
+    typealias Line = DossierLine
 
     // MARK: - Vehicle identity
 

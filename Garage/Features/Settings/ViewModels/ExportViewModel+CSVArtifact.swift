@@ -3,6 +3,48 @@ import Foundation
 // MARK: - CSV temp-file tracking, streaming pagination, and cleanup (split out to stay under the file cap)
 
 extension ExportViewModel {
+    func buildCSV(
+        vehicle: Vehicle,
+        authorization: @MainActor () -> ExportSessionAuthorization?
+    ) async {
+        guard !isExporting else { return }
+        discardExportArtifacts()
+        guard let expectedAuthorization = authorization() else { return }
+        let operationID = UUID()
+        activeExportOperationID = operationID
+        defer { finishOperation(ifCurrent: operationID) }
+        let url = csvURLFactory()
+        do {
+            let writer = try csvExportService.makeRawExportWriter(at: url)
+            var didFinish = false
+            trackCSV(writer: writer, url: url, operationID: operationID)
+            defer {
+                if !didFinish { cleanupCSV(writer: writer, url: url, operationID: operationID) }
+            }
+            try FileManager.default.setAttributes(
+                [.protectionKey: FileProtectionType.complete], ofItemAtPath: url.path)
+            guard let entryCount = try await appendCSVPages(
+                vehicleID: vehicle.id, writer: writer, operationID: operationID,
+                expectedAuthorization: expectedAuthorization, authorization: authorization
+            ) else { return }
+            try writer.finish()
+            guard operationIsCurrent(operationID),
+                  authorization() == expectedAuthorization else { return }
+            didFinish = true
+            releaseActiveCSV(ifCurrent: operationID)
+            csvExportURL = url
+            csvAuthorization = expectedAuthorization
+            exportData = nil
+            pdfAuthorization = nil
+            analytics.track(.exportCSV(entryCount: entryCount))
+        } catch {
+            Self.removeExportFile(url)
+            guard operationIsCurrent(operationID),
+                  authorization() == expectedAuthorization else { return }
+            self.error = AppError(from: error)
+        }
+    }
+
     func trackCSV(writer: CSVExportService.RawExportWriter, url: URL, operationID: UUID) {
         activeCSVArtifact = .init(operationID: operationID, writer: writer, url: url)
         Self.liveCSVURLs.insert(url)

@@ -27,7 +27,8 @@ final class PDFExportService {
         entries: [FirestoreEntry],
         galleryPhotos: [GalleryPhoto],
         selectedSections: Set<ReportSection>,
-        includeReceipts: Bool
+        includeReceipts: Bool,
+        supplements: DossierSupplements = .init()
     ) async throws -> Data {
         try await Task.detached(priority: .userInitiated) { @Sendable () async throws -> Data in
             try await Self.renderReport(
@@ -35,7 +36,8 @@ final class PDFExportService {
                 entries: entries,
                 galleryPhotos: galleryPhotos,
                 selectedSections: selectedSections,
-                includeReceipts: includeReceipts
+                includeReceipts: includeReceipts,
+                supplements: supplements
             )
         }.value
     }
@@ -50,14 +52,16 @@ final class PDFExportService {
         entries: [FirestoreEntry],
         galleryPhotos: [GalleryPhoto],
         selectedSections: Set<ReportSection>,
-        includeReceipts: Bool
+        includeReceipts: Bool,
+        supplements: DossierSupplements = .init()
     ) async throws -> Data {
         let document = await buildDocument(
             vehicle: vehicle,
             entries: entries,
             galleryPhotos: galleryPhotos,
             selectedSections: selectedSections,
-            includeReceipts: includeReceipts
+            includeReceipts: includeReceipts,
+                supplements: supplements
         )
         return try withTemporaryReportFile { url in
             let generator = PDFGenerator(document: document)
@@ -76,35 +80,24 @@ final class PDFExportService {
         entries: [FirestoreEntry],
         galleryPhotos: [GalleryPhoto],
         selectedSections: Set<ReportSection>,
-        includeReceipts: Bool
+        includeReceipts: Bool,
+        supplements: DossierSupplements = .init()
     ) async -> PDFDocument {
         let document = PDFDocument(format: .a4)
         if selectedSections.contains(.vehicleInfo) {
-            document.set(font: Font.boldSystemFont(ofSize: 22))
-            document.add(.contentLeft, text: vehicle.displayName)
-            document.set(font: Font.systemFont(ofSize: 12))
-            document.add(.contentLeft, text: "Current odometer: \(vehicle.currentOdometer.formatted()) mi")
+            for line in DossierContent.vehicleLines(vehicle) {
+                apply(line, to: document)
+            }
         }
 
         if selectedSections.contains(.vehicleHistoryPlaceholder) {
             document.add(.contentLeft, text: "Vehicle History: Not connected")
         }
 
-        var sinceYield = 0
-        for entry in entries where shouldInclude(entry: entry, selectedSections: selectedSections) {
-            document.add(
-                .contentLeft,
-                text: "\(entry.entryType.displayName) • \(entry.entryDate.shortDisplay)"
-            )
-            if let notes = entry.notes, notes.isNotEmpty {
-                document.add(.contentLeft, text: notes)
-            }
-            sinceYield += 1
-            if sinceYield >= entryChunkSize {
-                sinceYield = 0
-                await Task.yield()
-            }
-        }
+        await appendHistory(to: document, entries: entries, selectedSections: selectedSections)
+        appendSummaries(
+            to: document, entries: entries, selectedSections: selectedSections, supplements: supplements
+        )
 
         if selectedSections.contains(.photoGallery) && !galleryPhotos.isEmpty {
             document.add(.contentLeft, text: "Selected Gallery Photos")
@@ -115,6 +108,67 @@ final class PDFExportService {
         }
 
         return document
+    }
+
+    /// Grouped under headings instead of one undifferentiated stream. A reader looking for "every
+    /// brake service" previously had to read the whole document — the exact task a resale dossier
+    /// exists to make easy. Keeps the chunked yield so a long history cannot block.
+    nonisolated private static func appendHistory(
+        to document: PDFDocument, entries: [FirestoreEntry], selectedSections: Set<ReportSection>
+    ) async {
+        var sinceYield = 0
+        for group in DossierContent.historyGroups(entries: entries, selectedSections: selectedSections) {
+            apply(DossierLine(style: .heading, text: group.section.rawValue), to: document)
+            for entry in group.entries {
+                document.add(.contentLeft, text: DossierContent.entryLine(entry))
+                if let notes = entry.notes, notes.isNotEmpty {
+                    document.add(.contentLeft, text: notes)
+                }
+                sinceYield += 1
+                if sinceYield >= entryChunkSize {
+                    sinceYield = 0
+                    await Task.yield()
+                }
+            }
+        }
+    }
+
+    /// All four of these rendered NOTHING before — ticking them in the export screen changed the
+    /// document by zero bytes.
+    nonisolated private static func appendSummaries(
+        to document: PDFDocument,
+        entries: [FirestoreEntry],
+        selectedSections: Set<ReportSection>,
+        supplements: DossierSupplements
+    ) {
+        let now = Date.now
+        var lines: [DossierLine] = []
+        if selectedSections.contains(.costSummary) {
+            lines += DossierContent.costSummaryLines(entries: entries, now: now)
+        }
+        if selectedSections.contains(.wearSummary) {
+            lines += DossierContent.wearSummaryLines(supplements.wearItems)
+        }
+        if selectedSections.contains(.warranties) {
+            lines += DossierContent.warrantyLines(supplements.warranties, now: now)
+        }
+        if selectedSections.contains(.recalls) {
+            lines += DossierContent.recallLines(supplements.recalls)
+        }
+        for line in lines { apply(line, to: document) }
+    }
+
+    /// Maps a content line's style onto TPPDF fonts. Kept here rather than in DossierContent so
+    /// the content stays testable without importing the PDF library.
+    nonisolated private static func apply(_ line: DossierLine, to document: PDFDocument) {
+        switch line.style {
+        case .title: document.set(font: Font.boldSystemFont(ofSize: 22))
+        case .heading: document.set(font: Font.boldSystemFont(ofSize: 14))
+        case .body: document.set(font: Font.systemFont(ofSize: 12))
+        case .caption: document.set(font: Font.systemFont(ofSize: 10))
+        }
+        document.add(.contentLeft, text: line.text)
+        document.set(font: Font.systemFont(ofSize: 12))
     }
 
     nonisolated static func withTemporaryReportFile<T>(_ operation: (URL) throws -> T) throws -> T {
