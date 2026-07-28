@@ -81,8 +81,9 @@ uncomputable, and "the voice upsell converts, the oil one does not" is indisting
 reverse. They now report `voice_quick_add` and `oil_analysis`. `vehicle_limit` was added at the
 same time for the free 1-vehicle cap, which previously showed no paywall at all.
 
-The current sources are `settings`, `garage`, `reminders`, `export_pdf`, `stats`, `theme_picker`,
-`attachments`, `voice_quick_add`, `oil_analysis`, `vehicle_limit` — one per presentation site, and
+The current sources are `settings`, `garage`, `export_pdf`, `stats`, `theme_picker`,
+`attachments`, `voice_quick_add`, `oil_analysis`, `vehicle_limit` — one per presentation site
+(`reminders` was removed 2026-07-28: reminders are not Pro-gated and no surface ever fired it), and
 `everyPaywallSource_hasAMatchingDismissedEvent` iterates `allCases`, so a new source is covered the
 moment it is declared.
 | `purchase_completed` | `product_id` | Money actually committed. Client signal; server is revenue truth. |

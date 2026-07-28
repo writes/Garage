@@ -56,8 +56,19 @@ final class VoiceQuickAddViewModel {
 
     var isListening: Bool { phase == .listening }
 
+    /// Reentrancy guard (review finding): the mic button stays enabled while `.listening`, and
+    /// `finishListening` suspends for up to 1.5s awaiting the final transcript — phase is still
+    /// `.listening` that whole window, so without this a double-tap re-entered the same branch
+    /// and called the metered proposeEntry TWICE for one dictation (double daily-quota burn,
+    /// doubled funnel events). Mirrors EntryFormViewModel's `isSaving` and the service's
+    /// `isStopping` guards, which protect their own layers but not this one.
+    private var isToggling = false
+
     /// Tap the mic to start; tap again to stop and draft the entry.
     func toggle(vehicle: Vehicle?) async {
+        guard !isToggling else { return }
+        isToggling = true
+        defer { isToggling = false }
         if isListening {
             await finishListening(vehicle: vehicle)
         } else {

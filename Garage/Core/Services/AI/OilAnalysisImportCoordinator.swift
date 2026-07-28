@@ -151,12 +151,19 @@ private extension OilAnalysisImportCoordinator {
                 // catch also runs on teardown/deinit (twice for one action via the picker), so it
                 // would count lifecycle noise; abandonment = requested − all terminal events.
             } catch let error as OilAnalysisPDFPreflightError {
-                analytics.track(.oilAnalysisFailed(reason: .preflight))
+                // Gated like every other side effect here (review finding): a preflight/service
+                // error racing a user cancel must not record a phantom failure for an import
+                // the user abandoned — it would skew the documented abandonment derivation.
+                if self?.isCurrentImport(ownerID: ownerID, resultEpoch: resultEpoch) == true {
+                    analytics.track(.oilAnalysisFailed(reason: .preflight))
+                }
                 self?.publish(.inlineError(error.appError), ownerID: ownerID, resultEpoch: resultEpoch)
             } catch let error as OilAnalysisCallableError {
                 self?.publishCallableError(error, clientIsPro: clientIsPro, ownerID: ownerID, resultEpoch: resultEpoch)
             } catch {
-                analytics.track(.oilAnalysisFailed(reason: .service))
+                if self?.isCurrentImport(ownerID: ownerID, resultEpoch: resultEpoch) == true {
+                    analytics.track(.oilAnalysisFailed(reason: .service))
+                }
                 let message = AppError.unknown("Couldn't import the oil-analysis PDF. Please try again.")
                 self?.publish(.inlineError(message), ownerID: ownerID, resultEpoch: resultEpoch)
             }
