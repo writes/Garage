@@ -3,6 +3,11 @@ import Observation
 @MainActor
 @Observable
 final class StatsViewModel {
+    struct StatsContent: Sendable {
+        var entries: [FirestoreEntry]
+        var wearItems: [WearItem]
+    }
+
     /// `isPro` rides in the key alongside vehicle + revision: a Pro flip changes nothing about the
     /// vehicle's data (no bump), but the charts must still reload once entitlement unlocks them.
     /// Folding it into one struct comparison is simpler than a second "clear on isPro change" path.
@@ -16,10 +21,13 @@ final class StatsViewModel {
     private let wearService: WearService
     private let revisionStore: VehicleDataRevisionStore
     private let gateEnabled: Bool
+    /// Test seam for deterministic unit tests; production flows use the service-backed path.
+    private let contentLoader: ((String) async throws -> StatsContent)?
 
     private(set) var entries: [FirestoreEntry] = []
     private(set) var wearItems: [WearItem] = []
     private(set) var error: AppError?
+    var hasContent: Bool { !entries.isEmpty || !wearItems.isEmpty }
     private var reloadToken = 0
     private var lastLoadedKey: LoadKey?
 
@@ -27,12 +35,14 @@ final class StatsViewModel {
         entryService: EntryService = .shared,
         wearService: WearService = .shared,
         revisionStore: VehicleDataRevisionStore = .shared,
-        gateEnabled: Bool = VehicleDataRevisionStore.skipGateIsEnabled
+        gateEnabled: Bool = VehicleDataRevisionStore.skipGateIsEnabled,
+        contentLoader: ((String) async throws -> StatsContent)? = nil
     ) {
         self.entryService = entryService
         self.wearService = wearService
         self.revisionStore = revisionStore
         self.gateEnabled = gateEnabled
+        self.contentLoader = contentLoader
     }
 
     func load(vehicleId: String, isPro: Bool) async {
@@ -43,6 +53,15 @@ final class StatsViewModel {
         reloadToken &+= 1
         let token = reloadToken
         do {
+            if let contentLoader {
+                let content = try await contentLoader(vehicleId)
+                guard token == reloadToken else { return }
+                entries = content.entries
+                wearItems = content.wearItems
+                error = nil
+                lastLoadedKey = currentKey
+                return
+            }
             async let entriesTask = entryService.fetchEntries(query: EntryQuery(vehicleId: vehicleId), limit: 100)
             async let wearTask = wearService.fetchDashboard(vehicleId: vehicleId)
             let (fetchedEntries, fetchedWear) = try await (entriesTask, wearTask)
