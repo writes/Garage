@@ -27,7 +27,13 @@ final class DashboardViewModel {
     private let gateEnabled: Bool
     private let contentLoader: ((String) async throws -> DashboardContent)?
 
+    /// How far back the entry fetch reaches. The dashboard displays the newest few, but the
+    /// maintenance advisor needs enough history to find the last oil change — and a fuel-heavy
+    /// owner can log fifty fill-ups between services. One query serves both rather than two.
+    static let historyDepth = 50
+
     private(set) var recentEntries: [FirestoreEntry] = []
+    private(set) var maintenanceDue: [MaintenanceDue] = []
     private(set) var wearItems: [WearItem] = []
     private(set) var upcomingReminders: [Reminder] = []
     private(set) var openRecalls = 0
@@ -74,7 +80,7 @@ final class DashboardViewModel {
                 lastLoadedKey = currentKey
                 return
             }
-            async let entries = entryService.fetchRecent(vehicleId: vehicleId)
+            async let entries = entryService.fetchRecent(vehicleId: vehicleId, limit: Self.historyDepth)
             async let wear = wearService.fetchDashboard(vehicleId: vehicleId)
             async let reminders = reminderService.fetchUpcoming(vehicleId: vehicleId)
             async let warranties = warrantyService.fetchWarranties(vehicleId: vehicleId)
@@ -99,7 +105,14 @@ final class DashboardViewModel {
     }
 
     private func apply(_ content: DashboardContent) {
-        recentEntries = content.entries
+        // The feed shows the newest few; the fetch deliberately reaches further back for the
+        // advisor below, so slice rather than widening what the card renders.
+        recentEntries = Array(content.entries.prefix(Constants.dashboardRecentLimit))
+        maintenanceDue = MaintenanceAdvisor.attentionNeeded(
+            entries: content.entries,
+            currentOdometer: content.entries.map(\.odometerReading).max(),
+            now: .now
+        )
         wearItems = content.wearItems
         upcomingReminders = content.reminders
         hasActiveWarranty = content.warranties.contains(where: {

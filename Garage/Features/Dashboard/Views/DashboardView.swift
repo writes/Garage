@@ -29,6 +29,12 @@ struct DashboardView: View {
                         } else if let error = viewModel.error {
                             ErrorBanner(error: error, retry: { Task { await reload() } })
                         } else {
+                            // Above wear and reminders: this is the only section that says what
+                            // the car needs rather than replaying what the owner already entered.
+                            MaintenanceDueCard(
+                                items: viewModel.maintenanceDue,
+                                historyDepth: DashboardViewModel.historyDepth
+                            )
                             wearSection
                             remindersSection
                             RecentEntryFeed(entries: viewModel.recentEntries)
