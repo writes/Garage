@@ -28,7 +28,10 @@ struct StatsViewModelTests {
     }
 
     @Test func load_withWearItems_setsHasContentTrue() async {
-        let wear = WearItem(type: .tires, percentage: 0.7, rawValue: "7/32")
+        // `.tires` does not exist — front and rear axles are tracked separately, because an axle
+        // is only as good as its most worn tire. And `percentage` is a 0-100 scale: 0.7 here would
+        // have meant 0.7% of the tread remaining, not 70%.
+        let wear = WearItem(type: .frontTires, percentage: 70, rawValue: "7/32")
         let viewModel = StatsViewModel(contentLoader: { _ in
             StatsViewModel.StatsContent(entries: [], wearItems: [wear])
         })
@@ -41,7 +44,7 @@ struct StatsViewModelTests {
 
     private static func makeEntry() -> FirestoreEntry {
         let sampleOdometerReading = 1
-        FirestoreEntry(
+        return FirestoreEntry(
             id: "entry-1",
             vehicleId: "vehicle",
             userId: "user",
