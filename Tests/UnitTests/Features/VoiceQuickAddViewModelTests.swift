@@ -55,9 +55,14 @@ private let sampleProposal = VoiceEntryProposal(
 @MainActor
 private func makeViewModel(
     transcriber: FakeTranscriber,
-    service: FakeVoiceService
+    service: FakeVoiceService,
+    analytics: AnalyticsSpy = AnalyticsSpy()
 ) -> VoiceQuickAddViewModel {
-    VoiceQuickAddViewModel(transcriber: transcriber, service: service, now: { Date(timeIntervalSince1970: 0) })
+    analytics.setEnabled(true)
+    return VoiceQuickAddViewModel(
+        transcriber: transcriber, service: service, analytics: analytics,
+        now: { Date(timeIntervalSince1970: 0) }
+    )
 }
 
 @MainActor
@@ -138,5 +143,57 @@ struct VoiceQuickAddViewModelTests {
         await viewModel.toggle(vehicle: nil)
 
         #expect(viewModel.phase == .failed(.dailyExhausted(resetAt: resetAt)))
+    }
+
+    @Test func happyPathReportsTheFullFunnel() async {
+        let analytics = AnalyticsSpy()
+        let transcriber = FakeTranscriber()
+        transcriber.finalTranscript = "oil change on the viper"
+        let service = FakeVoiceService(result: .success(sampleProposal))
+        let viewModel = makeViewModel(transcriber: transcriber, service: service, analytics: analytics)
+
+        await viewModel.startListening()
+        await viewModel.toggle(vehicle: nil)
+
+        #expect(analytics.events == [.voiceCaptureStarted, .voiceProposalSucceeded(entryType: .oilChange)])
+    }
+
+    @Test func permissionDenialReportsItsFunnelReason() async {
+        let analytics = AnalyticsSpy()
+        let transcriber = FakeTranscriber()
+        transcriber.permission = .denied
+        let service = FakeVoiceService(result: .success(sampleProposal))
+        let viewModel = makeViewModel(transcriber: transcriber, service: service, analytics: analytics)
+
+        await viewModel.startListening()
+
+        #expect(analytics.events == [.voiceCaptureStarted, .voiceProposalFailed(reason: .permissionDenied)])
+    }
+
+    @Test func serviceProGateReportsItsFunnelReason() async {
+        let analytics = AnalyticsSpy()
+        let transcriber = FakeTranscriber()
+        transcriber.finalTranscript = "brake job"
+        let service = FakeVoiceService(result: .failure(VoiceCallableError.proRequired))
+        let viewModel = makeViewModel(transcriber: transcriber, service: service, analytics: analytics)
+
+        await viewModel.startListening()
+        await viewModel.toggle(vehicle: nil)
+
+        #expect(analytics.events == [.voiceCaptureStarted, .voiceProposalFailed(reason: .proRequired)])
+    }
+
+    /// Every `VoiceFailure` case must map — a new case that forgets its analytics reason would
+    /// otherwise compile only because the mapping lives in a switch the compiler exhausts.
+    @Test func everyFailureCaseHasAnAnalyticsReason() {
+        let failures: [VoiceFailure] = [
+            .permissionDenied, .proRequired, .dailyExhausted(resetAt: .distantFuture),
+            .recognizerUnavailable, .audioInputUnavailable, .emptyTranscript, .generic("x")
+        ]
+        let reasons = failures.map(\.analyticsReason)
+        #expect(reasons == [
+            .permissionDenied, .proRequired, .dailyExhausted,
+            .recognizerUnavailable, .audioInputUnavailable, .emptyTranscript, .serviceError
+        ])
     }
 }

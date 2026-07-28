@@ -49,6 +49,7 @@ extension SpeechTranscriptionService {
     /// anything already heard is still offered, since a partial entry beats none.
     func abortForAudioLoss() {
         guard audioEngine.isRunning || task != nil else { return }
+        VoiceSessionTrace.shared.mark("interrupt.abort")
         stopObservingAudioInterruptions()
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)

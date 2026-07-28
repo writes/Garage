@@ -34,6 +34,7 @@ enum VoiceFailure: Equatable {
 final class VoiceQuickAddViewModel {
     private let transcriber: any SpeechTranscribing
     private let service: any VoiceQuickAddCalling
+    private let analytics: any AnalyticsTracking
     private let now: () -> Date
 
     private(set) var phase: VoicePhase = .idle
@@ -44,10 +45,12 @@ final class VoiceQuickAddViewModel {
     init(
         transcriber: any SpeechTranscribing = SpeechTranscriptionService.shared,
         service: any VoiceQuickAddCalling = VoiceQuickAddService.shared,
+        analytics: any AnalyticsTracking = AnalyticsService.shared,
         now: @escaping () -> Date = { .now }
     ) {
         self.transcriber = transcriber
         self.service = service
+        self.analytics = analytics
         self.now = now
     }
 
@@ -65,9 +68,13 @@ final class VoiceQuickAddViewModel {
     func startListening(vehicle: Vehicle? = nil) async {
         transcript = ""
         proposal = nil
+        // Fires on mic-tap INTENT, before permission — so every failure below, including a
+        // permission denial, stays inside the started -> succeeded/failed funnel.
+        analytics.track(.voiceCaptureStarted)
+        VoiceSessionTrace.shared.mark("vm.permission")
         let permission = await transcriber.requestPermission()
         guard permission == .authorized else {
-            phase = .failed(.permissionDenied)
+            fail(.permissionDenied)
             return
         }
         do {
@@ -79,7 +86,7 @@ final class VoiceQuickAddViewModel {
                     // iOS took the mic (a call, another app, headphones unplugged). Leave the
                     // listening state rather than sitting on a mic that stopped capturing.
                     guard let self, isListening else { return }
-                    phase = .failed(.audioInputUnavailable)
+                    fail(.audioInputUnavailable)
                 },
                 onUpdate: { [weak self] text in
                     self?.transcript = text
@@ -90,9 +97,9 @@ final class VoiceQuickAddViewModel {
             // Distinct from "recognizer unavailable": the mic itself is busy or still switching
             // routes, which the user resolves differently (close the other app, unplug the
             // headset) — and which used to crash the app rather than say anything at all.
-            phase = .failed(.audioInputUnavailable)
+            fail(.audioInputUnavailable)
         } catch {
-            phase = .failed(.recognizerUnavailable)
+            fail(.recognizerUnavailable)
         }
     }
 
@@ -100,24 +107,41 @@ final class VoiceQuickAddViewModel {
         let captured = await transcriber.stopRecording().trimmed
         let text = captured.isEmpty ? transcript.trimmed : captured
         guard !text.isEmpty else {
-            phase = .failed(.emptyTranscript)
+            fail(.emptyTranscript)
             return
         }
         transcript = text
         phase = .thinking
+        VoiceSessionTrace.shared.mark("vm.propose chars=\(text.count)")
         do {
-            proposal = try await service.proposeEntry(transcript: text, vehicle: vehicle, now: now())
+            let ready = try await service.proposeEntry(transcript: text, vehicle: vehicle, now: now())
+            proposal = ready
             phase = .idle
+            analytics.track(.voiceProposalSucceeded(entryType: ready.entryType))
+            VoiceSessionTrace.shared.mark("vm.proposalReady")
         } catch let error as VoiceCallableError {
-            phase = .failed(Self.map(error))
+            fail(Self.map(error))
         } catch {
-            phase = .failed(.generic(error.localizedDescription))
+            fail(.generic(error.localizedDescription))
         }
+    }
+
+    /// Single funnel exit: every failure sets the phase, reports its closed-enum reason, and
+    /// closes the crash trace — the app is alive and showing an error, not crashing.
+    private func fail(_ failure: VoiceFailure) {
+        phase = .failed(failure)
+        analytics.track(.voiceProposalFailed(reason: failure.analyticsReason))
+        VoiceSessionTrace.shared.endCleanly()
     }
 
     /// One-shot handoff: returns the ready proposal and clears it so the view routes exactly once.
     func consumeProposal() -> VoiceEntryProposal? {
-        defer { proposal = nil }
+        defer {
+            proposal = nil
+            // The trace stays open until the view routes so a crash between "proposal ready"
+            // and the form appearing is still attributed to the voice flow.
+            VoiceSessionTrace.shared.endCleanly()
+        }
         return proposal
     }
 
@@ -125,12 +149,39 @@ final class VoiceQuickAddViewModel {
         phase = .idle
         transcript = ""
         proposal = nil
+        VoiceSessionTrace.shared.endCleanly()
+    }
+
+    /// Sheet dismissal mid-flow: stop the mic if it is live, then clear state. Without this a
+    /// dismissed sheet left the engine capturing — the red recording indicator stayed on with
+    /// no UI attached to it.
+    func abandon() async {
+        if isListening {
+            VoiceSessionTrace.shared.mark("vm.abandon")
+            _ = await transcriber.stopRecording()
+        }
+        reset()
     }
 
     private static func map(_ error: VoiceCallableError) -> VoiceFailure {
         switch error {
         case .proRequired: return .proRequired
         case .dailyExhausted(let resetAt): return .dailyExhausted(resetAt: resetAt)
+        }
+    }
+}
+
+extension VoiceFailure {
+    /// Lives next to `VoiceFailure` so adding a case here is a compile error until it maps.
+    var analyticsReason: VoiceFailureReason {
+        switch self {
+        case .permissionDenied: return .permissionDenied
+        case .proRequired: return .proRequired
+        case .dailyExhausted: return .dailyExhausted
+        case .recognizerUnavailable: return .recognizerUnavailable
+        case .audioInputUnavailable: return .audioInputUnavailable
+        case .emptyTranscript: return .emptyTranscript
+        case .generic: return .serviceError
         }
     }
 }
