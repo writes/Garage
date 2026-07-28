@@ -26,6 +26,16 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      # The runner's DEFAULT Xcode diverges from the local toolchain in both directions
+      # (it rejected main's `isolated deinit` as experimental while also being stricter about
+      # implicit self). Select the newest installed Xcode so CI tracks the toolchain the code
+      # is actually developed against; the version is echoed for the log.
+      - name: Select newest installed Xcode
+        run: |
+          set -euo pipefail
+          XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
       # Pinned, not `brew install` (unpinned = nondeterministic: brew always resolves latest).
       # Versions match the repo-local .tools/bin toolchain: xcodegen 2.45.3, swiftlint 0.63.2.
       - name: Install pinned xcodegen + swiftlint
