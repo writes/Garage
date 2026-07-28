@@ -99,9 +99,7 @@ final class OilAnalysisImportCoordinator: EntryFormMutationGating {
     }
     func cancelImport(ownerID: UUID) {
         guard case .importing(let active) = state, active.ownerID == ownerID else { return }
-        invalidate(active)
-        transition(to: .cancelling(active))
-        installWatchdog(for: active)
+        invalidate(active); transition(to: .cancelling(active)); installWatchdog(for: active)
     }
     func recoverFromQuarantinedCancellation() {
         guard case .quarantined(let active) = state else { return }
@@ -120,11 +118,15 @@ final class OilAnalysisImportCoordinator: EntryFormMutationGating {
     }
     func acceptsUserMutation(epoch: UInt64) -> Bool { epoch == mutationEpoch && !isMutationLocked }
     func beginSave() -> UInt64? { canCommitSave(epoch: mutationEpoch) ? mutationEpoch : nil }
-    func canCommitSave(epoch: UInt64) -> Bool {
-        epoch == mutationEpoch && state.allowsSave
-    }
+    func canCommitSave(epoch: UInt64) -> Bool { epoch == mutationEpoch && state.allowsSave }
 }
 private extension OilAnalysisImportCoordinator {
+    /// Gated like every sibling side effect: a failure racing a user cancel is an abandonment.
+    func trackFailureIfCurrent(_ reason: OilAnalysisFailureReason, ownerID: UUID, resultEpoch: UInt64) {
+        guard isCurrentImport(ownerID: ownerID, resultEpoch: resultEpoch) else { return }
+        analytics.track(.oilAnalysisFailed(reason: reason))
+    }
+
     private func launchImport(_ active: OilAnalysisActiveImport) {
         let ownerID = active.ownerID; let resultEpoch = active.resultEpoch; let url = active.url
         let clientIsPro = active.clientIsPro; let lease = active.lease; let preflighter = preflighter
@@ -147,23 +149,14 @@ private extension OilAnalysisImportCoordinator {
                 try Task.checkCancellation()
                 self?.publishSuccess(.init(entry: entry), ownerID: ownerID, resultEpoch: resultEpoch)
             } catch is CancellationError {
-                // Already invalidates the epoch/draft. Deliberately NOT an analytics event: this
-                // catch also runs on teardown/deinit (twice for one action via the picker), so it
-                // would count lifecycle noise; abandonment = requested − all terminal events.
+                // No analytics on purpose (runs on teardown/deinit too); abandonment is derived.
             } catch let error as OilAnalysisPDFPreflightError {
-                // Gated like every other side effect here (review finding): a preflight/service
-                // error racing a user cancel must not record a phantom failure for an import
-                // the user abandoned — it would skew the documented abandonment derivation.
-                if self?.isCurrentImport(ownerID: ownerID, resultEpoch: resultEpoch) == true {
-                    analytics.track(.oilAnalysisFailed(reason: .preflight))
-                }
+                self?.trackFailureIfCurrent(.preflight, ownerID: ownerID, resultEpoch: resultEpoch)
                 self?.publish(.inlineError(error.appError), ownerID: ownerID, resultEpoch: resultEpoch)
             } catch let error as OilAnalysisCallableError {
                 self?.publishCallableError(error, clientIsPro: clientIsPro, ownerID: ownerID, resultEpoch: resultEpoch)
             } catch {
-                if self?.isCurrentImport(ownerID: ownerID, resultEpoch: resultEpoch) == true {
-                    analytics.track(.oilAnalysisFailed(reason: .service))
-                }
+                self?.trackFailureIfCurrent(.service, ownerID: ownerID, resultEpoch: resultEpoch)
                 let message = AppError.unknown("Couldn't import the oil-analysis PDF. Please try again.")
                 self?.publish(.inlineError(message), ownerID: ownerID, resultEpoch: resultEpoch)
             }
