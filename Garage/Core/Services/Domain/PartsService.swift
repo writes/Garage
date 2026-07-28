@@ -20,7 +20,7 @@ final class PartsService {
 
         let reference = firestore.db.collection(FirestorePaths.vehicleParts(vehicleId: part.vehicleId))
             .document(part.id)
-        try await reference.setData(firestore.encode(part), merge: true)
+        firestore.writeLocalFirst(try firestore.encode(part), to: reference, context: "spare part")
         VehicleDataRevisionStore.shared.bump(vehicleId: part.vehicleId)
     }
 

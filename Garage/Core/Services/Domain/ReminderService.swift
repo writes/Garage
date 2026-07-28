@@ -54,7 +54,7 @@ final class ReminderService {
 
         let reference = firestore.db.collection(FirestorePaths.vehicleReminders(vehicleId: reminder.vehicleId))
             .document(reminder.id)
-        try await reference.setData(firestore.encode(reminder), merge: true)
+        firestore.writeLocalFirst(try firestore.encode(reminder), to: reference, context: "reminder")
         VehicleDataRevisionStore.shared.bump(vehicleId: reminder.vehicleId)
         Task { await notificationCoordinator.syncAfterSave(reminder, vehicleName: vehicleName) }
     }
@@ -106,7 +106,7 @@ final class ReminderService {
 
         let reference = firestore.db.collection(FirestorePaths.vehicleReminders(vehicleId: reminder.vehicleId))
             .document(reminder.id)
-        try await reference.delete()
+        firestore.deleteLocalFirst(reference, context: "reminder")
         VehicleDataRevisionStore.shared.bump(vehicleId: reminder.vehicleId)
         notificationCoordinator.cancel(id: reminder.id)
     }

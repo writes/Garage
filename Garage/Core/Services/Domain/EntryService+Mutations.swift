@@ -70,13 +70,19 @@ extension EntryService {
 
     private func deleteLive(_ entry: FirestoreEntry, updatingVehicle vehicle: Vehicle?) async throws {
         let dependencies = liveDependenciesProvider()
-        try await firestore.db.collection(
-            FirestorePaths.vehicleEntries(vehicleId: entry.vehicleId)
-        ).document(entry.id).delete()
+        // Local-first: awaiting this meant a swipe-delete offline hung forever, on one of the
+        // most-used paths in the app.
+        firestore.deleteLocalFirst(
+            firestore.db.collection(FirestorePaths.vehicleEntries(vehicleId: entry.vehicleId))
+                .document(entry.id),
+            context: "entry"
+        )
         if Self.shouldReconcileOdometer(afterDeleting: entry, from: vehicle) {
             let remainingMax = try await fetchLatestOdometer(vehicleId: entry.vehicleId) ?? 0
-            try await firestore.db.collection(FirestorePaths.vehicles).document(entry.vehicleId).setData(
-                ["currentOdometer": remainingMax, "updatedAt": Timestamp(date: .now)], merge: true
+            firestore.writeLocalFirst(
+                ["currentOdometer": remainingMax, "updatedAt": Timestamp(date: .now)],
+                to: firestore.db.collection(FirestorePaths.vehicles).document(entry.vehicleId),
+                context: "vehicle odometer reconcile"
             )
         }
         dependencies.bumpRevision(entry.vehicleId)

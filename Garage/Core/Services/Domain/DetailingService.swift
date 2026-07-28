@@ -20,7 +20,7 @@ final class DetailingService {
 
         let reference = firestore.db.collection(FirestorePaths.vehicleDetailing(vehicleId: record.vehicleId))
             .document(record.id)
-        try await reference.setData(firestore.encode(record), merge: true)
+        firestore.writeLocalFirst(try firestore.encode(record), to: reference, context: "detailing record")
         VehicleDataRevisionStore.shared.bump(vehicleId: record.vehicleId)
     }
 

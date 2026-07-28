@@ -22,7 +22,7 @@ final class GalleryService {
 
         let reference = firestore.db.collection(FirestorePaths.vehicleGallery(vehicleId: photo.vehicleId))
             .document(photo.id)
-        try await reference.setData(firestore.encode(photo), merge: true)
+        firestore.writeLocalFirst(try firestore.encode(photo), to: reference, context: "gallery photo")
         VehicleDataRevisionStore.shared.bump(vehicleId: photo.vehicleId)
     }
 
