@@ -12,8 +12,17 @@ struct VehicleSwitcher: View {
     var body: some View {
         Menu {
             ForEach(appState.vehicles) { vehicle in
-                Button(vehicle.displayName) {
+                Button {
                     appState.selectVehicle(vehicle)
+                } label: {
+                    // Monogram + colour, not the manufacturer emblem: those are registered
+                    // trademarks and shipping them in a paid tier is trademark use in commerce.
+                    // This also distinguishes two cars from the same marque, which an emblem cannot.
+                    Label {
+                        Text(vehicle.displayName)
+                    } icon: {
+                        VehicleBadge(vehicle: vehicle, size: 24)
+                    }
                 }
             }
             Divider()
@@ -39,7 +48,11 @@ struct VehicleSwitcher: View {
             }
         } label: {
             HStack(spacing: Theme.Spacing.sm) {
-                Image(systemName: "car.2.fill")
+                if let current = appState.currentVehicle {
+                    VehicleBadge(vehicle: current, size: 22)
+                } else {
+                    Image(systemName: "car.2.fill")
+                }
                 Text(appState.currentVehicle?.displayName ?? "Add your first vehicle")
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
