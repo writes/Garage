@@ -3,6 +3,7 @@ import SwiftUI
 struct WarrantyRecallView: View {
     @Environment(AppState.self) private var appState
     @State private var viewModel = WarrantyViewModel()
+    @State private var sheet: AddSheet?
 
     var body: some View {
         List {
@@ -46,6 +47,36 @@ struct WarrantyRecallView: View {
         }
         .navigationTitle("Warranty & Recalls")
         .task(id: appState.currentVehicle?.id) { await load() }
+        // Until now this screen had no way to create anything: WarrantyService's two save methods
+        // had zero callers, so an advertised Pro feature could only ever be empty.
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button("Add Warranty") { sheet = .warranty }
+                    Button("Add Recall") { sheet = .recall }
+                } label: {
+                    Label("Add", systemImage: "plus")
+                }
+                .disabled(appState.currentVehicle == nil)
+                .accessibilityIdentifier("warranty.add")
+            }
+        }
+        .sheet(item: $sheet) { sheet in
+            if let vehicleId = appState.currentVehicle?.id {
+                switch sheet {
+                case .warranty:
+                    WarrantyFormView(vehicleId: vehicleId) { await viewModel.add($0) }
+                case .recall:
+                    RecallFormView(vehicleId: vehicleId) { await viewModel.add($0) }
+                }
+            }
+        }
+    }
+
+    private enum AddSheet: String, Identifiable {
+        case warranty
+        case recall
+        var id: String { rawValue }
     }
 
     private func load() async {

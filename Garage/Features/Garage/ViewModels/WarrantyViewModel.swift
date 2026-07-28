@@ -32,6 +32,33 @@ final class WarrantyViewModel {
         }
     }
 
+    /// `WarrantyService.saveWarranty` and `saveRecall` shipped with zero callers, so this screen
+    /// was read-only and could never hold a record — it showed "No warranty records yet" forever.
+    /// Reloading on success is what makes the new row appear without leaving the screen.
+    func add(_ warranty: Warranty) async -> Bool {
+        await save(vehicleId: warranty.vehicleId) {
+            try await self.warrantyService.saveWarranty(warranty)
+        }
+    }
+
+    func add(_ recall: Recall) async -> Bool {
+        await save(vehicleId: recall.vehicleId) {
+            try await self.warrantyService.saveRecall(recall)
+        }
+    }
+
+    private func save(vehicleId: String, _ write: () async throws -> Void) async -> Bool {
+        do {
+            try await write()
+            error = nil
+            await load(vehicleId: vehicleId)
+            return true
+        } catch {
+            self.error = AppError(from: error)
+            return false
+        }
+    }
+
     private static func sortKey(_ warranty: Warranty) -> Date {
         warranty.expirationDate ?? warranty.coverageEnd ?? warranty.createdAt ?? .distantPast
     }
