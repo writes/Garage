@@ -72,6 +72,19 @@ defect** — only `configuration` reliably indicates a real bug.
 |---|---|---|
 | `paywall_viewed` | `source` | Funnel entry, attributed to the surface that triggered it. |
 | `paywall_dismissed` | `source` | Funnel exit. |
+
+**One source per surface — `settings` used to be three surfaces.** Voice Quick-Add
+(`VoiceQuickAddView`) and the oil-analysis PDF import (`OilAnalysisFormView`) both presented
+`.subscription(.settings)`, so their impressions landed in the same bucket as the genuine Settings
+upsell. With three surfaces sharing a source, per-surface conversion is not merely noisy — it is
+uncomputable, and "the voice upsell converts, the oil one does not" is indistinguishable from the
+reverse. They now report `voice_quick_add` and `oil_analysis`. `vehicle_limit` was added at the
+same time for the free 1-vehicle cap, which previously showed no paywall at all.
+
+The current sources are `settings`, `garage`, `reminders`, `export_pdf`, `stats`, `theme_picker`,
+`attachments`, `voice_quick_add`, `oil_analysis`, `vehicle_limit` — one per presentation site, and
+`everyPaywallSource_hasAMatchingDismissedEvent` iterates `allCases`, so a new source is covered the
+moment it is declared.
 | `purchase_completed` | `product_id` | Money actually committed. Client signal; server is revenue truth. |
 | `trial_started` | `product_id` | A purchase that opened a free trial rather than charging. |
 | `purchase_restored` | — | Restore path reachability. |

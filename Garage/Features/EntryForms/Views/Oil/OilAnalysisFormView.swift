@@ -76,7 +76,7 @@ struct OilAnalysisFormView: View {
         }
         .onChange(of: importCoordinator.outcome) { _, outcome in
             if case .showPaywall = outcome {
-                router.present(.subscription(.settings))
+                router.present(.subscription(.oilAnalysis))
             }
         }
         .onDisappear {

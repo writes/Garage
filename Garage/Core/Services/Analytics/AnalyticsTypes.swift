@@ -16,6 +16,15 @@ enum PaywallSource: String, CaseIterable, Equatable, Sendable {
     case stats
     case themePicker = "theme_picker"
     case attachments
+    /// The three below were previously reported as `settings`, which conflated genuinely distinct
+    /// upsell surfaces into one bucket. Per-surface conversion was not merely inaccurate — with
+    /// three surfaces sharing a source, it was uncomputable, so there was no way to tell whether
+    /// the voice upsell converts and the oil-analysis one does not, or the reverse.
+    case voiceQuickAdd = "voice_quick_add"
+    case oilAnalysis = "oil_analysis"
+    /// The free 1-vehicle cap. Highest-intent moment in the product: the user has already decided
+    /// they want a second car.
+    case vehicleLimit = "vehicle_limit"
 }
 
 enum AnalyticsProductID: String, CaseIterable, Equatable, Sendable {

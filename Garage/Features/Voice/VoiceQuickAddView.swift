@@ -117,7 +117,7 @@ struct VoiceQuickAddView: View {
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.Colors.textSecondary)
             PrimaryButton(title: "Upgrade to Pro") {
-                router.present(.subscription(.settings))
+                router.present(.subscription(.voiceQuickAdd))
             }
             .accessibilityIdentifier("voice.upgrade")
         }
