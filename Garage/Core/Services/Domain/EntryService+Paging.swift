@@ -53,8 +53,21 @@ extension EntryService {
     }
 
     static func cursor(document: DocumentSnapshot?, entry: FirestoreEntry?) -> EntryCursor? {
-        guard let document, let entry else { return nil }
-        return EntryCursor(document: document, entryDate: entry.entryDate, documentID: document.documentID)
+        guard let document else { return nil }
+        // Falls back to the document's raw entryDate when nothing in the page decoded. Requiring a
+        // decoded entry meant a page where every document was corrupt produced a nil cursor, which
+        // the caller reads as "no more history" — truncating the log at the corruption instead of
+        // paging past it, and defeating the point of tolerating the bad document in the first
+        // place. The date is only used by the in-memory ordering path; live paging resumes from
+        // `document`.
+        guard let entryDate = entry?.entryDate ?? rawEntryDate(document) else { return nil }
+        return EntryCursor(document: document, entryDate: entryDate, documentID: document.documentID)
+    }
+
+    /// `entryDate` is a Firestore `Timestamp` on the wire. Read directly so a document whose
+    /// *other* fields fail to decode can still position the cursor.
+    static func rawEntryDate(_ document: DocumentSnapshot) -> Date? {
+        (document.data()?["entryDate"] as? Timestamp)?.dateValue()
     }
     static func cursor(for entry: FirestoreEntry?) -> EntryCursor? {
         guard let entry else { return nil }

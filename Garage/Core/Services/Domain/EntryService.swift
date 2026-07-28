@@ -209,9 +209,8 @@ struct EntryCursor { let document: DocumentSnapshot?
         let entries = await Self.decodeTolerantly(pageDocuments, using: firestore)
         // The cursor deliberately anchors on the last DOCUMENT consumed, not the last decoded
         // entry: resuming after a skipped corrupt document is what stops paging from looping on
-        // it. If every document in a page failed to decode there is no entry to date the cursor
-        // from, so paging stops there — degraded, but loud in Crashlytics, and still far better
-        // than the previous behaviour of failing the entire fetch.
+        // it. When nothing in the page decoded, cursor(document:entry:) falls back to the
+        // document's raw entryDate so history is paged past the damage rather than truncated at it.
         let nextCursor = hasMore ? Self.cursor(document: pageDocuments.last, entry: entries.last) : nil
         return EntryPage(entries: Self.filter(entries, with: query.searchText), nextCursor: nextCursor)
     }
