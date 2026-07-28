@@ -17,6 +17,9 @@ final class EntryFormViewModel {
     // Defaults to the real store, never a no-op — see ExportViewModel for the reasoning.
     private let recordReviewMoment: @MainActor (ReviewMoment) -> Void
     private let suppressReviewPrompt: @MainActor () -> Void
+    // `internal`: called by +DetailsEncoding.swift's recordWear. A closure rather than the service
+    // so a hermetic test can capture the snapshots without touching Firestore.
+    let wearService: @MainActor ([WearSnapshot], String) async throws -> Void
     let entryAttachmentService: EntryAttachmentService
     private let syncService: SyncService
     private let userID: () -> String?
@@ -39,6 +42,10 @@ final class EntryFormViewModel {
     var lastKnownOdometer: Int?
     private(set) var isSaving = false
     private(set) var error: AppError?
+    /// The id of the entry the last successful save wrote. `pendingEntryID` is cleared on success,
+    /// so without this a form has no way to attach follow-on records (wear snapshots) to the entry
+    /// it just created.
+    private(set) var lastSavedEntryID: String?
     // `internal`: EntryFormViewModel+EditPrefill.swift's applyExistingEntry sets these four.
     var pendingEntryID: String?
     var pendingCreatedAt: Date?
@@ -63,6 +70,9 @@ final class EntryFormViewModel {
         suppressReviewPrompt: @escaping @MainActor () -> Void = {
             ReviewPromptStore.shared.suppressForSession()
         },
+        wearService: @escaping @MainActor ([WearSnapshot], String) async throws -> Void = {
+            try await WearService.shared.saveSnapshots($0, vehicleId: $1)
+        },
         firstEntryFollowUp: @escaping FirstEntryFollowUp = { operation in
             await operation()
         },
@@ -77,6 +87,7 @@ final class EntryFormViewModel {
         self.analytics = analytics
         self.recordReviewMoment = recordReviewMoment
         self.suppressReviewPrompt = suppressReviewPrompt
+        self.wearService = wearService
         self.firstEntryFollowUp = firstEntryFollowUp
         self.userID = userID
     }
@@ -164,6 +175,7 @@ final class EntryFormViewModel {
             await applyQueuedAttachmentRemovals()
 
             // These all rotate only after local acceptance completes.
+            lastSavedEntryID = entryID
             pendingEntryID = nil
             pendingCreatedAt = nil
             editingEntryID = nil

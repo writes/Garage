@@ -28,6 +28,20 @@ extension EntryFormViewModel {
         analytics.track(.firstEntryAdded(entryType: entryType))
     }
 
+    /// Persists wear readings taken alongside an entry that has already been accepted.
+    ///
+    /// Fail-soft on purpose: the entry itself is the user's record and is already saved, so a
+    /// failure here must not turn a successful save into a failed one. It costs a dashboard bar,
+    /// not data — and it is logged rather than swallowed.
+    func recordWear(_ snapshots: [WearSnapshot], vehicleId: String) async {
+        guard !snapshots.isEmpty else { return }
+        do {
+            try await wearService(snapshots, vehicleId)
+        } catch {
+            AppLogger.shared.error("Wear snapshot save failed: \(error.localizedDescription)")
+        }
+    }
+
     static func wrap(any: Any) -> AnyCodable {
         switch any {
         case let value as String:
