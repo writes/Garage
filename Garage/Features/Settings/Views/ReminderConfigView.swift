@@ -72,6 +72,36 @@ struct ReminderConfigView: View {
         }
     }
 
+    /// "Due mileage" is the form's first field and the date toggle defaults OFF, so the natural
+    /// path through this form produces a mileage-only reminder — and
+    /// `ReminderNotificationCoordinator.plan` returns nil without a `dueDate`, so nothing is ever
+    /// scheduled. The form still said "Reminder saved", meaning a user setting "Oil change at
+    /// 95,000 mi" was silently promised an alert that could never arrive.
+    ///
+    /// A local notification genuinely cannot fire on an odometer reading — the phone has no idea
+    /// when the mileage is reached — so the honest fix is to say so rather than fake it.
+    @ViewBuilder
+    private var dueDateRow: some View {
+        if viewModel.hasDueDate {
+            DatePicker(
+                "Due date", selection: $viewModel.dueDate, in: Date.now..., displayedComponents: .date
+            )
+                .datePickerStyle(.compact)
+                .accessibilityIdentifier("reminder.form.dueDate")
+        } else {
+            Text(
+                """
+                Mileage reminders appear in this list but can't send an alert — \
+                your phone has no way to know when you reach the mileage. \
+                Add a date to get a notification.
+                """
+            )
+            .font(Theme.Typography.caption)
+            .foregroundStyle(Theme.Colors.textSecondary)
+            .accessibilityIdentifier("reminder.form.mileageOnlyHint")
+        }
+    }
+
     private func newReminderSection(for vehicle: Vehicle) -> some View {
         Section("New Reminder") {
             TextField("Reminder title", text: $viewModel.title)
@@ -87,13 +117,7 @@ struct ReminderConfigView: View {
                 .focused($isEditingField)
             Toggle("Remind me on a date", isOn: $viewModel.hasDueDate)
                 .accessibilityIdentifier("reminder.form.hasDueDate")
-            if viewModel.hasDueDate {
-                DatePicker(
-                    "Due date", selection: $viewModel.dueDate, in: Date.now..., displayedComponents: .date
-                )
-                    .datePickerStyle(.compact)
-                    .accessibilityIdentifier("reminder.form.dueDate")
-            }
+            dueDateRow
             Button("Save Reminder") {
                 isEditingField = false
                 Task { didSave = await viewModel.save(vehicleId: vehicle.id, vehicleName: vehicle.displayName) }
