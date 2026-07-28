@@ -127,14 +127,16 @@ private typealias FirstEntryFollowUp = EntryFormViewModel.FirstEntryFollowUp
             result.record(await viewModel.save(
                 vehicle: vehicle, entryType: .maintenance, details: maintenanceDetails()))
         }
+        // entry_saved lands on acceptance; first_entry_added must still be gated — the ordering is the test.
+        let gated: [AnalyticsEvent] = [.entrySaved(entryType: .maintenance, isEdit: false)]
         let completedWithGateClosed = await eventually {
-            result.value != nil && gate.isStarted && gate.isClosed && analytics.events.isEmpty
+            result.value != nil && gate.isStarted && gate.isClosed && analytics.events == gated
         }
         gate.resume()
         let didDrain = await eventually { gate.isFinished && result.value != nil }
         #expect(completedWithGateClosed && result.value == true)
         #expect(didDrain && !viewModel.isSaving && viewModel.error == nil)
-        let observed = await eventually { analytics.events == [.firstEntryAdded(entryType: .maintenance)] }
+        let observed = await eventually { analytics.events == gated + [.firstEntryAdded(entryType: .maintenance)] }
         #expect(observed)
     }
     @Test func firstEntrySave_emitsTypedEventWithSchemaVersion() async {
@@ -145,9 +147,10 @@ private typealias FirstEntryFollowUp = EntryFormViewModel.FirstEntryFollowUp
             syncService: makeSyncService(), analytics: analytics, userID: { "user" })
         viewModel.odometerReading = "12100"
         let saved = await viewModel.save(vehicle: vehicle, entryType: .fuel, details: fuelDetails())
-        let observed = await eventually { analytics.events == [.firstEntryAdded(entryType: .fuel)] }
+        let observed = await eventually { analytics.events.count == 2 }
         #expect(saved && observed)
         #expect(analytics.events.map(\.definition) == [
+            AnalyticsEventDefinition(name: "entry_saved", parameters: [.entryType(.fuel), .isEdit(false)]),
             AnalyticsEventDefinition(name: "first_entry_added", parameters: [.entryType(.fuel)])])
     }
     @Test func firstEntrySave_doesNotDuplicateAcrossVehiclesInTheSameAccount() async {
@@ -161,7 +164,8 @@ private typealias FirstEntryFollowUp = EntryFormViewModel.FirstEntryFollowUp
             vehicles: [first, second], entries: [existingEntry(for: first)], tracker: analytics, gate: gate)
         let saved = await viewModel.save(vehicle: second, entryType: .maintenance, details: maintenanceDetails())
         let didDrain = await releaseAndDrain(gate)
-        #expect(saved && didDrain && analytics.events.isEmpty)
+        // entry_saved fires per save; the point here is only that first_entry_added does NOT.
+        #expect(saved && didDrain && analytics.events == [.entrySaved(entryType: .maintenance, isEdit: false)])
     }
     @Test func optOut_dropsFirstEntryEventAfterSuccessfulSave() async {
         let vehicle = testVehicle(), analytics = AnalyticsSpy(), gate = AsyncGate()
@@ -183,12 +187,11 @@ private extension EntryFormViewModelTests {
             analytics: analytics, firstEntryFollowUp: firstEntryFollowUp, userID: userID)
         viewModel.odometerReading = "12100"
         return viewModel }
-    func followUp(using gate: AsyncGate) -> FirstEntryFollowUp { { operation in await gate.run(operation) } }
     func firstEntryModel(vehicles: [Vehicle], entries: [FirestoreEntry] = [], tracker: any AnalyticsTracking,
                          gate: AsyncGate) -> EntryFormViewModel { model(
             entryService: EntryService(testEntries: entries),
             vehicleService: hermeticVehicleService(vehicles: vehicles),
-            analytics: tracker, firstEntryFollowUp: followUp(using: gate)) }
+            analytics: tracker, firstEntryFollowUp: { operation in await gate.run(operation) }) }
     func releaseAndDrain(_ gate: AsyncGate) async -> Bool {
         let didStart = await eventually { gate.isStarted }
         gate.resume()
@@ -197,7 +200,7 @@ private extension EntryFormViewModelTests {
     func makeValidationViewModel() -> EntryFormViewModel { model(
             entryService: EntryService(testEntries: []), vehicleService: hermeticVehicleService(vehicles: []),
             userID: { "test-user" }) }
-    func makeSyncService() -> SyncService { SyncService(monitorFactory: { ViewModelPassiveMonitor() }) }
+    func makeSyncService() -> SyncService { SyncService(monitorFactory: { SyncPassiveMonitor() }) }
     func hermeticVehicleService(vehicles: [Vehicle]) -> VehicleService { VehicleService(
         testVehicles: vehicles, purchaseService: PurchaseService(testIsPro: false)) }
     func testVehicle() -> Vehicle { Vehicle(
@@ -215,9 +218,6 @@ private extension EntryFormViewModelTests {
     func fuelDetails() -> FuelEntry { FuelEntry(
             gallons: 12.5, pricePerGallon: 5.22, totalCost: 65.25, stationName: "Garage Fuel",
             fuelGrade: .premium91, calculatedMPG: 20.1) } }
-@MainActor private final class ViewModelPassiveMonitor: SyncConnectivityMonitoring {
-    func start(_ handler: @escaping @MainActor @Sendable (SyncConnectivity) -> Void) {}
-    func cancel() {} }
 @MainActor private final class HoldingBatchSubmitter: AtomicBatchSubmitting {
     private(set) var writes: [AtomicBatchWrite] = []
     private var completion: (@Sendable (String?) -> Void)?; var completionWasRetained: Bool { completion != nil }

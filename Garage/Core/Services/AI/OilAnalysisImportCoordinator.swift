@@ -147,11 +147,9 @@ private extension OilAnalysisImportCoordinator {
                 try Task.checkCancellation()
                 self?.publishSuccess(.init(entry: entry), ownerID: ownerID, resultEpoch: resultEpoch)
             } catch is CancellationError {
-                // Cancellation already invalidates the result epoch and revokes the draft
-                // capability. Deliberately NOT an analytics event: this catch also runs on view
-                // teardown, deinit, and superseded imports (and can run twice for one user
-                // action), so a "cancelled" failure event would mostly count lifecycle noise.
-                // Abandonment is derivable as requested − (succeeded + failed + quota_denied).
+                // Already invalidates the epoch/draft. Deliberately NOT an analytics event: this
+                // catch also runs on teardown/deinit (twice for one action via the picker), so it
+                // would count lifecycle noise; abandonment = requested − all terminal events.
             } catch let error as OilAnalysisPDFPreflightError {
                 analytics.track(.oilAnalysisFailed(reason: .preflight))
                 self?.publish(.inlineError(error.appError), ownerID: ownerID, resultEpoch: resultEpoch)
