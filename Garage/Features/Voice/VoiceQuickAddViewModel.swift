@@ -17,6 +17,9 @@ enum VoiceFailure: Equatable {
     case dailyExhausted(resetAt: Date)
     /// The on-device recognizer could not start.
     case recognizerUnavailable
+    /// The microphone reported no usable input — busy in another app, or a route still switching.
+    /// Kept distinct from `recognizerUnavailable` because the user fixes it differently.
+    case audioInputUnavailable
     /// Nothing intelligible was captured.
     case emptyTranscript
     /// Any other failure, carrying a user-readable description.
@@ -55,11 +58,11 @@ final class VoiceQuickAddViewModel {
         if isListening {
             await finishListening(vehicle: vehicle)
         } else {
-            await startListening()
+            await startListening(vehicle: vehicle)
         }
     }
 
-    func startListening() async {
+    func startListening(vehicle: Vehicle? = nil) async {
         transcript = ""
         proposal = nil
         let permission = await transcriber.requestPermission()
@@ -68,17 +71,26 @@ final class VoiceQuickAddViewModel {
             return
         }
         do {
-            try transcriber.startRecording { [weak self] text in
+            // The user's own vehicle leads the recogniser hints — its make and model are the
+            // proper nouns most likely in the sentence and the ones no generic list can hold.
+            try transcriber.startRecording(
+                contextualStrings: SpeechVocabulary.terms(for: vehicle)
+            ) { [weak self] text in
                 self?.transcript = text
             }
             phase = .listening
+        } catch SpeechTranscriptionError.audioInputUnavailable {
+            // Distinct from "recognizer unavailable": the mic itself is busy or still switching
+            // routes, which the user resolves differently (close the other app, unplug the
+            // headset) — and which used to crash the app rather than say anything at all.
+            phase = .failed(.audioInputUnavailable)
         } catch {
             phase = .failed(.recognizerUnavailable)
         }
     }
 
     private func finishListening(vehicle: Vehicle?) async {
-        let captured = transcriber.stopRecording().trimmed
+        let captured = await transcriber.stopRecording().trimmed
         let text = captured.isEmpty ? transcript.trimmed : captured
         guard !text.isEmpty else {
             phase = .failed(.emptyTranscript)

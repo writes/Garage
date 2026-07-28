@@ -94,6 +94,8 @@ struct VoiceQuickAddView: View {
             failureText("Enable Microphone and Speech Recognition in Settings to use voice entry.")
         case .recognizerUnavailable:
             failureText("Speech recognition isn't available right now. Please try again in a moment.")
+        case .audioInputUnavailable:
+            failureText("The microphone isn't available. Close anything else using it, then try again.")
         case .emptyTranscript:
             failureText("I didn't catch that. Tap the mic and try again.")
         case .generic(let message):

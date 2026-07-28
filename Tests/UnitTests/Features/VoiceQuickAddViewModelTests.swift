@@ -13,13 +13,16 @@ private final class FakeTranscriber: SpeechTranscribing {
 
     func requestPermission() async -> SpeechPermission { permission }
 
-    func startRecording(onUpdate: @escaping @MainActor (String) -> Void) throws {
+    private(set) var receivedContextualStrings: [String] = []
+
+    func startRecording(contextualStrings: [String], onUpdate: @escaping @MainActor (String) -> Void) throws {
+        receivedContextualStrings = contextualStrings
         if let startError { throw startError }
         self.onUpdate = onUpdate
         started = true
     }
 
-    func stopRecording() -> String {
+    func stopRecording() async -> String {
         stopped = true
         return finalTranscript
     }
