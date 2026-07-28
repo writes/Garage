@@ -70,14 +70,26 @@ final class SpeechTranscriptionService: SpeechTranscribing {
     var onSessionInterrupted: (@MainActor () -> Void)?
     private var isStopping = false
 
-    func requestPermission() async -> SpeechPermission {
+    /// `nonisolated` + `@Sendable` callbacks are THE FIX for the TestFlight voice crash
+    /// (both build-3 and build-4 crash logs): inside a @MainActor type, these completion
+    /// closures otherwise INHERIT MainActor isolation, and iOS delivers them on a background
+    /// TCC/XPC queue — the runtime's isolation assertion then traps
+    /// (EXC_BREAKPOINT, dispatch_assert_queue_fail -> swift_task_checkIsolated -> closure #1
+    /// in closure #1 in requestPermission). It reproduced only on device: test doubles and
+    /// simulator TCC never deliver the callback off-main. This method touches no actor state,
+    /// so isolation was never needed.
+    nonisolated func requestPermission() async -> SpeechPermission {
         let speechStatus = await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
+            SFSpeechRecognizer.requestAuthorization { @Sendable status in
+                continuation.resume(returning: status)
+            }
         }
         guard speechStatus == .authorized else { return Self.map(speechStatus) }
 
         let micGranted = await withCheckedContinuation { continuation in
-            AVAudioApplication.requestRecordPermission { continuation.resume(returning: $0) }
+            AVAudioApplication.requestRecordPermission { @Sendable granted in
+                continuation.resume(returning: granted)
+            }
         }
         return micGranted ? .authorized : .denied
     }
