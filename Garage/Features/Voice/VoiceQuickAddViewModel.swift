@@ -74,10 +74,17 @@ final class VoiceQuickAddViewModel {
             // The user's own vehicle leads the recogniser hints — its make and model are the
             // proper nouns most likely in the sentence and the ones no generic list can hold.
             try transcriber.startRecording(
-                contextualStrings: SpeechVocabulary.terms(for: vehicle)
-            ) { [weak self] text in
-                self?.transcript = text
-            }
+                contextualStrings: SpeechVocabulary.terms(for: vehicle),
+                onInterrupted: { [weak self] in
+                    // iOS took the mic (a call, another app, headphones unplugged). Leave the
+                    // listening state rather than sitting on a mic that stopped capturing.
+                    guard let self, isListening else { return }
+                    phase = .failed(.audioInputUnavailable)
+                },
+                onUpdate: { [weak self] text in
+                    self?.transcript = text
+                }
+            )
             phase = .listening
         } catch SpeechTranscriptionError.audioInputUnavailable {
             // Distinct from "recognizer unavailable": the mic itself is busy or still switching

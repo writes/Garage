@@ -22,7 +22,11 @@ enum SpeechTranscriptionError: Error, Equatable {
 @MainActor
 protocol SpeechTranscribing: AnyObject {
     func requestPermission() async -> SpeechPermission
-    func startRecording(contextualStrings: [String], onUpdate: @escaping @MainActor (String) -> Void) throws
+    func startRecording(
+        contextualStrings: [String],
+        onInterrupted: @escaping @MainActor () -> Void,
+        onUpdate: @escaping @MainActor (String) -> Void
+    ) throws
     /// Async because the FINAL transcript does not exist yet when recording stops — see the
     /// implementation for why returning the last partial was losing the end of every sentence.
     func stopRecording() async -> String
@@ -45,13 +49,23 @@ final class SpeechTranscriptionService: SpeechTranscribing {
     /// noticeably worse, and for any other language it is simply the wrong model.
     private let recognizer = SFSpeechRecognizer(locale: .current)
         ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
-    private let audioEngine = AVAudioEngine()
-    private var request: SFSpeechAudioBufferRecognitionRequest?
-    private var task: SFSpeechRecognitionTask?
-    private var partialTranscript = ""
+    // `internal` (not `private`): the +Session extension file's abortForAudioLoss needs these.
+    let audioEngine = AVAudioEngine()
+    var request: SFSpeechAudioBufferRecognitionRequest?
+    var task: SFSpeechRecognitionTask?
+    var partialTranscript = ""
     private var finalContinuation: CheckedContinuation<String, Never>?
     /// A final result that arrived before anyone was waiting for it. See `awaitFinalTranscript`.
     private var pendingFinalTranscript: String?
+    /// Bumped by every `startRecording`. A `stopRecording` that is still suspended when a NEW
+    /// session begins must not tear that session down — it belongs to a generation that is over.
+    private var sessionGeneration = 0
+    // `internal`: registered/cleared by the +Session extension file.
+    var interruptionObservers: [NSObjectProtocol] = []
+    /// Called when iOS ends the session under us, so the UI can leave its listening state instead
+    /// of sitting on a mic that is no longer recording. Supplied per session by `startRecording`.
+    var onSessionInterrupted: (@MainActor () -> Void)?
+    private var isStopping = false
 
     func requestPermission() async -> SpeechPermission {
         let speechStatus = await withCheckedContinuation { continuation in
@@ -67,8 +81,10 @@ final class SpeechTranscriptionService: SpeechTranscribing {
 
     func startRecording(
         contextualStrings: [String] = SpeechVocabulary.automotive,
+        onInterrupted: @escaping @MainActor () -> Void = {},
         onUpdate: @escaping @MainActor (String) -> Void
     ) throws {
+        onSessionInterrupted = onInterrupted
         guard let recognizer, recognizer.isAvailable else {
             throw SpeechTranscriptionError.recognizerUnavailable
         }
@@ -77,26 +93,25 @@ final class SpeechTranscriptionService: SpeechTranscribing {
         if audioEngine.isRunning {
             audioEngine.stop()
         }
+        sessionGeneration &+= 1
+        stopObservingAudioInterruptions()
         task?.cancel()
         task = nil
         partialTranscript = ""
         resumeFinalContinuation(with: "")
         pendingFinalTranscript = nil
+        isStopping = false
 
         try configureSession()
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.shouldReportPartialResults = true
-        // Biases recognition toward the vocabulary this app actually hears. Without it "Mobil 1"
-        // comes back as "mobile one" and "rotors" as "routers", and a mis-heard part name becomes
-        // a wrong field downstream.
-        request.contextualStrings = contextualStrings
-        request.taskHint = .dictation
-        request.addsPunctuation = true
+        let request = Self.makeRequest(contextualStrings: contextualStrings)
         self.request = request
 
+        let generation = sessionGeneration
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                // A callback from a superseded session must not touch current state: its late
+                // error would otherwise wake the live session's waiter with the wrong transcript.
+                guard let self, generation == sessionGeneration else { return }
                 if let result {
                     partialTranscript = result.bestTranscription.formattedString
                     onUpdate(partialTranscript)
@@ -112,7 +127,16 @@ final class SpeechTranscriptionService: SpeechTranscribing {
             }
         }
 
-        try attachTap(feeding: request)
+        do {
+            try attachTap(feeding: request)
+        } catch {
+            // The recognition task was already started above; leaving it running on a failed
+            // audio setup leaks it and lets it fire callbacks into a session that never began.
+            task?.cancel()
+            task = nil
+            self.request = nil
+            throw error
+        }
     }
 
     /// The audio-graph half of `startRecording`, split out to stay under the body-length cap —
@@ -143,6 +167,7 @@ final class SpeechTranscriptionService: SpeechTranscribing {
         audioEngine.prepare()
         do {
             try audioEngine.start()
+            observeAudioInterruptions()
         } catch {
             // Leave nothing installed behind a failed start, or the next attempt hits the
             // double-tap crash above.
@@ -160,11 +185,21 @@ final class SpeechTranscriptionService: SpeechTranscribing {
     /// transcription available. That text is what the extraction model sees, so the loss compounds
     /// into missing fields.
     func stopRecording() async -> String {
+        // A second stop while the first is still awaiting would overwrite `finalContinuation` and
+        // orphan the first caller, hanging it forever. A double-tap on the mic button is enough.
+        guard !isStopping else { return partialTranscript }
+        isStopping = true
+        defer { isStopping = false }
+        let generation = sessionGeneration
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
         request?.endAudio()
 
         let result = await awaitFinalTranscript()
+        // If a new session started while this was suspended, everything below belongs to that
+        // session — tearing it down here would silently kill a recording the user just began.
+        guard generation == sessionGeneration else { return result }
+        stopObservingAudioInterruptions()
         task?.cancel()
         request = nil
         task = nil
@@ -199,7 +234,7 @@ final class SpeechTranscriptionService: SpeechTranscribing {
 
     /// A `CheckedContinuation` traps if resumed twice, and both `isFinal` and an error can arrive
     /// for one session — so every resume goes through here and clears the stored continuation.
-    private func resumeFinalContinuation(with text: String) {
+    func resumeFinalContinuation(with text: String) {
         guard let continuation = finalContinuation else {
             // Nobody is waiting yet. Hold the result so the waiter that arrives next takes it
             // rather than blocking on a callback that has already fired.
@@ -208,21 +243,5 @@ final class SpeechTranscriptionService: SpeechTranscribing {
         }
         finalContinuation = nil
         continuation.resume(returning: text)
-    }
-
-    private func configureSession() throws {
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.record, mode: .measurement, options: .duckOthers)
-        try session.setActive(true, options: .notifyOthersOnDeactivation)
-    }
-
-    private static func map(_ status: SFSpeechRecognizerAuthorizationStatus) -> SpeechPermission {
-        switch status {
-        case .authorized: return .authorized
-        case .denied: return .denied
-        case .restricted: return .restricted
-        case .notDetermined: return .undetermined
-        @unknown default: return .denied
-        }
     }
 }

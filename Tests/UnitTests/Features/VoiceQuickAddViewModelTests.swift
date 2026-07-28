@@ -15,7 +15,11 @@ private final class FakeTranscriber: SpeechTranscribing {
 
     private(set) var receivedContextualStrings: [String] = []
 
-    func startRecording(contextualStrings: [String], onUpdate: @escaping @MainActor (String) -> Void) throws {
+    func startRecording(
+        contextualStrings: [String],
+        onInterrupted: @escaping @MainActor () -> Void,
+        onUpdate: @escaping @MainActor (String) -> Void
+    ) throws {
         receivedContextualStrings = contextualStrings
         if let startError { throw startError }
         self.onUpdate = onUpdate
