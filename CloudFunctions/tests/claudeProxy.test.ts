@@ -12,13 +12,13 @@ const fixedNow = new Date("2026-07-10T20:00:00.000Z");
 const validPdfBase64 = Buffer.from("%PDF-1.7\n", "utf8").toString("base64");
 
 type DependencyOptions = {
-  modelText?: string;
+  modelInput?: unknown;
   now?: Date;
 };
 
 function dependencies(
   db: InMemoryFirestore,
-  { modelText = '{"labName":"Blackstone","iron":12}', now = fixedNow }: DependencyOptions = {},
+  { modelInput = { labName: "Blackstone", iron: 12 }, now = fixedNow }: DependencyOptions = {},
 ): {
   apiKey: string;
   db: InMemoryFirestore;
@@ -28,7 +28,12 @@ function dependencies(
   return {
     apiKey: "test-api-key",
     db,
-    fetchImpl: async (): Promise<Response> => new Response(JSON.stringify({ content: [{ text: modelText }] }), { status: 200 }),
+    // A forced strict tool call returns tool_use with an object the API has already validated
+    // against the schema — never free text, and never a non-object.
+    fetchImpl: async (): Promise<Response> => new Response(
+      JSON.stringify({ content: [{ type: "tool_use", name: "record_oil_analysis", input: modelInput }] }),
+      { status: 200 },
+    ),
     now: () => now,
   };
 }
@@ -261,13 +266,16 @@ describe("parseOilAnalysisRequest", () => {
 
   it("does not refund billed HTTP-OK unrecognized output for either tier", async () => {
     for (const entitlementUsed of ["free", "pro"] as const) {
-      for (const modelText of ["{}", "this is not JSON"]) {
+      // "not JSON at all" is no longer one of these: a forced strict tool call cannot return
+      // free text, so that failure mode is gone rather than handled. What remains is a
+      // schema-valid object that says nothing — still billed, so still not refunded.
+      for (const modelInput of [{}, { unrelated: "payload" }]) {
         const db = new InMemoryFirestore();
         if (entitlementUsed === "pro") {
           seedActivePro(db);
         }
 
-        await expect(parseOilAnalysisRequest(request(), dependencies(db, { modelText }))).rejects.toMatchObject({
+        await expect(parseOilAnalysisRequest(request(), dependencies(db, { modelInput }))).rejects.toMatchObject({
           code: "internal",
         });
 
@@ -303,11 +311,14 @@ describe("parseOilAnalysisRequest", () => {
     expect(sanitized.labRecommendation).toHaveLength(4_000);
   });
 
-  it("rejects empty, array, and unrelated model JSON instead of returning a hollow analysis", async () => {
-    for (const modelText of ["{}", "[]", '{"unrelated":"payload"}']) {
+  it("rejects empty and unrelated tool input instead of returning a hollow analysis", async () => {
+    // The array case that used to be here is unreachable now: `additionalProperties: false` plus a
+    // forced tool call means the API cannot hand us a non-object. Schema-valid-but-empty is the
+    // failure that survives, and it must not become a saved analysis carrying no measurements.
+    for (const modelInput of [{}, { unrelated: "payload" }]) {
       const db = new InMemoryFirestore();
 
-      await expect(parseOilAnalysisRequest(request(), dependencies(db, { modelText }))).rejects.toMatchObject({
+      await expect(parseOilAnalysisRequest(request(), dependencies(db, { modelInput }))).rejects.toMatchObject({
         code: "internal",
         message: "unrecognized analysis response",
       });
@@ -319,7 +330,7 @@ describe("parseOilAnalysisRequest", () => {
     const db = new InMemoryFirestore();
 
     const result = await parseOilAnalysisRequest(request(), dependencies(db, {
-      modelText: '{"labName":"Lab","copper":-15}',
+      modelInput: { labName: "Lab", copper: -15 },
     }));
 
     expect(result).toEqual({ labName: "Lab", copper: null });
@@ -338,45 +349,64 @@ describe("parseOilAnalysisRequest", () => {
     const db = new InMemoryFirestore();
 
     const result = await parseOilAnalysisRequest(request(), dependencies(db, {
-      modelText: '{"labName":"Lab","iron":8,"untrusted":true}',
+      modelInput: { labName: "Lab", iron: 8, untrusted: true },
     }));
 
     expect(result).toEqual({ labName: "Lab", iron: 8 });
   });
 
-  it("reads the text block when extended thinking puts a thinking block first", async () => {
-    // Extended thinking is enabled on this call, so Anthropic returns [thinking, text].
-    // Indexing content[0] yields the thinking block, which has no `text` — extraction would
-    // return undefined, surface as an HTTP-OK model-output error, and (by the refund matrix)
-    // consume the user's quota unit on every single request.
+  it("picks the most complete tool_use block when the model emits more than one", async () => {
+    // Measured against the live API: a response can carry several tool_use blocks, and the FIRST
+    // is sometimes a partial draft holding two or three fields while a later one holds the full
+    // extraction. Reading content[0] — or simply the first tool_use — silently wrote a nearly
+    // empty result into the user's vehicle record and still charged them a quota unit.
     const db = new InMemoryFirestore();
     const fetchImpl = async (): Promise<Response> =>
       new Response(
         JSON.stringify({
           content: [
-            { type: "thinking", thinking: "Checking the iron row against the lab's units." },
-            { type: "text", text: '{"labName":"Blackstone","iron":12}' },
+            { type: "tool_use", name: "record_oil_analysis", input: { labName: "Blackstone" } },
+            {
+              type: "tool_use",
+              name: "record_oil_analysis",
+              input: { labName: "Blackstone", iron: 12, copper: 4, milesOnOil: 4820 },
+            },
           ],
         }),
         { status: 200 },
       );
 
-    const result = await parseOilAnalysisRequest(request(), {
-      ...dependencies(db),
-      fetchImpl,
-    });
+    const result = await parseOilAnalysisRequest(request(), { ...dependencies(db), fetchImpl });
 
-    expect(result).toEqual({ labName: "Blackstone", iron: 12 });
+    expect(result).toEqual({ labName: "Blackstone", iron: 12, copper: 4, milesOnOil: 4820 });
     expect(db.data("usage_quotas/owner-1_lifetime")).toMatchObject({ count: 1 });
   });
 
-  it("ignores a thinking block that has no text block alongside it", async () => {
-    // A thinking-only response is a genuine model-output error and must NOT be mistaken for
-    // a successful parse just because the scan skips non-text blocks.
+  it("keeps the fuller block even when the partial one comes last", async () => {
     const db = new InMemoryFirestore();
     const fetchImpl = async (): Promise<Response> =>
       new Response(
-        JSON.stringify({ content: [{ type: "thinking", thinking: "..." }] }),
+        JSON.stringify({
+          content: [
+            { type: "tool_use", name: "record_oil_analysis", input: { labName: "Blackstone", iron: 12 } },
+            { type: "tool_use", name: "record_oil_analysis", input: { labName: "Blackstone" } },
+          ],
+        }),
+        { status: 200 },
+      );
+
+    const result = await parseOilAnalysisRequest(request(), { ...dependencies(db), fetchImpl });
+
+    expect(result).toEqual({ labName: "Blackstone", iron: 12 });
+  });
+
+  it("rejects a response carrying no tool_use block at all", async () => {
+    // A response with no tool call is a genuine model-output error and must NOT be mistaken for
+    // a successful parse just because the scan skips blocks it does not recognise.
+    const db = new InMemoryFirestore();
+    const fetchImpl = async (): Promise<Response> =>
+      new Response(
+        JSON.stringify({ content: [{ type: "text", text: '{"labName":"Blackstone"}' }] }),
         { status: 200 },
       );
 

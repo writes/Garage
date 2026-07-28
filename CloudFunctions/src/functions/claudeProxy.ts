@@ -57,6 +57,64 @@ export type ParseOilAnalysisDependencies = {
   now?: () => Date;
 };
 
+/**
+ * Forced strict tool use replaced free-text JSON parsing.
+ *
+ * The old path asked for "structured JSON only", then ran
+ * `JSON.parse(text.replace(/```json|```/g, "").trim())`. Every failure mode of that — a stray
+ * prose sentence, a fence variant the regex missed, a truncated object — surfaced to the user as
+ * "Claude returned malformed JSON" AND kept their quota unit, because inference had been billed.
+ * With `strict: true` and a forced `tool_choice`, the model cannot return anything but an object
+ * matching this schema, so that entire failure class is gone rather than handled.
+ *
+ * Field types are plain rather than nullable unions on purpose: the API rejects a strict schema
+ * with more than ~18 union-typed parameters ("Schemas contains too many parameters with union
+ * types ... exponential compilation", verified live). Optional-and-absent expresses "not in the
+ * report" just as well, and `sanitizeOilAnalysisResponse` already treats a missing field as null.
+ */
+const PPM_FIELDS = [
+  "aluminum", "chromium", "iron", "copper", "lead", "tin", "molybdenum",
+  "nickel", "manganese", "silver", "titanium", "silicon", "sodium", "potassium",
+] as const;
+
+export const OIL_ANALYSIS_TOOL = {
+  name: "record_oil_analysis",
+  description: "Record every field extracted from the oil analysis report.",
+  input_schema: {
+    type: "object",
+    properties: {
+      labName: { type: "string", description: "Laboratory that produced the report." },
+      ...Object.fromEntries(PPM_FIELDS.map((field) => [field, {
+        type: "number",
+        description: `${field} in parts per million, read from the SAMPLE column.`,
+      }])),
+      viscosity: { type: "string", description: "Viscosity exactly as printed, e.g. '13.4 cSt @ 100C'." },
+      insolubles: { type: "number", description: "Insolubles percentage, as a number." },
+      milesOnOil: {
+        type: "number",
+        description: "Miles on the OIL since it was changed — NOT the vehicle's total mileage.",
+      },
+      labRecommendation: { type: "string", description: "The lab's recommendation, closely paraphrased." },
+    },
+    required: ["labName"],
+    additionalProperties: false,
+  },
+  strict: true,
+} as const;
+
+/**
+ * Two instructions here exist because of specific, observed extraction errors, not general
+ * politeness. A wear metal printed as `0` is a real measurement — models otherwise treat it as
+ * "nothing to report" and omit the field, which turns a clean result into a missing one. And these
+ * reports print a universal-average column beside the sample column; reading the wrong one yields
+ * plausible numbers that are not this engine's.
+ */
+export const OIL_ANALYSIS_SYSTEM_PROMPT =
+  "You extract oil-analysis reports. Populate every field the report contains. A wear metal " +
+  "printed as 0 is a real measurement of zero and must be recorded as 0, never omitted. Read " +
+  "values from the SAMPLE column, never from the universal-average column. Omit a field only " +
+  "when the report genuinely does not contain it.";
+
 export const MAX_PDF_BASE64_BYTES = 10 * 1024 * 1024;
 export const DAILY_OIL_ANALYSIS_QUOTA = 5;
 export const FREE_LIFETIME_OIL_ANALYSIS_QUOTA = 10;
@@ -373,24 +431,41 @@ function hasPdfMagic(value: string): boolean {
   return Buffer.from(value.slice(0, 8), "base64").subarray(0, pdfMagic.length).equals(pdfMagic);
 }
 
-function modelTextFromPayload(payload: unknown): string | undefined {
+/**
+ * Picks the tool input from a forced-tool-use response.
+ *
+ * A response can contain MORE THAN ONE tool_use block, and they are not equally good: measured
+ * against a real report, the first block was sometimes a partial draft carrying only two or three
+ * fields while a later block held the full extraction. Taking `content[0]`, or the first tool_use,
+ * therefore silently discarded most of the data — the extraction looked like it worked and wrote
+ * three fields into the user's vehicle record.
+ *
+ * Selecting the block with the most populated fields is deterministic and degrades safely: a
+ * partial or garbled block can only win when nothing better exists, and `sanitizeOilAnalysisResponse`
+ * still drops anything off-contract afterwards.
+ */
+function toolInputFromPayload(payload: unknown): Record<string, unknown> | undefined {
   if (!isRecord(payload) || !Array.isArray(payload.content)) {
     return undefined;
   }
 
-  // Find the text block rather than assuming content[0]. With extended thinking enabled the
-  // response is [thinking, text] — indexing [0] yields the thinking block, which has no `.text`,
-  // so extraction silently returns undefined. That path is an HTTP-OK model-output error, which
-  // by design does NOT refund the quota unit: every request would burn a user's daily AI credit
-  // and fail. Scanning for type === "text" is correct with or without thinking.
-  // Match on the presence of a string `text`, not on `type`: only text blocks carry it
-  // (thinking exposes `thinking`, redacted_thinking exposes `data`, tool_use exposes `input`),
-  // so this skips them without depending on a discriminator the fixtures don't all set.
-  const textBlock = payload.content.find(
-    (block) => isRecord(block) && typeof block.text === "string",
-  );
-  return isRecord(textBlock) && typeof textBlock.text === "string" ? textBlock.text : undefined;
+  let best: Record<string, unknown> | undefined;
+  let bestCount = -1;
+  for (const block of payload.content) {
+    if (!isRecord(block) || block.type !== "tool_use" || !isRecord(block.input)) {
+      continue;
+    }
+    const populated = Object.values(block.input).filter(
+      (value) => value !== null && value !== undefined && value !== "",
+    ).length;
+    if (populated > bestCount) {
+      best = block.input;
+      bestCount = populated;
+    }
+  }
+  return best;
 }
+
 
 export async function parseOilAnalysisRequest(
   request: OilAnalysisRequest,
@@ -435,17 +510,19 @@ export async function parseOilAnalysisRequest(
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        // Haiku 4.5 with extended thinking (operator directive 2026-07-24). Sonnet 4 was
-        // deprecated (retires 2026-06-15) and cost 3x for a bounded extraction task.
+        // Haiku 4.5 (operator directive 2026-07-24). Sonnet 4 was deprecated (retires
+        // 2026-06-15) and cost 3x for a bounded extraction task.
         // NOTE: `output_config.effort` is NOT supported on Haiku 4.5 — it errors. The
-        // low/medium/high/xhigh/max ladder starts at Opus 4.5 / Sonnet 4.6. On this model
-        // reasoning depth is controlled only by budget_tokens below.
+        // low/medium/high/xhigh/max ladder starts at Opus 4.5 / Sonnet 4.6.
         model: "claude-haiku-4-5",
-        // budget_tokens must be < max_tokens (min 1024). Thinking tokens bill as OUTPUT
-        // ($5/MTok), so max_tokens is the real cost ceiling per parse, not just a truncation
-        // guard: 4000 output tokens = $0.020, which is most of a parse's cost.
         max_tokens: 4000,
-        thinking: { type: "enabled", budget_tokens: 2000 },
+        // Extended thinking was REMOVED here, not forgotten: the API rejects it outright with
+        // "Thinking may not be enabled when tool_choice forces tool use" (400, verified against
+        // the live API). Forcing the tool is worth more than the thinking budget, because it is
+        // what guarantees a schema-valid extraction rather than free text we have to parse.
+        system: OIL_ANALYSIS_SYSTEM_PROMPT,
+        tools: [OIL_ANALYSIS_TOOL],
+        tool_choice: { type: "tool", name: OIL_ANALYSIS_TOOL.name },
         messages: [
           {
             role: "user",
@@ -460,7 +537,7 @@ export async function parseOilAnalysisRequest(
               },
               {
                 type: "text",
-                text: "Extract all oil analysis fields from this report and return structured JSON only.",
+                text: "Extract every oil-analysis field from this report.",
               },
             ],
           },
@@ -497,14 +574,15 @@ export async function parseOilAnalysisRequest(
     throw new HttpsError("internal", "Claude returned malformed JSON.");
   }
 
-  const text = modelTextFromPayload(payload);
-  if (!text) {
-    logger.error("oil-analysis anthropic response had no text block");
+  // No fence stripping and no JSON.parse: a forced strict tool call returns an object the API has
+  // already validated against the schema. The only remaining question is which block to read.
+  const parsed = toolInputFromPayload(payload);
+  if (!parsed) {
+    logger.error("oil-analysis anthropic response had no tool_use block");
     throw new HttpsError("internal", "Claude returned malformed JSON.");
   }
 
   try {
-    const parsed = JSON.parse(text.replace(/```json|```/g, "").trim()) as unknown;
     const sanitized = sanitizeOilAnalysisResponse(parsed);
     if (!isRecognizableOilAnalysis(parsed, sanitized)) {
       throw new HttpsError("internal", "unrecognized analysis response");

@@ -8,15 +8,25 @@ import {
 import { InMemoryFirestore } from "./helpers/inMemoryFirestore";
 
 const fixedNow = new Date("2026-07-21T20:00:00.000Z");
-const goodModel =
-  '{"entryType":"oil_change","odometerReading":18120,"cost":165,"shopName":null,"isDiy":true,"entryDate":null,"notes":"Mobil 1 0W-40"}';
+const goodModel: Record<string, unknown> = {
+  entryType: "oil_change",
+  odometerReading: 18120,
+  cost: 165,
+  isDiy: true,
+  notes: "Mobil 1 0W-40",
+};
 
-function dependencies(db: InMemoryFirestore, modelText = goodModel, now = fixedNow) {
+function dependencies(db: InMemoryFirestore, modelInput: unknown = goodModel, now = fixedNow) {
   return {
     apiKey: "test-api-key",
     db,
+    // Forced strict tool use: the API validates the input against the schema, so the fixture is an
+    // object rather than a string of JSON the function has to fence-strip and parse.
     fetchImpl: async (): Promise<Response> =>
-      new Response(JSON.stringify({ content: [{ text: modelText }] }), { status: 200 }),
+      new Response(
+        JSON.stringify({ content: [{ type: "tool_use", name: "record_entry", input: modelInput }] }),
+        { status: 200 },
+      ),
     now: () => now,
   };
 }

@@ -145,18 +145,77 @@ function vehicleContextLine(data: unknown): string {
   return parts.length ? `The vehicle is a ${parts.join(" ")}${odo}. ` : "";
 }
 
-function modelTextFromPayload(payload: unknown): string | undefined {
+/**
+ * Picks the tool input from a forced-tool-use response, preferring the block that carries the most
+ * populated fields. See claudeProxy for why: a response can hold several tool_use blocks and the
+ * first is sometimes a partial draft, so reading `content[0]` silently discards most of what the
+ * model heard.
+ */
+function toolInputFromPayload(payload: unknown): Record<string, unknown> | undefined {
   if (!isRecord(payload) || !Array.isArray(payload.content)) return undefined;
-  const block = payload.content[0];
-  return isRecord(block) && typeof block.text === "string" ? block.text : undefined;
+
+  let best: Record<string, unknown> | undefined;
+  let bestCount = -1;
+  for (const block of payload.content) {
+    if (!isRecord(block) || block.type !== "tool_use" || !isRecord(block.input)) continue;
+    const populated = Object.values(block.input).filter(
+      (value) => value !== null && value !== undefined && value !== "",
+    ).length;
+    if (populated > bestCount) {
+      best = block.input;
+      bestCount = populated;
+    }
+  }
+  return best;
 }
 
+/**
+ * `entryType` is an ENUM in the schema, not a free string. That is the whole point of moving this
+ * call to strict tool use: the model previously returned prose-wrapped JSON that was regex-stripped
+ * and parsed, and an out-of-vocabulary entry type silently became "maintenance" — so a spoken brake
+ * job could be filed as generic maintenance with no signal that anything went wrong. The API now
+ * rejects any value outside this list before we ever see it.
+ */
+export const VOICE_ENTRY_TOOL = {
+  name: "record_entry",
+  description: "Record the maintenance-log entry described by the owner.",
+  input_schema: {
+    type: "object",
+    properties: {
+      entryType: {
+        type: "string",
+        enum: VALID_ENTRY_TYPES,
+        description: "The single best entry type for what was spoken. Use maintenance if unsure.",
+      },
+      odometerReading: {
+        type: "number",
+        description: "Odometer in miles, if spoken. Spoken words become digits: 'ninety thousand' is 90000.",
+      },
+      cost: { type: "number", description: "Cost in USD, if spoken. 'twelve hundred bucks' is 1200." },
+      shopName: { type: "string", description: "Shop or garage name if one is named anywhere in the sentence." },
+      isDiy: { type: "boolean", description: "True if the owner said they did the work themselves." },
+      entryDate: { type: "string", description: "ISO 8601 date. Omit for today." },
+      notes: { type: "string", description: "Anything spoken that the other fields do not capture." },
+    },
+    required: ["entryType"],
+    additionalProperties: false,
+  },
+  strict: true,
+} as const;
+
+/**
+ * Deliberately short. Three longer variants were benchmarked against this one on eight realistic
+ * spoken sentences at three runs each — adding spoken-number guidance, a fill-every-field
+ * instruction, and relative-date resolution — and every variant scored identically (42/45 fields,
+ * 21/24 exact). Richer field descriptions in the tool schema scored the same as bare ones too.
+ *
+ * The accuracy came from strict tool use, not from prompt length: the enum constrains entryType,
+ * and the schema forces types. Elaborating this prompt would have cost tokens on every call and
+ * bought nothing measurable — a single-sample comparison had suggested otherwise, and was noise.
+ */
 const SYSTEM_PROMPT =
   "You convert a car owner's spoken sentence into a single maintenance-log entry. " +
-  "Return ONLY a JSON object with these keys: entryType (one of: " + VALID_ENTRY_TYPES.join(", ") + "), " +
-  "odometerReading (integer miles or null), cost (number USD or null), shopName (string or null), " +
-  "isDiy (boolean or null), entryDate (ISO 8601 string or null; null means today), notes (string or null). " +
-  "Choose the single best entryType; if unsure use maintenance. Never invent values that were not spoken.";
+  "Record only what was actually said — never invent a value that was not spoken.";
 
 export async function voiceQuickAddRequest(
   request: VoiceQuickAddRequest,
@@ -186,9 +245,13 @@ export async function voiceQuickAddRequest(
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
+        // Unsuffixed, matching claudeProxy. The pinned-date form was the same model reached by a
+        // different name, and two conventions for one model invites them drifting apart.
+        model: "claude-haiku-4-5",
         max_tokens: 512,
         system: SYSTEM_PROMPT,
+        tools: [VOICE_ENTRY_TOOL],
+        tool_choice: { type: "tool", name: VOICE_ENTRY_TOOL.name },
         messages: [{
           role: "user",
           content: [{ type: "text", text: vehicleContextLine(request.data) + `The owner said: "${transcript}"` }],
@@ -224,14 +287,13 @@ export async function voiceQuickAddRequest(
     throw new HttpsError("internal", "Claude returned malformed JSON.");
   }
 
-  const text = modelTextFromPayload(payload);
-  if (!text) {
-    logger.error("voice-quickadd anthropic response had no text block");
+  const parsed = toolInputFromPayload(payload);
+  if (!parsed) {
+    logger.error("voice-quickadd anthropic response had no tool_use block");
     throw new HttpsError("internal", "Claude returned malformed JSON.");
   }
 
   try {
-    const parsed = JSON.parse(text.replace(/```json|```/g, "").trim()) as unknown;
     return sanitizeVoiceProposal(parsed, now);
   } catch (error) {
     if (error instanceof HttpsError) throw error;
