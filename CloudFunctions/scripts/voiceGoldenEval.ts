@@ -61,9 +61,11 @@ const GOLDEN: GoldenCase[] = [
     expect: { entryType: ["oil_change"], cost: 40, isDiy: true, notesContain: ["mobil 1"] },
   },
   {
+    // isDiy: null is scored here and below (review finding): a shop was named and DIY was NOT
+    // spoken, so a fabricated isDiy would be a "never invent" violation the eval must catch.
     id: "tires-brand",
     transcript: "Put four new Michelin CrossClimate 2s on at Discount Tire, twelve hundred dollars",
-    expect: { entryType: ["tire"], cost: 1200, shopName: "Discount Tire", notesContain: ["michelin"] },
+    expect: { entryType: ["tire"], cost: 1200, shopName: "Discount Tire", isDiy: null, notesContain: ["michelin"] },
   },
   {
     id: "rotation",
@@ -103,7 +105,7 @@ const GOLDEN: GoldenCase[] = [
   {
     id: "transmission",
     transcript: "Transmission fluid service at AAMCO, two hundred forty dollars, truck has one twelve thousand miles",
-    expect: { entryType: ["maintenance"], odometerReading: 112000, cost: 240, shopName: "AAMCO" },
+    expect: { entryType: ["maintenance"], odometerReading: 112000, cost: 240, shopName: "AAMCO", isDiy: null },
   },
   {
     id: "air-filter-vehicle-ctx",
@@ -124,7 +126,7 @@ const GOLDEN: GoldenCase[] = [
   {
     id: "no-invention",
     transcript: "Did some work on the car",
-    expect: { entryType: ["maintenance", "repair"], odometerReading: null, cost: null, shopName: null },
+    expect: { entryType: ["maintenance", "repair"], odometerReading: null, cost: null, shopName: null, isDiy: null },
   },
   {
     id: "spoken-decimal-odo",
