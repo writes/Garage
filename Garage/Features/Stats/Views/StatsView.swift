@@ -22,7 +22,7 @@ struct StatsView: View {
                     } else if !viewModel.hasContent {
                         EmptyStateView(
                             title: "No stats data yet",
-                            message: "Add fuel, service, or wear entries to start seeing trends here.",
+                            message: "Add fuel, maintenance, or wear entries to start seeing trends here.",
                             systemImage: "chart.line.uptrend.xyaxis"
                         )
                         .accessibilityIdentifier("stats.emptyState")

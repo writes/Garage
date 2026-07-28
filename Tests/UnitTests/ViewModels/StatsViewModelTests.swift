@@ -4,7 +4,7 @@ import Testing
 
 @MainActor
 struct StatsViewModelTests {
-    @Test func load_withNoEntriesAndNoWear_keepsNoContentState() async {
+    @Test func load_withNoEntriesAndNoWear_setsHasContentFalse() async {
         let viewModel = StatsViewModel(contentLoader: { _ in
             StatsViewModel.StatsContent(entries: [], wearItems: [])
         })
@@ -16,9 +16,9 @@ struct StatsViewModelTests {
         #expect(viewModel.wearItems.isEmpty)
     }
 
-    @Test func load_withEntries_marksHasContentTrue() async {
+    @Test func load_withEntries_setsHasContentTrue() async {
         let viewModel = StatsViewModel(contentLoader: { _ in
-            StatsViewModel.StatsContent(entries: [makeEntry()], wearItems: [])
+            StatsViewModel.StatsContent(entries: [Self.makeEntry()], wearItems: [])
         })
 
         await viewModel.load(vehicleId: "vehicle", isPro: true)
@@ -27,7 +27,7 @@ struct StatsViewModelTests {
         #expect(viewModel.entries.count == 1)
     }
 
-    @Test func load_withWearItems_marksHasContentTrue() async {
+    @Test func load_withWearItems_setsHasContentTrue() async {
         let wear = WearItem(type: .tires, percentage: 0.7, rawValue: "7/32")
         let viewModel = StatsViewModel(contentLoader: { _ in
             StatsViewModel.StatsContent(entries: [], wearItems: [wear])
@@ -39,14 +39,15 @@ struct StatsViewModelTests {
         #expect(viewModel.wearItems.count == 1)
     }
 
-    private func makeEntry() -> FirestoreEntry {
+    private static func makeEntry() -> FirestoreEntry {
+        let sampleOdometerReading = 1
         FirestoreEntry(
             id: "entry-1",
             vehicleId: "vehicle",
             userId: "user",
             entryType: .maintenance,
             entryDate: .now,
-            odometerReading: 1,
+            odometerReading: sampleOdometerReading,
             cost: nil,
             isDiy: nil,
             shopName: nil,

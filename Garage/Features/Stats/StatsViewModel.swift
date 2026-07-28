@@ -3,7 +3,7 @@ import Observation
 @MainActor
 @Observable
 final class StatsViewModel {
-    struct StatsContent {
+    struct StatsContent: Sendable {
         var entries: [FirestoreEntry]
         var wearItems: [WearItem]
     }
@@ -21,6 +21,7 @@ final class StatsViewModel {
     private let wearService: WearService
     private let revisionStore: VehicleDataRevisionStore
     private let gateEnabled: Bool
+    /// Test seam for deterministic unit tests; production flows use the service-backed path.
     private let contentLoader: ((String) async throws -> StatsContent)?
 
     private(set) var entries: [FirestoreEntry] = []
