@@ -150,7 +150,8 @@ extension SpeechTranscriptionService {
         try session.setActive(true, options: .notifyOthersOnDeactivation)
     }
 
-    static func map(_ status: SFSpeechRecognizerAuthorizationStatus) -> SpeechPermission {
+    // `nonisolated`: called from the nonisolated requestPermission (see the crash-fix note there).
+    nonisolated static func map(_ status: SFSpeechRecognizerAuthorizationStatus) -> SpeechPermission {
         switch status {
         case .authorized: return .authorized
         case .denied: return .denied
