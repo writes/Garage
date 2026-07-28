@@ -36,6 +36,40 @@ jobs:
           XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
           sudo xcode-select -s "$XCODE"
           xcodebuild -version
+      # The real GoogleService-Info.plist is a local secret and never reaches CI. Without ANY
+      # plist the test host boots unconfigured and every Firestore-touching unit test dies with
+      # FIRIllegalStateException (observed: 7 runner crash-restarts, 260 tests silently lost).
+      # A syntactically valid dummy lets FirebaseApp.configure() succeed; hermetic tests never
+      # reach the network, and UI tests run in demo mode. CI-ONLY — never bundled in releases.
+      - name: Write dummy Firebase config for hermetic tests
+        run: |
+          set -euo pipefail
+          PLIST="Garage/Resources/GoogleService-Info.plist"
+          if [ ! -f "$PLIST" ]; then
+            cat > "$PLIST" <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>GOOGLE_APP_ID</key><string>1:000000000000:ios:0000000000000000</string>
+            <key>API_KEY</key><string>AIzaSyA-ci-dummy-never-a-real-key-000000</string>
+            <key>GCM_SENDER_ID</key><string>000000000000</string>
+            <key>PROJECT_ID</key><string>ci-dummy-project</string>
+            <key>STORAGE_BUCKET</key><string>ci-dummy-project.appspot.com</string>
+            <key>BUNDLE_ID</key><string>com.writes.harrysplayhouse</string>
+            <key>CLIENT_ID</key><string>000000000000-ci0dummy.apps.googleusercontent.com</string>
+            <key>REVERSED_CLIENT_ID</key><string>com.googleusercontent.apps.000000000000-ci0dummy</string>
+            <key>IS_ADS_ENABLED</key><false/>
+            <key>IS_ANALYTICS_ENABLED</key><false/>
+            <key>IS_APPINVITE_ENABLED</key><false/>
+            <key>IS_GCM_ENABLED</key><true/>
+            <key>IS_SIGNIN_ENABLED</key><true/>
+            <key>PLIST_VERSION</key><string>1</string>
+          </dict>
+          </plist>
+          EOF
+            echo "wrote CI dummy $PLIST"
+          fi
       # Pinned, not `brew install` (unpinned = nondeterministic: brew always resolves latest).
       # Versions match the repo-local .tools/bin toolchain: xcodegen 2.45.3, swiftlint 0.63.2.
       - name: Install pinned xcodegen + swiftlint
