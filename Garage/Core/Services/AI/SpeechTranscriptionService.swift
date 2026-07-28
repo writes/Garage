@@ -91,6 +91,7 @@ final class SpeechTranscriptionService: SpeechTranscribing {
         // Idempotent restart: a second start while the engine is still running is otherwise a
         // crash, not an error.
         if audioEngine.isRunning {
+            VoiceSessionTrace.shared.mark("start.stopStaleEngine")
             audioEngine.stop()
         }
         sessionGeneration &+= 1
@@ -102,27 +103,32 @@ final class SpeechTranscriptionService: SpeechTranscribing {
         pendingFinalTranscript = nil
         isStopping = false
 
+        VoiceSessionTrace.shared.mark("start.configureSession")
         try configureSession()
         let request = Self.makeRequest(contextualStrings: contextualStrings)
         self.request = request
 
+        VoiceSessionTrace.shared.mark("start.recognitionTask")
         let generation = sessionGeneration
+        // Explicit `self.` throughout the nested closure: the CI toolchain (newer Swift than
+        // local) rejects implicit self after `guard let self` when the rebinding happens inside
+        // a closure nested in another [weak self] closure — local Xcode accepts it.
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             Task { @MainActor [weak self] in
                 // A callback from a superseded session must not touch current state: its late
                 // error would otherwise wake the live session's waiter with the wrong transcript.
-                guard let self, generation == sessionGeneration else { return }
+                guard let self, generation == self.sessionGeneration else { return }
                 if let result {
-                    partialTranscript = result.bestTranscription.formattedString
-                    onUpdate(partialTranscript)
+                    self.partialTranscript = result.bestTranscription.formattedString
+                    onUpdate(self.partialTranscript)
                     // The final result is the rescored one and includes the tail of the sentence.
-                    if result.isFinal { resumeFinalContinuation(with: partialTranscript) }
+                    if result.isFinal { self.resumeFinalContinuation(with: self.partialTranscript) }
                 }
                 if error != nil {
                     // A recognition error mid-sentence is not fatal — whatever was heard so far is
                     // still worth offering. It must not hang the caller waiting for a final result
                     // that will never arrive.
-                    resumeFinalContinuation(with: partialTranscript)
+                    self.resumeFinalContinuation(with: self.partialTranscript)
                 }
             }
         }
@@ -142,6 +148,7 @@ final class SpeechTranscriptionService: SpeechTranscribing {
     /// The audio-graph half of `startRecording`, split out to stay under the body-length cap —
     /// and because both uncatchable-crash guards live here, which makes them easier to find.
     private func attachTap(feeding request: SFSpeechAudioBufferRecognitionRequest) throws {
+        VoiceSessionTrace.shared.mark("tap.inputNode")
         let inputNode = audioEngine.inputNode
         // Remove any tap left by a previous session BEFORE installing. Installing a second tap on
         // a bus that already has one raises "required condition is false: nullptr == Tap()" — an
@@ -161,13 +168,18 @@ final class SpeechTranscriptionService: SpeechTranscribing {
             throw SpeechTranscriptionError.audioInputUnavailable
         }
 
+        // The sample rate and channel count are the two values the uncatchable installTap
+        // exceptions are about, so the trace carries them.
+        VoiceSessionTrace.shared.mark("tap.install sr=\(Int(format.sampleRate)) ch=\(format.channelCount)")
         inputNode.installTap(onBus: 0, bufferSize: 1_024, format: format) { buffer, _ in
             request.append(buffer)
         }
         audioEngine.prepare()
+        VoiceSessionTrace.shared.mark("engine.start")
         do {
             try audioEngine.start()
             observeAudioInterruptions()
+            VoiceSessionTrace.shared.mark("engine.running")
         } catch {
             // Leave nothing installed behind a failed start, or the next attempt hits the
             // double-tap crash above.
@@ -191,10 +203,13 @@ final class SpeechTranscriptionService: SpeechTranscribing {
         isStopping = true
         defer { isStopping = false }
         let generation = sessionGeneration
+        VoiceSessionTrace.shared.mark("stop.engine")
         audioEngine.stop()
+        VoiceSessionTrace.shared.mark("stop.removeTap")
         audioEngine.inputNode.removeTap(onBus: 0)
         request?.endAudio()
 
+        VoiceSessionTrace.shared.mark("stop.awaitFinal")
         let result = await awaitFinalTranscript()
         // If a new session started while this was suspended, everything below belongs to that
         // session — tearing it down here would silently kill a recording the user just began.
@@ -205,6 +220,7 @@ final class SpeechTranscriptionService: SpeechTranscribing {
         task = nil
         pendingFinalTranscript = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        VoiceSessionTrace.shared.mark("stop.done")
         return result
     }
 

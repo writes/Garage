@@ -20,6 +20,9 @@ struct VoiceQuickAddView: View {
                 router.presentVoicePrefilledForm(ready)
             }
         }
+        .onDisappear {
+            Task { await viewModel.abandon() }
+        }
     }
 
     private var proContent: some View {
