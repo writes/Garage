@@ -15,10 +15,15 @@ final class WarrantyService {
     /// "No warranty records yet" immediately after the user added one, which is the app lying
     /// about the user's own action. Matches the entry/vehicle/reminder overlay precedent.
     func saveWarranty(_ warranty: Warranty) async throws {
+        // DemoSessionStore is `#if DEBUG` — the Release archive cannot see it, which is what the
+        // regenerate-and-archive gate caught. The guard below preserves the old Release behaviour.
+#if DEBUG
         if AppRuntime.isLocalDemoMode {
             DemoSessionStore.shared.save(warranty)
             return
         }
+#endif
+        guard !AppRuntime.isLocalDemoMode else { return }
 
         let reference = firestore.db.collection(FirestorePaths.vehicleWarranties(vehicleId: warranty.vehicleId))
             .document(warranty.id)
@@ -27,8 +32,13 @@ final class WarrantyService {
     }
 
     func fetchWarranties(vehicleId: String) async throws -> [Warranty] {
+#if DEBUG
         if AppRuntime.isLocalDemoMode {
             return DemoSessionStore.shared.warranties(for: vehicleId)
+        }
+#endif
+        if AppRuntime.isLocalDemoMode {
+            return SeedData.warranties(for: vehicleId)
         }
 
         let snapshot = try await firestore.db.collection(FirestorePaths.vehicleWarranties(vehicleId: vehicleId))
@@ -42,10 +52,13 @@ final class WarrantyService {
 
     /// See saveWarranty: demo writes persist to the overlay instead of being silently discarded.
     func saveRecall(_ recall: Recall) async throws {
+#if DEBUG
         if AppRuntime.isLocalDemoMode {
             DemoSessionStore.shared.save(recall)
             return
         }
+#endif
+        guard !AppRuntime.isLocalDemoMode else { return }
 
         let reference = firestore.db.collection(FirestorePaths.vehicleRecalls(vehicleId: recall.vehicleId))
             .document(recall.id)
@@ -54,8 +67,13 @@ final class WarrantyService {
     }
 
     func fetchRecalls(vehicleId: String) async throws -> [Recall] {
+#if DEBUG
         if AppRuntime.isLocalDemoMode {
             return DemoSessionStore.shared.recalls(for: vehicleId)
+        }
+#endif
+        if AppRuntime.isLocalDemoMode {
+            return SeedData.recalls(for: vehicleId)
         }
 
         let snapshot = try await firestore.db.collection(FirestorePaths.vehicleRecalls(vehicleId: vehicleId))
