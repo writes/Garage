@@ -47,6 +47,16 @@ struct DashboardView: View {
                 guard selectedTab == .dashboard else { return }
                 Task { await reload() }
             }
+            // The FAB opens the entry form as a sheet on ContentView, so saving from the Dashboard
+            // tab changes neither the vehicle id nor the selected tab — nothing above fires, and
+            // the user's first entry appeared to vanish: hero odometer, wear, reminders and Recent
+            // activity all stayed as they were. LogView has carried this exact modifier all along.
+            // Safe on every dismissal (including a cancel or the paywall) because loadDashboard is
+            // revision-gated, so a dismissal with no write behind it is a no-op.
+            .onChange(of: router.activeSheet) { _, activeSheet in
+                guard activeSheet == nil else { return }
+                Task { await reload() }
+            }
         }
     }
 
