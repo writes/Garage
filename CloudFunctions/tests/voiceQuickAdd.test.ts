@@ -185,4 +185,40 @@ describe("sanitizeVoiceProposal", () => {
   it("has a positive transcript ceiling", () => {
     expect(MAX_TRANSCRIPT_CHARS).toBeGreaterThan(0);
   });
+
+  // Pins the accuracy-bearing request shape (golden eval: 77.4% -> 97.8%; see SYSTEM_PROMPT).
+  // If the few-shot example, the anchored date line, or the message order regresses, this fails
+  // before the golden eval ever has to be paid for.
+  it("sends the few-shot example and an anchored date line computed from now", async () => {
+    const db = new InMemoryFirestore();
+    seedActivePro(db);
+    const deps = dependencies(db);
+    let captured: Record<string, unknown> | undefined;
+    deps.fetchImpl = async (_url: unknown, init?: { body?: unknown }): Promise<Response> => {
+      captured = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(
+        JSON.stringify({ content: [{ type: "tool_use", name: "record_entry", input: goodModel }] }),
+        { status: 200 },
+      );
+    };
+
+    await voiceQuickAddRequest(request(), deps);
+
+    expect(captured).toBeDefined();
+    const system = String(captured?.system);
+    // fixedNow (2026-07-21) is a Tuesday; the line must anchor weekdays, not just name today.
+    expect(system).toContain("Today is Tuesday 2026-07-21");
+    expect(system).toContain("Monday was 2026-07-20");
+    const messages = captured?.messages as Array<Record<string, unknown>>;
+    expect(messages).toHaveLength(4);
+    expect(messages[0].role).toBe("user");
+    expect(messages[1].role).toBe("assistant");
+    const example = (messages[1].content as Array<Record<string, unknown>>)[0]
+      .input as Record<string, unknown>;
+    // The example's "last Wednesday" must track the injected clock, never a hardcoded date.
+    expect(example.entryDate).toBe("2026-07-15");
+    expect(example.cost).toBe(650);
+    const final = (messages[3].content as Array<Record<string, unknown>>)[0];
+    expect(String(final.text)).toContain("changed the oil on the viper");
+  });
 });

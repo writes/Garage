@@ -1,0 +1,1293 @@
+{
+ "variant": "system-date",
+ "runs": 2,
+ "now": "2026-07-28T17:00:00.000Z",
+ "pass": 101,
+ "total": 124,
+ "results": [
+  {
+   "id": "oil-basic",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "oil_change",
+     "got": "oil_change",
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 92000,
+     "got": 92000,
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 65,
+     "got": 65,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Jiffy Lube",
+     "got": "Jiffy Lube",
+     "pass": true
+    },
+    {
+     "field": "isDiy",
+     "expected": null,
+     "got": null,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "oil_change",
+    "odometerReading": 92000,
+    "cost": 65,
+    "shopName": "Jiffy Lube",
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null
+   }
+  },
+  {
+   "id": "oil-basic",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "oil_change",
+     "got": "oil_change",
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 92000,
+     "got": 92000,
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 65,
+     "got": 65,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Jiffy Lube",
+     "got": "Jiffy Lube",
+     "pass": true
+    },
+    {
+     "field": "isDiy",
+     "expected": null,
+     "got": null,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "oil_change",
+    "odometerReading": 92000,
+    "cost": 65,
+    "shopName": "Jiffy Lube",
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null
+   }
+  },
+  {
+   "id": "oil-diy-weight",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "oil_change",
+     "got": "oil_change",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 40,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "notes~mobil 1",
+     "expected": "mobil 1",
+     "got": "Mobil 1 0W20, 5 quarts",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "oil_change",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": "Mobil 1 0W20, 5 quarts"
+   }
+  },
+  {
+   "id": "oil-diy-weight",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "oil_change",
+     "got": "oil_change",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 40,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "notes~mobil 1",
+     "expected": "mobil 1",
+     "got": "Mobil 1 0W-20, 5 quarts",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "oil_change",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": "Mobil 1 0W-20, 5 quarts"
+   }
+  },
+  {
+   "id": "tires-brand",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "tire",
+     "got": "tire",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 1200,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "shopName",
+     "expected": "Discount Tire",
+     "got": "Discount Tire",
+     "pass": true
+    },
+    {
+     "field": "notes~michelin",
+     "expected": "michelin",
+     "got": "Four new Michelin CrossClimate 2s installed",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "tire",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": "Discount Tire",
+    "isDiy": null,
+    "entryDate": null,
+    "notes": "Four new Michelin CrossClimate 2s installed"
+   }
+  },
+  {
+   "id": "tires-brand",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "tire",
+     "got": "tire",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 1200,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "shopName",
+     "expected": "Discount Tire",
+     "got": "Discount Tire",
+     "pass": true
+    },
+    {
+     "field": "notes~michelin",
+     "expected": "michelin",
+     "got": "Put four new Michelin CrossClimate 2s on",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "tire",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": "Discount Tire",
+    "isDiy": null,
+    "entryDate": null,
+    "notes": "Put four new Michelin CrossClimate 2s on"
+   }
+  },
+  {
+   "id": "rotation",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "tire|maintenance",
+     "got": "tire",
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 103500,
+     "got": 103500,
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": null,
+     "got": null,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "tire",
+    "odometerReading": 103500,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": "Tire rotation"
+   }
+  },
+  {
+   "id": "rotation",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "tire|maintenance",
+     "got": "tire",
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 103500,
+     "got": 103500,
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": null,
+     "got": null,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "tire",
+    "odometerReading": 103500,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": "Tire rotation"
+   }
+  },
+  {
+   "id": "brakes-shop",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "brake",
+     "got": "brake",
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 88450,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "cost",
+     "expected": 487,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "shopName",
+     "expected": "Midas",
+     "got": "Midas",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "brake",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": "Midas",
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null
+   }
+  },
+  {
+   "id": "brakes-shop",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "brake",
+     "got": "brake",
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 88450,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "cost",
+     "expected": 487,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "shopName",
+     "expected": "Midas",
+     "got": "Midas",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "brake",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": "Midas",
+    "isDiy": null,
+    "entryDate": null,
+    "notes": "Front brake pads and rotors"
+   }
+  },
+  {
+   "id": "fuel",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "fuel",
+     "got": "fuel",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 52,
+     "got": 52,
+     "pass": true
+    },
+    {
+     "field": "notes~13.2",
+     "expected": "13.2",
+     "got": "Filled up, thirteen point two gallons",
+     "pass": false
+    }
+   ],
+   "raw": {
+    "entryType": "fuel",
+    "odometerReading": null,
+    "cost": 52,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": "Filled up, thirteen point two gallons"
+   }
+  },
+  {
+   "id": "fuel",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "fuel",
+     "got": "fuel",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 52,
+     "got": 52,
+     "pass": true
+    },
+    {
+     "field": "notes~13.2",
+     "expected": "13.2",
+     "got": "Filled up, thirteen point two gallons",
+     "pass": false
+    }
+   ],
+   "raw": {
+    "entryType": "fuel",
+    "odometerReading": null,
+    "cost": 52,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": "Filled up, thirteen point two gallons"
+   }
+  },
+  {
+   "id": "date-yesterday",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 140,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-27",
+     "got": "2026-07-27",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": "2026-07-27T00:00:00.000Z",
+    "notes": "Coolant flush"
+   }
+  },
+  {
+   "id": "date-yesterday",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 140,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-27",
+     "got": "2026-07-27",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": "2026-07-27T00:00:00.000Z",
+    "notes": "Coolant flush"
+   }
+  },
+  {
+   "id": "date-last-saturday",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "repair|maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 160,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-25",
+     "got": "2026-07-25",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": "2026-07-25T00:00:00.000Z",
+    "notes": "Replaced the battery, AGM"
+   }
+  },
+  {
+   "id": "date-last-saturday",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "repair|maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 160,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-25",
+     "got": "2026-07-25",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": "2026-07-25T00:00:00.000Z",
+    "notes": "Replaced the battery, AGM"
+   }
+  },
+  {
+   "id": "date-explicit",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 20,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-10",
+     "got": "2026-07-10",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": "2026-07-10T00:00:00.000Z",
+    "notes": "State inspection, passed"
+   }
+  },
+  {
+   "id": "date-explicit",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 20,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-10",
+     "got": "2026-07-10",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": "2026-07-10T00:00:00.000Z",
+    "notes": "State inspection, passed"
+   }
+  },
+  {
+   "id": "wipers-cheap",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 18,
+     "got": 18,
+     "pass": true
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "notes~wiper",
+     "expected": "wiper",
+     "got": "New wiper blades",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": 18,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": "New wiper blades"
+   }
+  },
+  {
+   "id": "wipers-cheap",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 18,
+     "got": 18,
+     "pass": true
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "notes~wiper",
+     "expected": "wiper",
+     "got": "New wiper blades",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": 18,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": "New wiper blades"
+   }
+  },
+  {
+   "id": "transmission",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 112000,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "cost",
+     "expected": 240,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "shopName",
+     "expected": "AAMCO",
+     "got": "AAMCO",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": "AAMCO",
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null
+   }
+  },
+  {
+   "id": "transmission",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 112000,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "cost",
+     "expected": 240,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "shopName",
+     "expected": "AAMCO",
+     "got": "AAMCO",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": "AAMCO",
+    "isDiy": null,
+    "entryDate": null,
+    "notes": "Transmission fluid service"
+   }
+  },
+  {
+   "id": "air-filter-vehicle-ctx",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": null,
+     "got": null,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": 61200,
+    "cost": null,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": "Swapped the engine air filter"
+   }
+  },
+  {
+   "id": "air-filter-vehicle-ctx",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": null,
+     "got": null,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": 61200,
+    "cost": null,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": "Swapped the engine air filter"
+   }
+  },
+  {
+   "id": "alignment",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "alignment",
+     "got": "alignment",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 129.99,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "shopName",
+     "expected": "Firestone",
+     "got": "Firestone",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "alignment",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": "Firestone",
+    "isDiy": null,
+    "entryDate": null,
+    "notes": "Four wheel alignment after the new tires"
+   }
+  },
+  {
+   "id": "alignment",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "alignment",
+     "got": "alignment",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 129.99,
+     "got": null,
+     "pass": false
+    },
+    {
+     "field": "shopName",
+     "expected": "Firestone",
+     "got": "Firestone",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "alignment",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": "Firestone",
+    "isDiy": null,
+    "entryDate": null,
+    "notes": "after the new tires"
+   }
+  },
+  {
+   "id": "upgrade-exhaust",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "upgrade",
+     "got": "upgrade",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 1100,
+     "got": 1100,
+     "pass": true
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "notes~borla",
+     "expected": "borla",
+     "got": "Installed a Borla cat back exhaust, did it with a buddy",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "upgrade",
+    "odometerReading": null,
+    "cost": 1100,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": "Installed a Borla cat back exhaust, did it with a buddy"
+   }
+  },
+  {
+   "id": "upgrade-exhaust",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "upgrade",
+     "got": "upgrade",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 1100,
+     "got": 1100,
+     "pass": true
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "notes~borla",
+     "expected": "borla",
+     "got": "Installed a Borla cat back exhaust with a buddy",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "upgrade",
+    "odometerReading": null,
+    "cost": 1100,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": "Installed a Borla cat back exhaust with a buddy"
+   }
+  },
+  {
+   "id": "no-invention",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance|repair",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": null,
+     "got": null,
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": null,
+     "got": null,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": null,
+     "got": null,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": "Did some work on the car"
+   }
+  },
+  {
+   "id": "no-invention",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance|repair",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": null,
+     "got": null,
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": null,
+     "got": null,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": null,
+     "got": null,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": null
+   }
+  },
+  {
+   "id": "spoken-decimal-odo",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "oil_change",
+     "got": "oil_change",
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 87500,
+     "got": 87500,
+     "pass": true
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "oil_change",
+    "odometerReading": 87500,
+    "cost": null,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": null
+   }
+  },
+  {
+   "id": "spoken-decimal-odo",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "oil_change",
+     "got": "oil_change",
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 87500,
+     "got": 87500,
+     "pass": true
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "oil_change",
+    "odometerReading": 87500,
+    "cost": null,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": null
+   }
+  },
+  {
+   "id": "two-numbers",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance|repair",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 90000,
+     "got": 90000,
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 94,
+     "got": 94,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": 90000,
+    "cost": 94,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": "Spark plugs"
+   }
+  },
+  {
+   "id": "two-numbers",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance|repair",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 90000,
+     "got": 90000,
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 94,
+     "got": 94,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": 90000,
+    "cost": 94,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": "Spark plugs"
+   }
+  },
+  {
+   "id": "track-day",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "track_day",
+     "got": "track_day",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 250,
+     "got": 250,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "track_day",
+    "odometerReading": null,
+    "cost": 250,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": "Laguna Seca, car ran great"
+   }
+  },
+  {
+   "id": "track-day",
+   "run": 2,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "track_day",
+     "got": "track_day",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 250,
+     "got": 250,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "entryType": "track_day",
+    "odometerReading": null,
+    "cost": 250,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": "Laguna Seca, car ran great"
+   }
+  }
+ ]
+}
