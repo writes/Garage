@@ -176,7 +176,7 @@ struct EntryCursor { let document: DocumentSnapshot?
         let snapshot = try await firestore.db.collection(
             FirestorePaths.vehicleEntries(vehicleId: vehicleId)
         ).order(by: "entryDate", descending: true).limit(to: limit).getDocuments()
-        return try snapshot.documents.map { try firestore.decode(FirestoreEntry.self, from: $0.data()) }
+        return await Self.decodeTolerantly(snapshot.documents, using: firestore)
     }
     func fetchEntries(query: EntryQuery, limit: Int = Constants.pageSize) async throws -> [FirestoreEntry] {
         try await fetchEntries(query: query, limit: limit, after: nil).entries
@@ -204,14 +204,14 @@ struct EntryCursor { let document: DocumentSnapshot?
         let snapshot = try await request.getDocuments()
         let hasMore = snapshot.documents.count > limit
         let pageDocuments = snapshot.documents.prefix(limit)
-        // Chunked decode (#22): yield every 50 docs so the main actor can interleave UI frames
-        // instead of blocking through a single synchronous decode of up to `limit` documents.
-        var entries: [FirestoreEntry] = []
-        entries.reserveCapacity(pageDocuments.count)
-        for (index, document) in pageDocuments.enumerated() {
-            entries.append(try firestore.decode(FirestoreEntry.self, from: document.data()))
-            if index % 50 == 49 { await Task.yield() }
-        }
+        // Chunked + tolerant decode (#22 + entry-decode hardening): yields every 50 docs, and one
+        // undecodable document is skipped rather than throwing the page away.
+        let entries = await Self.decodeTolerantly(pageDocuments, using: firestore)
+        // The cursor deliberately anchors on the last DOCUMENT consumed, not the last decoded
+        // entry: resuming after a skipped corrupt document is what stops paging from looping on
+        // it. If every document in a page failed to decode there is no entry to date the cursor
+        // from, so paging stops there — degraded, but loud in Crashlytics, and still far better
+        // than the previous behaviour of failing the entire fetch.
         let nextCursor = hasMore ? Self.cursor(document: pageDocuments.last, entry: entries.last) : nil
         return EntryPage(entries: Self.filter(entries, with: query.searchText), nextCursor: nextCursor)
     }

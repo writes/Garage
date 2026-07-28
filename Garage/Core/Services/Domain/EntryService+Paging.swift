@@ -21,6 +21,37 @@ extension EntryService {
             nextCursor: hasMore ? Self.cursor(for: page.last) : nil
         )
     }
+    /// Decodes a page of entry documents, skipping any that fail rather than throwing the whole
+    /// page away.
+    ///
+    /// `VehicleService.fetchVehicles` was hardened this way ("one corrupt doc must not blank the
+    /// garage"); entries never were, even though they are far more numerous and carry a per-type
+    /// `details` payload that is much likelier to drift. A single undecodable document therefore
+    /// emptied the Log tab, the Dashboard recent card, the Stats charts AND the resale PDF/CSV
+    /// export for that vehicle — the paid artifact the product exists to produce.
+    ///
+    /// Failures are recorded as Crashlytics non-fatals, so "quietly dropped" still means "visible
+    /// to us". Yields every 50 documents, preserving the chunked-decode behaviour (#22) that keeps
+    /// a large page from blocking the main actor through one synchronous run.
+    static func decodeTolerantly(
+        _ documents: some Sequence<QueryDocumentSnapshot>,
+        using firestore: FirestoreService
+    ) async -> [FirestoreEntry] {
+        var entries: [FirestoreEntry] = []
+        for (index, document) in documents.enumerated() {
+            do {
+                entries.append(try firestore.decode(FirestoreEntry.self, from: document.data()))
+            } catch {
+                AppLogger.shared.error(
+                    "Entry decode failed for \(document.documentID): \(error.localizedDescription)"
+                )
+                CrashReporter.shared.record(error, context: "entry-decode")
+            }
+            if index % 50 == 49 { await Task.yield() }
+        }
+        return entries
+    }
+
     static func cursor(document: DocumentSnapshot?, entry: FirestoreEntry?) -> EntryCursor? {
         guard let document, let entry else { return nil }
         return EntryCursor(document: document, entryDate: entry.entryDate, documentID: document.documentID)
