@@ -26,6 +26,8 @@ final class DemoSessionStore {
     private var reminderOverlay: [String: Reminder] = [:]
     private var partOverlay: [String: SparePart] = [:]
     private var detailingOverlay: [String: DetailingRecord] = [:]
+    private var warrantyOverlay: [String: Warranty] = [:]
+    private var recallOverlay: [String: Recall] = [:]
     private var profileOverlay: ProfileFields = [:]
     /// Entries/reminders have no `deletedAt` field for the seed+overlay merge to key off (unlike
     /// Vehicle), so deletion here is tracked as its own tombstone set instead.
@@ -95,6 +97,26 @@ final class DemoSessionStore {
 
     func detailingRecords(for vehicleId: String) -> [DetailingRecord] {
         merged(SeedData.detailingRecords(for: vehicleId), with: detailingOverlay)
+            .filter { $0.vehicleId == vehicleId }
+    }
+
+    func save(_ warranty: Warranty) {
+        warrantyOverlay[warranty.id] = warranty
+        revision += 1
+    }
+
+    func warranties(for vehicleId: String) -> [Warranty] {
+        merged(SeedData.warranties(for: vehicleId), with: warrantyOverlay)
+            .filter { $0.vehicleId == vehicleId }
+    }
+
+    func save(_ recall: Recall) {
+        recallOverlay[recall.id] = recall
+        revision += 1
+    }
+
+    func recalls(for vehicleId: String) -> [Recall] {
+        merged(SeedData.recalls(for: vehicleId), with: recallOverlay)
             .filter { $0.vehicleId == vehicleId }
     }
 

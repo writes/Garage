@@ -26,10 +26,19 @@ struct WarrantyFormView: View {
     @State private var contractNumber = ""
     @State private var notes = ""
     @State private var isSaving = false
+    // Without this, a failed save left the sheet open with no explanation — the Save button
+    // simply appeared to do nothing, which reads as a broken control rather than a failure.
+    @State private var didFail = false
 
     var body: some View {
         NavigationStack {
             Form {
+                if didFail {
+                    Text("Couldn't save that warranty. Check your connection and try again.")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.error)
+                        .accessibilityIdentifier("warranty.form.error")
+                }
                 Section("Coverage") {
                     Picker("Type", selection: $warrantyType) {
                         Text("Factory").tag(WarrantyType.factory)
@@ -73,6 +82,7 @@ struct WarrantyFormView: View {
 
     private func save() async {
         isSaving = true
+        didFail = false
         defer { isSaving = false }
         let warranty = Warranty(
             id: UUID().uuidString,
@@ -96,7 +106,11 @@ struct WarrantyFormView: View {
             notes: notes.isEmpty ? nil : notes,
             createdAt: Date.now
         )
-        if await onSave(warranty) { dismiss() }
+        if await onSave(warranty) {
+            dismiss()
+        } else {
+            didFail = true
+        }
     }
 }
 
@@ -111,10 +125,18 @@ struct RecallFormView: View {
     @State private var status: RecallStatus = .outstanding
     @State private var notes = ""
     @State private var isSaving = false
+    /// See WarrantyFormView: a silent no-op on failure is indistinguishable from a dead button.
+    @State private var didFail = false
 
     var body: some View {
         NavigationStack {
             Form {
+                if didFail {
+                    Text("Couldn't save that recall. Check your connection and try again.")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.error)
+                        .accessibilityIdentifier("recall.form.error")
+                }
                 Section("Recall") {
                     TextField("Title", text: $title)
                         .accessibilityIdentifier("recall.form.title")
@@ -149,6 +171,7 @@ struct RecallFormView: View {
 
     private func save() async {
         isSaving = true
+        didFail = false
         defer { isSaving = false }
         let recall = Recall(
             id: UUID().uuidString,
@@ -166,6 +189,10 @@ struct RecallFormView: View {
             notes: notes.isEmpty ? nil : notes,
             createdAt: Date.now
         )
-        if await onSave(recall) { dismiss() }
+        if await onSave(recall) {
+            dismiss()
+        } else {
+            didFail = true
+        }
     }
 }
