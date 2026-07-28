@@ -20,6 +20,9 @@ struct StatsView: View {
                     } else if let error = viewModel.error {
                         ErrorBanner(error: error)
                     } else {
+                        // Leads the screen: it is the only figure here derived from the data
+                        // rather than replayed from it, and it is what the owner came to find out.
+                        OwnershipCostCard(entries: viewModel.entries)
                         MPGTrendChart(entries: viewModel.entries)
                         CostBreakdownChart(entries: viewModel.entries)
                         WearHistoryChart(wearItems: viewModel.wearItems)
