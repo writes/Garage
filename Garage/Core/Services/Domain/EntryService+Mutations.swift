@@ -14,6 +14,11 @@ extension EntryService {
     /// its vehicle snapshot here for reconciliation. Pass `nil` only when no vehicle context is
     /// available (reconciliation is then skipped, matching the pre-fix behavior).
     func deleteEntry(_ entry: FirestoreEntry, updatingVehicle vehicle: Vehicle?) async throws {
+        try await performDeleteEntry(entry, updatingVehicle: vehicle)
+        trackDeletion(entry.entryType)
+    }
+
+    private func performDeleteEntry(_ entry: FirestoreEntry, updatingVehicle vehicle: Vehicle?) async throws {
         if var testEntries {
 #if DEBUG
             if !usesHermeticSave {

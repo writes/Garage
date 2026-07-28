@@ -55,6 +55,8 @@ struct ContentView: View {
                     .padding(.bottom, Theme.Spacing.xl)
             }
         }
+        // Tab SWITCHES report via selectedTab's didSet; only the launch impression needs this.
+        .onAppear { appState.reportInitialScreen() }
     }
 
     @ViewBuilder

@@ -6,6 +6,13 @@ import Observation
 final class ReminderConfigViewModel {
     private let reminderService: ReminderService
     private let notificationCoordinator: ReminderNotificationCoordinator
+    private let analytics: any AnalyticsTracking
+    /// Guards `.notificationPermissionDenied` to at most once per VM instance — the view re-reads
+    /// `isNotificationAuthorizationDenied` on every render, and without this the event would fire
+    /// once per render rather than once per denial. `@ObservationIgnored` is load-bearing: the
+    /// getter mutates this DURING view rendering, and mutating an observed property mid-render
+    /// is an AttributeGraph cycle.
+    @ObservationIgnored private var reportedNotificationDenial = false
 
     var title = "Oil change"
     var dueMileage = ""
@@ -35,15 +42,22 @@ final class ReminderConfigViewModel {
     /// AppState.isPro forwarding PurchaseService.isPro) — true only after a date-based save
     /// found notification permission denied. Drives the one-line hint in ReminderConfigView.
     var isNotificationAuthorizationDenied: Bool {
-        notificationCoordinator.isAuthorizationDenied
+        let denied = notificationCoordinator.isAuthorizationDenied
+        if denied, !reportedNotificationDenial {
+            reportedNotificationDenial = true
+            analytics.track(.notificationPermissionDenied)
+        }
+        return denied
     }
 
     init(
         reminderService: ReminderService = .shared,
-        notificationCoordinator: ReminderNotificationCoordinator = .shared
+        notificationCoordinator: ReminderNotificationCoordinator = .shared,
+        analytics: any AnalyticsTracking = AnalyticsService.shared
     ) {
         self.reminderService = reminderService
         self.notificationCoordinator = notificationCoordinator
+        self.analytics = analytics
     }
 
     func save(vehicleId: String, vehicleName: String? = nil) async -> Bool {
@@ -59,6 +73,7 @@ final class ReminderConfigViewModel {
                 isProFeature: false
             )
             try await reminderService.save(reminder, vehicleName: vehicleName)
+            analytics.track(.reminderCreated)
             error = nil
             await load(vehicleId: vehicleId)
             return true
@@ -88,6 +103,7 @@ final class ReminderConfigViewModel {
         do {
             try await reminderService.delete(reminder)
             reminders.removeAll { $0.id == reminder.id }
+            analytics.track(.reminderDeleted)
             error = nil
         } catch {
             self.error = AppError(from: error)
@@ -100,6 +116,7 @@ final class ReminderConfigViewModel {
             if let index = reminders.firstIndex(where: { $0.id == reminder.id }) {
                 reminders[index].completedAt = .now
             }
+            analytics.track(.reminderCompleted)
             error = nil
         } catch {
             self.error = AppError(from: error)

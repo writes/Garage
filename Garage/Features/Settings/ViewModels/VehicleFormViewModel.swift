@@ -48,8 +48,13 @@ final class VehicleFormViewModel {
                 displayOrder: 0
             )
             _ = try await vehicleService.createVehicle(vehicle)
-            if let vehicles = try? await vehicleService.fetchVehicles(), vehicles.count == 1 {
-                analytics.track(.firstVehicleAdded)
+            // This VM only ever creates — there is no edit branch — so every successful save
+            // here is a new vehicle.
+            if let vehicles = try? await vehicleService.fetchVehicles() {
+                analytics.track(.vehicleAdded(vehicleCount: vehicles.count))
+                if vehicles.count == 1 {
+                    analytics.track(.firstVehicleAdded)
+                }
             }
             error = nil
             return true

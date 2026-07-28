@@ -70,105 +70,46 @@ enum AnalyticsEvent: Equatable, Sendable {
     /// drop-off actually happens, was invisible.
     case formOpened(form: FormKind)
 
-    static let v1Names = [
-        "first_vehicle_added",
-        "first_entry_added",
-        "paywall_viewed",
-        "purchase_completed",
-        "purchase_restored",
-        "export_csv",
-        "export_pdf",
-        "oil_analysis_requested",
-        "oil_analysis_succeeded",
-        "oil_analysis_quota_denied"
-    ]
+    // MARK: Depth batch (additive, 2026-07-28) — see docs/developer/ANALYTICS_CONTRACT.md
 
-    /// Added in schema v1 (same version — these are additive events, not a breaking change to any
-    /// existing event's shape). Kept as a separate list so the v1 contract stays auditable.
-    static let activationFunnelNames = [
-        "paywall_dismissed",
-        "sign_in_started",
-        "sign_in_completed",
-        "sign_in_failed",
-        "trial_started",
-        "form_opened"
-    ]
-
-    static var allNames: [String] { v1Names + activationFunnelNames }
-
-    /// Keeps every v1 event name and parameter definition in one audited mapping.
-    var definition: AnalyticsEventDefinition {
-        switch self {
-        case .firstVehicleAdded:
-            return AnalyticsEventDefinition(name: "first_vehicle_added")
-        case .firstEntryAdded(let entryType):
-            return AnalyticsEventDefinition(
-                name: "first_entry_added",
-                parameters: [.entryType(entryType)]
-            )
-        case .paywallViewed(let source):
-            return AnalyticsEventDefinition(
-                name: "paywall_viewed",
-                parameters: [.source(source)]
-            )
-        case .paywallDismissed(let source):
-            return AnalyticsEventDefinition(
-                name: "paywall_dismissed",
-                parameters: [.source(source)]
-            )
-        case .purchaseCompleted(let productID):
-            return AnalyticsEventDefinition(
-                name: "purchase_completed",
-                parameters: [.productID(productID)]
-            )
-        case .trialStarted(let productID):
-            return AnalyticsEventDefinition(
-                name: "trial_started",
-                parameters: [.productID(productID)]
-            )
-        case .purchaseRestored:
-            return AnalyticsEventDefinition(name: "purchase_restored")
-        case .exportCSV(let entryCount):
-            return AnalyticsEventDefinition(
-                name: "export_csv",
-                parameters: [.entryCount(max(0, entryCount))]
-            )
-        case .exportPDF(let entryCount):
-            return AnalyticsEventDefinition(
-                name: "export_pdf",
-                parameters: [.entryCount(max(0, entryCount))]
-            )
-        case .oilAnalysisRequested:
-            return AnalyticsEventDefinition(name: "oil_analysis_requested")
-        case .oilAnalysisSucceeded:
-            return AnalyticsEventDefinition(name: "oil_analysis_succeeded")
-        case .oilAnalysisQuotaDenied(let reason):
-            return AnalyticsEventDefinition(
-                name: "oil_analysis_quota_denied",
-                parameters: [.reason(reason)]
-            )
-        case .signInStarted(let provider):
-            return AnalyticsEventDefinition(
-                name: "sign_in_started",
-                parameters: [.provider(provider)]
-            )
-        case .signInCompleted(let provider):
-            return AnalyticsEventDefinition(
-                name: "sign_in_completed",
-                parameters: [.provider(provider)]
-            )
-        case .signInFailed(let provider, let reason):
-            return AnalyticsEventDefinition(
-                name: "sign_in_failed",
-                parameters: [.provider(provider), .failureReason(reason)]
-            )
-        case .formOpened(let form):
-            return AnalyticsEventDefinition(
-                name: "form_opened",
-                parameters: [.form(form)]
-            )
-        }
-    }
+    /// Voice funnel. Voice quick-add is a paid Pro feature whose captures, outcomes, and saves
+    /// were previously invisible past the sheet opening — there was no way to tell whether it
+    /// produces entries at all.
+    case voiceCaptureStarted
+    case voiceProposalSucceeded(entryType: EntryType)
+    case voiceProposalFailed(reason: VoiceFailureReason)
+    /// A voice-prefilled form was actually SAVED. This is the number the feature exists for;
+    /// without it a voice save is indistinguishable from a manual one.
+    case voiceEntryConfirmed(entryType: EntryType)
+    /// Opens the purchase funnel. `purchase_completed` alone cannot separate "tried and failed"
+    /// from "never tried" — a StoreKit decline at the buy button was invisible.
+    case purchaseAttempted(productID: AnalyticsProductID)
+    case purchaseFailed(reason: PurchaseFailureReason)
+    /// Non-quota, non-cancellation oil-analysis endings; `succeeded/requested` alone folded
+    /// every real failure into an unexplained gap.
+    case oilAnalysisFailed(reason: OilAnalysisFailureReason)
+    /// Reminders had zero coverage despite being a retention surface.
+    case reminderCreated
+    case reminderCompleted
+    case reminderDeleted
+    /// The OS-level denial that silently disables reminder delivery.
+    case notificationPermissionDenied
+    /// Recall lookups are safety-relevant: reach and failure modes both matter.
+    case recallLookupSucceeded(recallCount: Int)
+    case recallLookupFailed(reason: RecallLookupFailureReason)
+    /// A do-not-drive / park-outside advisory was actually shown to a user.
+    case recallParkAlertShown
+    /// Every vehicle add (not just the first). `vehicle_count` is the post-insert total, so the
+    /// vehicle-limit paywall's back half (paywall -> actual second vehicle) finally closes.
+    case vehicleAdded(vehicleCount: Int)
+    case vehicleSwitched
+    case vehicleDeleted
+    /// Every entry save. `first_entry_added` fires once per account; which of the 13 forms
+    /// people keep using after that was unmeasured.
+    case entrySaved(entryType: EntryType, isEdit: Bool)
+    case entryDeleted(entryType: EntryType)
+    /// Tab-level engagement. Sheets are excluded — they already report `form_opened`.
+    case screenViewed(screen: ScreenKind)
 }
 
 /// Thin adapter over `AnalyticsConsentGate`. All gate/buffer decisions live in that value type so

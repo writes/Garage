@@ -128,7 +128,7 @@ struct OilAnalysisImportCoordinatorTests {
         #expect(sink.authorizedOwner == nil)
     }
 
-    @Test func localPreflightFailure_neverCallsRemoteOrAnalytics_andRevokesAuthorization() async {
+    @Test func localPreflightFailure_neverCallsRemote_tracksPreflightFailure_andRevokesAuthorization() async {
         let preflighter = ScriptedPreflighter(steps: [.failure(.invalidPDF)])
         let caller = SuspendedOilAnalysisCaller()
         let analytics = OilAnalysisImportTestSupport.enabledAnalytics()
@@ -146,7 +146,9 @@ struct OilAnalysisImportCoordinatorTests {
 
         #expect(coordinator.outcome == .inlineError(.validation("Choose a valid PDF oil-analysis report.")))
         #expect(caller.callCount == 0)
-        #expect(analytics.events.isEmpty)
+        // The load-bearing half of the old "no analytics" invariant is that no quota-relevant
+        // `requested` event fires before preflight passes; the failure event itself is wanted.
+        #expect(analytics.events == [.oilAnalysisFailed(reason: .preflight)])
         #expect(sink.authorizedOwner == nil)
     }
 }

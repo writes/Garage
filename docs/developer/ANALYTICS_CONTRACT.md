@@ -187,6 +187,29 @@ allow.
 
 ---
 
+## 5.1 Depth batch (additive, 2026-07-28)
+
+Twenty events closing the coverage gaps a full-surface inventory found (voice was a PAID
+feature with no funnel; purchases had success-only telemetry; reminders, recalls, and the
+Dashboard tab had zero events). Names live in `AnalyticsEvent.depthNames`; all parameters are
+closed enums or clamped ints, unchanged rules.
+
+| Group | Events | Choke point |
+|---|---|---|
+| Voice funnel | `voice_capture_started`, `voice_proposal_succeeded`, `voice_proposal_failed(reason)`, `voice_entry_confirmed` | `VoiceQuickAddViewModel` (start/outcome); `EntryFormViewModel.finishSaveTracking` (confirmed, via the `wasVoiceSeeded` flag) |
+| Purchase funnel | `purchase_attempted(product_id)`, `purchase_failed(reason)` | `SubscriptionViewModel` — attempted fires only when the store call is actually made; `busy` taps are neither attempts nor failures. Success stays with the commit relay's `purchase_completed`/`trial_started`. |
+| Oil analysis | `oil_analysis_failed(reason: preflight/service)` | `OilAnalysisImportCoordinator`; quota denials keep their own event. Cancellation is deliberately untracked (the cancel path also runs on teardown/deinit); abandonment = requested − (succeeded + failed + quota_denied) |
+| Reminders | `reminder_created/completed/deleted`, `notification_permission_denied` | `ReminderConfigViewModel`, success paths only |
+| Recalls | `recall_lookup_succeeded(recall_count)`, `recall_lookup_failed(reason)`, `recall_park_alert_shown` | `RecallLookupService` — park-alert fires at result time when any recall carries `parkIt`/`parkOutside` |
+| Vehicles | `vehicle_added(vehicle_count)`, `vehicle_switched`, `vehicle_deleted` | `VehicleFormViewModel` (post-insert count closes the vehicle-limit paywall's back half); `AppState.selectVehicle`/`deleteVehicle` |
+| Entries | `entry_saved(entry_type, is_edit)`, `entry_deleted(entry_type)` | `EntryFormViewModel.save` / `EntryService.deleteEntry` (same single-choke-point rule as the attachment cascade) |
+| Tabs | `screen_viewed(screen)` | `AppState.selectedTab.didSet` + `reportInitialScreen()`; sheets are excluded — they already report `form_opened`/`paywall_viewed` |
+
+The four failure-reason parameters share the wire name `reason` (one key to group on in
+BigQuery); they remain distinct closed enums in code.
+
+---
+
 ## 6. Why funnel instrumentation was prioritised
 
 The launch research (`docs/research/2026-07-27_BRANDING_AND_LAUNCH_PLAN.md`) found that **90% of

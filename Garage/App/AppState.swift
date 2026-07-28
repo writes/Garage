@@ -5,15 +5,22 @@ import Observation
 @Observable
 final class AppState {
     private let authService: AuthService
-    private let vehicleService: VehicleService
+    // `internal` (not `private`): AppState+Actions.swift holds the user-action methods.
+    let vehicleService: VehicleService
     let purchaseService: PurchaseService
     private let syncService: SyncService
     private let profileStore: any ProfileStore
-    private let analytics: any AnalyticsTracking
+    // `internal`: read by AppState+Actions.swift, same file-split precedent as vehicleService.
+    let analytics: any AnalyticsTracking
     private let crashReporter: any CrashReporting
     private let notificationCoordinator: ReminderNotificationCoordinator
 
-    var selectedTab: AppTab = .dashboard
+    var selectedTab: AppTab = .dashboard {
+        didSet {
+            guard oldValue != selectedTab else { return }
+            analytics.track(.screenViewed(screen: selectedTab.analyticsScreen))
+        }
+    }
     var currentVehicle: Vehicle?
     var vehicles: [Vehicle] = []
     var userProfile: UserProfile?
@@ -163,26 +170,6 @@ final class AppState {
         }
     }
 
-    /// Tombstones the vehicle (disappears immediately), purges server-side (RULES-1).
-    func deleteVehicle(_ vehicle: Vehicle) async throws {
-        try await vehicleService.deleteVehicle(vehicle)
-        await refreshVehicles()
-    }
-
-    func selectVehicle(_ vehicle: Vehicle) {
-        currentVehicle = vehicle
-    }
-
-    func paywallDidAppear(source: PaywallSource) {
-        analytics.track(.paywallViewed(source: source))
-    }
-
-    /// Funnel exit — without it paywall conversion is uncomputable. Carries no outcome flag by
-    /// design; see docs/developer/ANALYTICS_CONTRACT.md.
-    func paywallDidDismiss(source: PaywallSource) {
-        analytics.track(.paywallDismissed(source: source))
-    }
-
     func applyProfile(_ profile: UserProfile) {
         guard profile.id == authService.uid else {
             analytics.setEnabled(false)
@@ -197,6 +184,9 @@ final class AppState {
         // Crashlytics (which persists its collection flag) leaks non-fatals.
         analytics.setEnabled(!profile.analyticsOptOut)
         crashReporter.setEnabled(!profile.analyticsOptOut)
+        // After setEnabled: the reporter has no pending buffer, so an earlier call would be
+        // silently dropped. A leftover trace means the last voice session died mid-flight.
+        VoiceSessionTrace.shared.reportAbandonedTrace(to: crashReporter)
         AccentStore.shared.apply(themeID: profile.themeID)
     }
 
@@ -211,6 +201,7 @@ final class AppState {
             userProfile = profile
             analytics.setEnabled(!profile.analyticsOptOut)
             crashReporter.setEnabled(!profile.analyticsOptOut)
+            VoiceSessionTrace.shared.reportAbandonedTrace(to: crashReporter)
             AccentStore.shared.apply(themeID: profile.themeID)
         } catch {
             userProfile = nil

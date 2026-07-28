@@ -53,10 +53,32 @@ final class RecallLookupService: RecallLooking {
     /// computed ones, and `lazy` cannot apply to those. It is also simply true: a Functions handle
     /// is not state anyone observes.
     @ObservationIgnored private lazy var functions = Functions.functions(region: Secrets.anthroProxyRegion)
+    @ObservationIgnored private let analytics: any AnalyticsTracking
 
-    private init() {}
+    private init(analytics: any AnalyticsTracking = AnalyticsService.shared) {
+        self.analytics = analytics
+    }
 
     func lookup(vin: String) async throws -> RecallLookupResponse {
+        do {
+            let response = try await performLookup(vin: vin)
+            analytics.track(.recallLookupSucceeded(recallCount: response.recalls.count))
+            // Fired once per lookup, not once per recall: a whole check is one funnel event, not
+            // one per row it happens to find.
+            if response.recalls.contains(where: { $0.parkIt || $0.parkOutside }) {
+                analytics.track(.recallParkAlertShown)
+            }
+            return response
+        } catch let error as RecallLookupError {
+            analytics.track(.recallLookupFailed(reason: error == .vinMissing ? .vinMissing : .vinNotRecognised))
+            throw error
+        } catch {
+            analytics.track(.recallLookupFailed(reason: .serviceError))
+            throw error
+        }
+    }
+
+    private func performLookup(vin: String) async throws -> RecallLookupResponse {
         let trimmed = vin.trimmed
         // Checked here as well as server-side so an empty VIN costs no round trip and gets a
         // specific message rather than a generic invalid-argument.

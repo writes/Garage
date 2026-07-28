@@ -4,13 +4,18 @@ import Observation
 @Observable
 final class SubscriptionViewModel {
     private let service: any SubscriptionFacading
+    private let analytics: any AnalyticsTracking
     private var activeAction: SubscriptionActionToken?
     private var actionCounter: UInt64 = 0
     private var presentedNotice: SubscriptionNotice?
     private var observedAccountRevision: UInt64?
     private var lastSDKFailureDiagnostic: SDKFailureDiagnostic?
     private(set) var state: SubscriptionPresentationState = .idle
-    init(service: any SubscriptionFacading) { self.service = service }
+
+    init(service: any SubscriptionFacading, analytics: any AnalyticsTracking = AnalyticsService.shared) {
+        self.service = service
+        self.analytics = analytics
+    }
     var plans: OfferingsSnapshot? { service.plans }
     var isPro: Bool { service.isPro }
     var accountRevision: UInt64 { service.accountRevision }
@@ -66,6 +71,10 @@ final class SubscriptionViewModel {
             return
         }
         guard let token = startAction(.purchase, state: .purchasing) else { return }
+        // "Attempted" means the store call is actually made — busy taps, pending
+        // reconciliation, and invalidated selections above never reached the store, so they
+        // are not attempts and cannot appear as failures either.
+        analytics.track(.purchaseAttempted(productID: selection.analyticsProduct))
         let outcome = await service.purchase(selection)
         synchronizeRevision(accountRevision)
         guard activeAction == token else { return }
@@ -174,6 +183,9 @@ private extension SubscriptionViewModel {
     }
 
     private func apply(_ outcome: PurchaseOutcome, token: SubscriptionActionToken) {
+        if let reason = Self.purchaseFailureReason(outcome) {
+            analytics.track(.purchaseFailed(reason: reason))
+        }
         switch outcome {
         case .activePro: finish(token, state: .purchased, notice: .active)
         case .noEntitlement: finish(token, state: .noEntitlement, notice: .purchaseNoEntitlement)
@@ -186,6 +198,20 @@ private extension SubscriptionViewModel {
         case .reconciliationRequired:
             finish(token, state: .reconciliationRequired(.purchase), notice: nil)
         case .failed(let error): finishFailure(error, operation: .purchase, token: token)
+        }
+    }
+
+    /// Closes the purchase funnel opened by `purchase_attempted`. Success is deliberately nil —
+    /// `purchase_completed`/`trial_started` already fire from the commit relay, and `busy` never
+    /// reached the store (it is a double-tap, not an outcome of an attempt).
+    private static func purchaseFailureReason(_ outcome: PurchaseOutcome) -> PurchaseFailureReason? {
+        switch outcome {
+        case .activePro, .busy: return nil
+        case .cancelled: return .cancelled
+        case .pending: return .pending
+        case .selectionInvalidated: return .selectionInvalidated
+        case .reconciliationRequired: return .reconciliationRequired
+        case .noEntitlement, .notReady, .failed: return .error
         }
     }
 

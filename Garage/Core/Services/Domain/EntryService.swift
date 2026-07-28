@@ -32,6 +32,12 @@ struct EntryCursor { let document: DocumentSnapshot?
     var wearCascade: @MainActor (String, [String]) async -> Void = { vehicleId, ids in
         WearService.shared.deleteSnapshots(ids: ids, vehicleId: vehicleId)
     }
+    /// Same closure-seam pattern as `wearCascade`. Lives at the service like the attachment
+    /// cascade: both LogView's swipe-delete and EntryDetailView's toolbar delete report
+    /// identically through the one choke point.
+    @ObservationIgnored var trackDeletion: @MainActor (EntryType) -> Void = {
+        AnalyticsService.shared.track(.entryDeleted(entryType: $0))
+    }
     var testEntries: [FirestoreEntry]?
 #if DEBUG
     private let hermeticSaveFailure: ((FirestoreEntry) -> Error?)?

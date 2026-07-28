@@ -11,6 +11,9 @@ protocol CrashReporting {
     /// Records a handled error as a Crashlytics non-fatal. `context` is a short static label
     /// (e.g. "vehicle-decode") — never user content.
     func record(_ error: Error, context: String)
+    /// Appends a line to the Crashlytics in-memory log, which ships ONLY inside a subsequent
+    /// crash/non-fatal report. `message` is a short static label — never user content.
+    func breadcrumb(_ message: String)
 }
 
 @MainActor
@@ -27,6 +30,13 @@ final class FirebaseCrashReporter: CrashReporting {
         Crashlytics.crashlytics().setCustomValue(context, forKey: "context")
         Crashlytics.crashlytics().record(error: error)
     }
+
+    func breadcrumb(_ message: String) {
+        // The isEnabled guard also keeps unit tests safe: a disabled reporter never touches
+        // `Crashlytics.crashlytics()`, which traps when Firebase was never configured.
+        guard isEnabled else { return }
+        Crashlytics.crashlytics().log(message)
+    }
 }
 
 @MainActor
@@ -34,6 +44,8 @@ final class NoopCrashReporter: CrashReporting {
     func setEnabled(_: Bool) {}
 
     func record(_: Error, context _: String) {}
+
+    func breadcrumb(_: String) {}
 }
 
 @MainActor

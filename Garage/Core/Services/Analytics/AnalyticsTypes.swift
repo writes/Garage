@@ -8,10 +8,12 @@ import Foundation
 /// caller-supplied String, so a UID, email, VIN or provider error message cannot structurally
 /// reach Analytics. See docs/developer/ANALYTICS_CONTRACT.md.
 
+// `reminders` was removed 2026-07-28: reminders are not Pro-gated, no surface ever presented
+// `.subscription(.reminders)`, and a dead source makes per-surface conversion LOOK complete
+// while measuring nothing. Re-add it only together with an actual reminders upsell.
 enum PaywallSource: String, CaseIterable, Equatable, Sendable {
     case settings
     case garage
-    case reminders
     case exportPDF = "export_pdf"
     case stats
     case themePicker = "theme_picker"
@@ -72,6 +74,15 @@ enum AnalyticsParameter: Equatable, Sendable {
     case provider(AuthProvider)
     case failureReason(SignInFailureReason)
     case form(FormKind)
+    case voiceFailureReason(VoiceFailureReason)
+    case purchaseFailureReason(PurchaseFailureReason)
+    case oilAnalysisFailureReason(OilAnalysisFailureReason)
+    case recallFailureReason(RecallLookupFailureReason)
+    case recallCount(Int)
+    case vehicleCount(Int)
+    case screen(ScreenKind)
+    /// Sent as 0/1 — Firebase has no boolean parameter type.
+    case isEdit(Bool)
 
     fileprivate var name: String {
         switch self {
@@ -84,12 +95,23 @@ enum AnalyticsParameter: Equatable, Sendable {
         case .provider: return "provider"
         case .failureReason: return "failure_reason"
         case .form: return "form"
+        // The four failure-reason parameters share the wire name "reason": each lives on a
+        // different event, and one consistent key is what BigQuery queries group on.
+        case .voiceFailureReason, .purchaseFailureReason,
+             .oilAnalysisFailureReason, .recallFailureReason:
+            return "reason"
+        case .recallCount: return "recall_count"
+        case .vehicleCount: return "vehicle_count"
+        case .screen: return "screen"
+        case .isEdit: return "is_edit"
         }
     }
 
     fileprivate var firebaseValue: Any {
         switch self {
-        case .schemaVersion(let value), .entryCount(let value): return value
+        case .schemaVersion(let value), .entryCount(let value),
+             .recallCount(let value), .vehicleCount(let value):
+            return value
         case .entryType(let value): return value.rawValue
         case .source(let value): return value.rawValue
         case .productID(let value): return value.rawValue
@@ -97,6 +119,12 @@ enum AnalyticsParameter: Equatable, Sendable {
         case .provider(let value): return value.rawValue
         case .failureReason(let value): return value.rawValue
         case .form(let value): return value.rawValue
+        case .voiceFailureReason(let value): return value.rawValue
+        case .purchaseFailureReason(let value): return value.rawValue
+        case .oilAnalysisFailureReason(let value): return value.rawValue
+        case .recallFailureReason(let value): return value.rawValue
+        case .screen(let value): return value.rawValue
+        case .isEdit(let value): return value ? 1 : 0
         }
     }
 }
@@ -104,6 +132,56 @@ enum AnalyticsParameter: Equatable, Sendable {
 enum AuthProvider: String, CaseIterable, Equatable, Sendable {
     case apple
     case google
+}
+
+/// Why a voice capture produced no saved proposal. Mirrors `VoiceFailure` minus payloads; the
+/// mapping lives next to `VoiceFailure` so the two enums cannot silently drift apart.
+enum VoiceFailureReason: String, CaseIterable, Equatable, Sendable {
+    case permissionDenied = "permission_denied"
+    case proRequired = "pro_required"
+    case dailyExhausted = "daily_exhausted"
+    case recognizerUnavailable = "recognizer_unavailable"
+    case audioInputUnavailable = "audio_input_unavailable"
+    case emptyTranscript = "empty_transcript"
+    case serviceError = "service_error"
+}
+
+/// Why a purchase attempt produced no entitlement. `cancelled` is the expected majority and is
+/// not a defect — same convention as `SignInFailureReason`. `pending` is Ask-to-Buy/deferred
+/// approval, which may still convert later.
+enum PurchaseFailureReason: String, CaseIterable, Equatable, Sendable {
+    case cancelled
+    case pending
+    case selectionInvalidated = "selection_invalidated"
+    case reconciliationRequired = "reconciliation_required"
+    case error
+}
+
+/// Why an oil-analysis import ended without a parsed report. Quota denials keep their own
+/// richer event (`oil_analysis_quota_denied`); cancellation is deliberately absent — the
+/// cancel path also runs on view teardown and deinit, so it would count lifecycle noise, and
+/// abandonment is derivable as requested − (succeeded + failed + quota_denied).
+enum OilAnalysisFailureReason: String, CaseIterable, Equatable, Sendable {
+    case preflight
+    case service
+}
+
+/// Why a recall lookup returned nothing. `vin_missing`/`vin_not_recognised` are user-data
+/// states; `service_error` is ours.
+enum RecallLookupFailureReason: String, CaseIterable, Equatable, Sendable {
+    case vinMissing = "vin_missing"
+    case vinNotRecognised = "vin_not_recognised"
+    case serviceError = "service_error"
+}
+
+/// Top-level surfaces for `screen_viewed`. Tabs only — sheets already report `form_opened` or
+/// `paywall_viewed`, and double-reporting one impression under two names corrupts both funnels.
+enum ScreenKind: String, CaseIterable, Equatable, Sendable {
+    case dashboard
+    case garage
+    case log
+    case stats
+    case settings
 }
 
 /// Which sheet a `form_opened` event refers to. Records what ACTUALLY opened, not what was
