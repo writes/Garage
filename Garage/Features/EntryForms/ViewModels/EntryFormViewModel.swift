@@ -23,7 +23,8 @@ final class EntryFormViewModel {
     let entryAttachmentService: EntryAttachmentService
     private let syncService: SyncService
     private let userID: () -> String?
-    private let firstEntryFollowUp: FirstEntryFollowUp
+    // `internal`: read by scheduleFirstEntryFollowUp in +DetailsEncoding.swift.
+    let firstEntryFollowUp: FirstEntryFollowUp
 
     var syncServiceIdentity: ObjectIdentifier { ObjectIdentifier(syncService) }
 
@@ -48,6 +49,9 @@ final class EntryFormViewModel {
     /// Set when editing (nil for create). A form's own save() excludes it from lookups it runs
     /// itself (FuelFormView's MPG query) — see excludingEntryID.
     var editingEntryID: String?
+    /// Set by applyVoicePrefill; consumed by the save-success tracking so a voice-originated
+    /// save closes the voice funnel (`voice_entry_confirmed`).
+    var wasVoiceSeeded = false
     /// Edited entry's odometer at load time — floors validateOdometer (odometerFloor, +EditPrefill).
     var editingEntryOriginalOdometer: Int?
     /// Edited entry's original vehicleId — save() rejects a different vehicle (would silently
@@ -102,6 +106,7 @@ final class EntryFormViewModel {
     /// Seeds the shared fields from a voice proposal. The user reviews every value before saving,
     /// so this only prefills — it never commits. Type-specific details are left for the form.
     func applyVoicePrefill(_ proposal: VoiceEntryProposal) {
+        wasVoiceSeeded = true
         entryDate = proposal.resolvedDate(default: entryDate)
         if let odometer = proposal.odometerReading, odometer > 0 {
             odometerReading = String(odometer)
@@ -173,6 +178,7 @@ final class EntryFormViewModel {
             }
             await applyQueuedAttachmentRemovals()
 
+            let wasEdit = editingEntryID != nil
             // These all rotate only after local acceptance completes.
             pendingEntryID = nil
             pendingCreatedAt = nil
@@ -181,7 +187,7 @@ final class EntryFormViewModel {
             editingEntryVehicleId = nil
             error = nil
             await followUp(entryID)
-            scheduleFirstEntryFollowUp(vehicleId: vehicle.id, entryType: entryType)
+            finishSaveTracking(vehicleId: vehicle.id, entryType: entryType, wasEdit: wasEdit)
             recordReviewMoment(.entryLogged)
             return true
         } catch {
@@ -237,12 +243,4 @@ final class EntryFormViewModel {
         )
     }
 
-    private func scheduleFirstEntryFollowUp(vehicleId: String, entryType: EntryType) {
-        let firstEntryFollowUp = firstEntryFollowUp
-        Task { @MainActor [self, firstEntryFollowUp] in
-            await firstEntryFollowUp {
-                await self.trackFirstEntryIfNeeded(vehicleId: vehicleId, entryType: entryType)
-            }
-        }
-    }
 }

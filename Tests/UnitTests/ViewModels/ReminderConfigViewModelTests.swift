@@ -2,6 +2,14 @@ import Foundation
 import Testing
 @testable import Garage
 
+@MainActor
+private final class FakeReminderNotificationScheduler: NotificationScheduling {
+    func requestAuthorizationIfNeeded() async -> NotificationAuthorizationState { .authorized }
+    func schedule(_ request: ReminderNotificationRequest) async {}
+    func cancel(id: String) {}
+    func cancelAll() {}
+}
+
 /// BLOCKER review finding: an untouched "Remind me on a date" picker defaulted to `Date.now`'s
 /// exact instant, which read as already-past by the time save() ran moments later —
 /// ReminderNotificationCoordinator.plan requires `dueDate > now`, so it silently returned nil and
@@ -76,5 +84,41 @@ struct ReminderConfigViewModelTests {
         let result = ReminderConfigViewModel.canonicalDueInstant(for: now, now: now, calendar: Self.calendar)
 
         #expect(result == expected)
+    }
+
+    // MARK: - Analytics
+
+    @Test func save_succeeds_tracksReminderCreated() async {
+        let analytics = AnalyticsSpy()
+        analytics.setEnabled(true)
+        let coordinator = ReminderNotificationCoordinator(scheduler: FakeReminderNotificationScheduler())
+        let viewModel = ReminderConfigViewModel(
+            reminderService: ReminderService(testReminders: [], notificationCoordinator: coordinator),
+            notificationCoordinator: coordinator,
+            analytics: analytics
+        )
+        viewModel.title = "Oil change"
+        viewModel.dueMileage = "5000"
+
+        let didSave = await viewModel.save(vehicleId: "vehicle-1")
+
+        #expect(didSave)
+        #expect(analytics.events == [.reminderCreated])
+    }
+
+    @Test func delete_succeeds_tracksReminderDeleted() async {
+        let analytics = AnalyticsSpy()
+        analytics.setEnabled(true)
+        let coordinator = ReminderNotificationCoordinator(scheduler: FakeReminderNotificationScheduler())
+        let reminder = Reminder(id: "r1", vehicleId: "vehicle-1", title: "Oil change", dueMileage: 5_000)
+        let viewModel = ReminderConfigViewModel(
+            reminderService: ReminderService(testReminders: [reminder], notificationCoordinator: coordinator),
+            notificationCoordinator: coordinator,
+            analytics: analytics
+        )
+
+        await viewModel.delete(reminder)
+
+        #expect(analytics.events == [.reminderDeleted])
     }
 }

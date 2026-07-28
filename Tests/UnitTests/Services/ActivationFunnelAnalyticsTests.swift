@@ -18,9 +18,10 @@ struct ActivationFunnelAnalyticsTests {
         ])
     }
 
-    @Test func allNames_areV1PlusActivationFunnel_withNoDuplicates() {
+    @Test func allNames_concatenateEveryGroup_withNoDuplicates() {
         let all = AnalyticsEvent.allNames
-        #expect(all == AnalyticsEvent.v1Names + AnalyticsEvent.activationFunnelNames)
+        #expect(all == AnalyticsEvent.v1Names + AnalyticsEvent.activationFunnelNames
+            + AnalyticsEvent.depthNames)
         #expect(Set(all).count == all.count, "event names must be unique")
     }
 

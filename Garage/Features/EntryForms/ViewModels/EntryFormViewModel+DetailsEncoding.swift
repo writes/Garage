@@ -13,6 +13,27 @@ extension EntryFormViewModel {
         return object.mapValues(Self.wrap(any:))
     }
 
+    /// Post-acceptance bookkeeping for save(): the per-save usage event, the voice-funnel close
+    /// when the form was voice-seeded, and the deferred first-entry check. `wasEdit` is captured
+    /// by the caller BEFORE the editing state rotates.
+    func finishSaveTracking(vehicleId: String, entryType: EntryType, wasEdit: Bool) {
+        analytics.track(.entrySaved(entryType: entryType, isEdit: wasEdit))
+        if wasVoiceSeeded {
+            analytics.track(.voiceEntryConfirmed(entryType: entryType))
+            wasVoiceSeeded = false
+        }
+        scheduleFirstEntryFollowUp(vehicleId: vehicleId, entryType: entryType)
+    }
+
+    private func scheduleFirstEntryFollowUp(vehicleId: String, entryType: EntryType) {
+        let firstEntryFollowUp = firstEntryFollowUp
+        Task { @MainActor [self, firstEntryFollowUp] in
+            await firstEntryFollowUp {
+                await self.trackFirstEntryIfNeeded(vehicleId: vehicleId, entryType: entryType)
+            }
+        }
+    }
+
     func trackFirstEntryIfNeeded(vehicleId: String, entryType: EntryType) async {
         guard let vehicles = try? await vehicleService.fetchVehicles() else { return }
         let vehicleIDs = Set(vehicles.map(\.id)).union([vehicleId])
