@@ -1,0 +1,55 @@
+name: Idea or feature request
+description: Something you wish the app did, or did differently.
+title: "[Idea] "
+labels: ["enhancement", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Every field below is optional.** A single sentence is a perfectly good feature request.
+
+        The most valuable thing you can tell us is *what you were trying to do* — not the feature
+        you have in mind for it. The underlying need often has a better answer than the one either
+        of us thought of first.
+
+  - type: textarea
+    id: need
+    attributes:
+      label: What are you trying to do
+      description: >
+        The task, not the solution. "I want to know whether this car is costing me more than my
+        last one" tells us more than "add a comparison chart".
+      placeholder: What you were doing when you wished for this.
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you'd like to see
+      description: Your idea, if you have a specific one in mind.
+
+  - type: textarea
+    id: today
+    attributes:
+      label: How you handle it today
+      description: >
+        A spreadsheet, a glovebox folder, another app, or just remembering. Knowing what you're
+        working around tells us how much this actually costs you.
+
+  - type: dropdown
+    id: importance
+    attributes:
+      label: How much would this matter to you
+      description: No wrong answer — "nice to have" ideas are still worth filing.
+      options:
+        - "Nice to have"
+        - "Would use it regularly"
+        - "I'm working around it today and it's a nuisance"
+        - "It's the reason I might stop using the app"
+
+  - type: input
+    id: vehicle-context
+    attributes:
+      label: Anything about your vehicles that's relevant
+      description: >
+        Only if it matters to the idea — e.g. "I have 4 cars", "mine is a classic with no VIN",
+        "I track a motorcycle". Skip it otherwise.

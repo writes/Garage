@@ -1,0 +1,87 @@
+name: Something isn't working
+description: A screen, button, or number in the app behaves differently than you expected.
+title: "[Bug] "
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. **Every field below is optional** — send what you have and
+        skip the rest. A one-line report is genuinely more useful than no report.
+
+        If the app *quit or closed by itself*, please use the **App crashed or froze** template
+        instead — it asks for the one thing that makes a crash diagnosable.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: In your own words. "Tapped Save on a fuel entry and the spinner never stopped."
+      placeholder: What you did, and what the app did instead of what you expected.
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to get back to it
+      description: >
+        Rough steps are fine. The most useful detail is anything that seems to make it happen more
+        often — a particular vehicle, a specific screen, only the first time after opening the app.
+      placeholder: |
+        1. Open the Log tab
+        2. Swipe left on any entry
+        3. Tap Delete
+
+  - type: input
+    id: screen
+    attributes:
+      label: Where in the app
+      description: Which tab or screen. Dashboard, Log, Garage, Stats, Settings, or a specific form.
+      placeholder: Stats → Cost of ownership
+
+  - type: dropdown
+    id: connectivity
+    attributes:
+      label: Were you online?
+      description: >
+        Worth a moment's thought — several problems only appear with no signal, and knowing this
+        narrows the search a lot. If you're not sure, pick that.
+      options:
+        - "Yes — normal Wi-Fi or cellular"
+        - "No — airplane mode, underground, or no signal"
+        - "Patchy — weak or dropping signal"
+        - "Not sure"
+
+  - type: dropdown
+    id: reproducible
+    attributes:
+      label: Does it happen every time?
+      options:
+        - "Every time"
+        - "Most times"
+        - "Happened once"
+        - "Haven't tried again"
+
+  - type: input
+    id: build
+    attributes:
+      label: Build number
+      description: >
+        TestFlight → Garage → the number in the top right, e.g. "1.0 (4)". This is the single most
+        useful field: it tells us whether you already have a fix we shipped.
+      placeholder: 1.0 (4)
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and iOS version
+      description: Settings → General → About. Model name and Software Version.
+      placeholder: iPhone 15 Pro, iOS 26.4
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshot, screen recording, or anything else
+      description: >
+        Drag files straight into this box. A screenshot of a wrong number is worth more than a
+        paragraph describing it. Please blank out anything you'd rather not share — a VIN or
+        licence plate identifies your car.

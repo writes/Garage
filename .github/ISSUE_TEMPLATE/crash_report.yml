@@ -1,0 +1,85 @@
+name: App crashed or froze
+description: The app quit by itself, or stopped responding and never recovered.
+title: "[Crash] "
+labels: ["crash", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Every field below is optional.** But if you can manage only one, make it the crash log —
+        it names the exact line that failed, and without it we are usually guessing.
+
+        **How to get the crash log (about 30 seconds):**
+        On your iPhone: **Settings → Privacy & Security → Analytics & Improvements →
+        Analytics Data**, scroll to a file starting with `Garage`, tap it, then Share it to
+        yourself and drag it in below.
+
+        A freeze that never recovers counts here too — a spinner that never stops is as broken as
+        a crash, and it usually has a different cause.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What happened
+      options:
+        - "The app closed itself and went back to the home screen"
+        - "The app froze — spinner or unresponsive, never recovered"
+        - "The app froze briefly, then recovered"
+        - "Something else"
+
+  - type: textarea
+    id: doing
+    attributes:
+      label: What you were doing
+      description: >
+        The last thing you touched before it went wrong, even if it seems unrelated. "Tapped the
+        mic, said one sentence, tapped it again."
+      placeholder: The last screen you were on and the last thing you tapped.
+
+  - type: textarea
+    id: crash-log
+    attributes:
+      label: Crash log
+      description: >
+        Drag the file in, or paste the first 30 lines. The top of the file is the useful part —
+        you do not need to include all of it.
+      render: text
+
+  - type: dropdown
+    id: connectivity
+    attributes:
+      label: Were you online?
+      description: A freeze with no signal usually has a very different cause than one with signal.
+      options:
+        - "Yes — normal Wi-Fi or cellular"
+        - "No — airplane mode, underground, or no signal"
+        - "Patchy — weak or dropping signal"
+        - "Not sure"
+
+  - type: checkboxes
+    id: context
+    attributes:
+      label: Anything else true at the time
+      description: Tick whatever applies. These each point at a different part of the app.
+      options:
+        - label: "I was using voice entry"
+        - label: "I tapped something twice quickly"
+        - label: "A call, alarm, or another app's audio interrupted me"
+        - label: "I had just plugged in or unplugged headphones / CarPlay"
+        - label: "I was importing or viewing a PDF or photo"
+        - label: "I had just switched vehicles"
+        - label: "The app had been open in the background for a while"
+
+  - type: input
+    id: build
+    attributes:
+      label: Build number
+      description: TestFlight → Garage → the number in the top right. Tells us if a fix already shipped.
+      placeholder: 1.0 (4)
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and iOS version
+      description: Settings → General → About.
+      placeholder: iPhone 15 Pro, iOS 26.4
