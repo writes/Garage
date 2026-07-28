@@ -37,19 +37,22 @@ final class VehicleCRUDJourneyTests: JourneyTestCase {
         require(app.staticTexts["Journey GT3"])
     }
 
-    func testFreeDemoShowsVehicleLimitSurfaceForAdditionalVehicle() {
+    /// Rewritten when the cap became a preflight. This used to walk the whole vehicle form and
+    /// assert the server's rejection banner — i.e. it asserted the dead end itself: a free user
+    /// filling six fields and waiting for a round trip to be told "no" by a button reading
+    /// "Try Again". That path is gone by design, and the server rule it exercised is covered
+    /// directly by VehicleServiceTests, so nothing is lost by asserting the new behaviour instead.
+    func testFreeDemoOffersProAtTheVehicleCapInsteadOfTheForm() {
         let app = launchDemo()
-        openVehicleForm(in: app)
+        tapWhenHittable(app.buttons["vehicle.switcher"])
+        tapWhenHittable(app.buttons["vehicle.switcher.add"])
 
-        replaceText(in: app.textFields["vehicle.form.nickname"], with: "Limit Probe")
-        replaceText(in: app.textFields["vehicle.form.make"], with: "Ford")
-        replaceText(in: app.textFields["vehicle.form.model"], with: "GT")
-        replaceText(in: app.textFields["vehicle.form.odometer"], with: "100")
-        dismissKeyboard(in: app)
-
-        revealAndTap(app.buttons["vehicle.form.save"], in: app)
-        require(app.descendants(matching: .any)["vehicle.form.error"])
-        require(app.staticTexts["Free accounts are limited to 1 vehicle. Upgrade to Pro for up to 5 vehicles."])
+        // The paywall, not the vehicle form — and specifically before any data entry is wasted.
+        require(app.buttons["subscription.refresh"])
+        XCTAssertFalse(
+            app.textFields["vehicle.form.nickname"].exists,
+            "A capped free user must not be walked through the vehicle form before being told."
+        )
     }
 
     private func openVehicleForm(in app: XCUIApplication) {
