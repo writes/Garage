@@ -25,36 +25,73 @@ enum WearSnapshotFactory {
         return min(100, max(0, remaining))
     }
 
+    /// No passenger tire is three inches deep. The bound is a sanity filter, not a measurement
+    /// rule — its real job is keeping absurd input out of the arithmetic below.
+    static let maximumPlausibleTread32nds = 100.0
+
     /// Accepts "6", "6/32", or "6.5" — all three are how people write tread depth. The denominator
     /// is ignored rather than honoured because "6/32" and "6" mean the same thing to the user, and
     /// silently reinterpreting a stray "6/16" as a different depth would be worse than treating
     /// the numerator as the reading.
+    ///
+    /// The `isFinite` and upper-bound guards are load-bearing, not defensive dressing. `Double`
+    /// parses "1e400" as `+infinity`, and `infinity >= 0` is `true`, so a bare non-negative check
+    /// passed it straight through to `Int(_:)` — which TRAPS, crashing the app. A plain 25-digit
+    /// number reaches the same trap by exceeding `Int64`, and the decimal keypad can produce one
+    /// by itself. Rejecting here means every value downstream is finite and small.
     static func parseTread32nds(_ reading: String) -> Double? {
         let head = reading.split(separator: "/").first.map(String.init) ?? reading
         let trimmed = head.trimmingCharacters(in: .whitespaces)
-        guard let value = Double(trimmed), value >= 0 else { return nil }
+        guard let value = Double(trimmed),
+              value.isFinite,
+              value >= 0,
+              value <= maximumPlausibleTread32nds else { return nil }
         return value
     }
 
-    static func snapshots(
+    /// Deterministic, so re-saving an edited entry OVERWRITES its snapshot instead of adding a
+    /// second one. `WearService.saveSnapshots` writes with `setData` at `snapshot.id`, so a fresh
+    /// UUID per save meant every edit appended another document: unbounded growth, and two
+    /// snapshots sharing one `recordedAt` where the dashboard's "latest wins" tiebreak could hand
+    /// the display back to the value the user had just corrected.
+    static func snapshotID(entryID: String, item: WearItemType) -> String {
+        "\(entryID)-\(item.rawValue)"
+    }
+
+    /// The full write for one entry: what to store, and what to remove.
+    ///
+    /// `clearedIDs` exists because editing is not just adding. If someone records a front-pad
+    /// percentage, saves, then edits the entry and empties that field, the snapshot it created
+    /// must go — otherwise the dashboard keeps showing a reading the user has explicitly deleted.
+    struct WearWrite: Equatable, Sendable {
+        var snapshots: [WearSnapshot] = []
+        var clearedIDs: [String] = []
+    }
+
+    static func write(
         from entry: BrakeEntry,
         vehicleId: String,
         entryId: String,
         odometerReading: Int,
-        recordedAt: Date,
-        idFactory: () -> String = { UUID().uuidString }
-    ) -> [WearSnapshot] {
+        recordedAt: Date
+    ) -> WearWrite {
         let readings: [(WearItemType, Double?)] = [
             (.frontBrakePads, entry.frontPadPct),
             (.rearBrakePads, entry.rearPadPct),
             (.frontRotors, entry.frontRotorPct),
             (.rearRotors, entry.rearRotorPct)
         ]
-        return readings.compactMap { type, percentage in
-            guard let percentage else { return nil }
+        return readings.reduce(into: WearWrite()) { write, reading in
+            let (type, percentage) = reading
+            // `isFinite` first: min/max with NaN silently returns the other operand, so a NaN
+            // would otherwise be recorded as a real 0%-remaining reading.
+            guard let percentage, percentage.isFinite else {
+                write.clearedIDs.append(snapshotID(entryID: entryId, item: type))
+                return
+            }
             let clamped = min(100, max(0, percentage))
-            return WearSnapshot(
-                id: idFactory(),
+            write.snapshots.append(WearSnapshot(
+                id: snapshotID(entryID: entryId, item: type),
                 vehicleId: vehicleId,
                 entryId: entryId,
                 wearItem: type,
@@ -63,34 +100,37 @@ enum WearSnapshotFactory {
                 odometerReading: odometerReading,
                 recordedAt: recordedAt,
                 createdAt: recordedAt
-            )
+            ))
         }
     }
 
     /// Front and rear each collapse two corner readings into one bar, because that is the
     /// granularity the Dashboard shows. The WORSE corner wins: an axle is only as good as its most
     /// worn tire, and averaging would hide a single bald corner behind a healthy one.
-    static func snapshots(
+    static func write(
         from entry: TireEntry,
         vehicleId: String,
         entryId: String,
         odometerReading: Int,
-        recordedAt: Date,
-        idFactory: () -> String = { UUID().uuidString }
-    ) -> [WearSnapshot] {
+        recordedAt: Date
+    ) -> WearWrite {
         let axles: [(WearItemType, [String?])] = [
             (.frontTires, [entry.treadDepthFL, entry.treadDepthFR]),
             (.rearTires, [entry.treadDepthRL, entry.treadDepthRR])
         ]
-        return axles.compactMap { type, readings in
+        return axles.reduce(into: WearWrite()) { write, axle in
+            let (type, readings) = axle
             let parsed = readings.compactMap { $0 }.compactMap { reading -> (Double, String)? in
                 guard let depth = parseTread32nds(reading),
                       let percentage = treadPercentage(from: reading) else { return nil }
                 return (percentage, "\(formatted(depth))/32")
             }
-            guard let worst = parsed.min(by: { $0.0 < $1.0 }) else { return nil }
-            return WearSnapshot(
-                id: idFactory(),
+            guard let worst = parsed.min(by: { $0.0 < $1.0 }) else {
+                write.clearedIDs.append(snapshotID(entryID: entryId, item: type))
+                return
+            }
+            write.snapshots.append(WearSnapshot(
+                id: snapshotID(entryID: entryId, item: type),
                 vehicleId: vehicleId,
                 entryId: entryId,
                 wearItem: type,
@@ -99,10 +139,13 @@ enum WearSnapshotFactory {
                 odometerReading: odometerReading,
                 recordedAt: recordedAt,
                 createdAt: recordedAt
-            )
+            ))
         }
     }
 
+    /// `parseTread32nds` has already rejected anything non-finite or above
+    /// `maximumPlausibleTread32nds`, so `Int(_:)` here cannot trap. That guarantee lives at the
+    /// parse boundary on purpose — it is the only place raw user text enters this type.
     private static func formatted(_ depth: Double) -> String {
         depth == depth.rounded() ? String(Int(depth)) : String(format: "%.1f", depth)
     }

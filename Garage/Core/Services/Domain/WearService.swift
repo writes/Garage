@@ -25,13 +25,26 @@ final class WearService {
     }
 
     func saveSnapshots(_ snapshots: [WearSnapshot], vehicleId: String) async throws {
-        guard !AppRuntime.isLocalDemoMode else { return }
+        try await apply(
+            WearSnapshotFactory.WearWrite(snapshots: snapshots), vehicleId: vehicleId
+        )
+    }
 
-        for snapshot in snapshots {
-            let reference = firestore.db
-                .collection(FirestorePaths.vehicleWear(vehicleId: vehicleId))
-                .document(snapshot.id)
-            try await reference.setData(firestore.encode(snapshot))
+    /// Writes readings and removes the ones the user cleared, in that order.
+    ///
+    /// Deletes are best-effort: a snapshot id that was never written is an ordinary case (most
+    /// entries record no wear at all), and Firestore treats deleting a missing document as
+    /// success, so this needs no existence check. What it must not do is fail the save.
+    func apply(_ write: WearSnapshotFactory.WearWrite, vehicleId: String) async throws {
+        guard !AppRuntime.isLocalDemoMode else { return }
+        guard !write.snapshots.isEmpty || !write.clearedIDs.isEmpty else { return }
+
+        let collection = firestore.db.collection(FirestorePaths.vehicleWear(vehicleId: vehicleId))
+        for snapshot in write.snapshots {
+            try await collection.document(snapshot.id).setData(firestore.encode(snapshot))
+        }
+        for id in write.clearedIDs {
+            try await collection.document(id).delete()
         }
         VehicleDataRevisionStore.shared.bump(vehicleId: vehicleId)
     }

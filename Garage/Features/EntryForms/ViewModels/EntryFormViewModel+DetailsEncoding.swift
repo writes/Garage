@@ -33,13 +33,24 @@ extension EntryFormViewModel {
     /// Fail-soft on purpose: the entry itself is the user's record and is already saved, so a
     /// failure here must not turn a successful save into a failed one. It costs a dashboard bar,
     /// not data — and it is logged rather than swallowed.
-    func recordWear(_ snapshots: [WearSnapshot], vehicleId: String) async {
-        guard !snapshots.isEmpty else { return }
+    func recordWear(_ write: WearSnapshotFactory.WearWrite, vehicleId: String) async {
+        guard !write.snapshots.isEmpty || !write.clearedIDs.isEmpty else { return }
         do {
-            try await wearService(snapshots, vehicleId)
+            try await wearService(write, vehicleId)
         } catch {
             AppLogger.shared.error("Wear snapshot save failed: \(error.localizedDescription)")
         }
+    }
+
+    // `internal`: applyVoicePrefill and applyExistingEntry (+EditPrefill.swift) both format cost
+    // this way. Moved here from the main file, which sits on the 250-line cap.
+    // The magnitude guard is load-bearing: `Int(_:)` traps above Int64, and a cost arrives from a
+    // decoded document or a spoken voice proposal, neither of which is range-checked upstream.
+    static func costString(_ value: Double) -> String {
+        if value == value.rounded(), value.isFinite, abs(value) < 1_000_000_000 {
+            return String(Int(value))
+        }
+        return String(format: "%.2f", value)
     }
 
     static func wrap(any: Any) -> AnyCodable {

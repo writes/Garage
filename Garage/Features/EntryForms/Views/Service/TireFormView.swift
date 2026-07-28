@@ -77,19 +77,18 @@ struct TireFormView: View {
             compound: nil,
             treadwearRating: nil
         )
-        let didSave = await form.save(vehicle: vehicle, entryType: .tire, details: details)
-        // See BrakeFormView: written only after the entry is accepted, and fail-soft.
-        guard didSave, let entryID = form.lastSavedEntryID else { return didSave }
-        await form.recordWear(
-            WearSnapshotFactory.snapshots(
-                from: details,
-                vehicleId: vehicle.id,
-                entryId: entryID,
-                odometerReading: Int(form.odometerReading) ?? 0,
-                recordedAt: form.entryDate
-            ),
-            vehicleId: vehicle.id
-        )
-        return didSave
+        // See BrakeFormView: inside save()'s isSaving window, and fail-soft.
+        return await form.save(vehicle: vehicle, entryType: .tire, details: details) { entryID in
+            await form.recordWear(
+                WearSnapshotFactory.write(
+                    from: details,
+                    vehicleId: vehicle.id,
+                    entryId: entryID,
+                    odometerReading: Int(form.odometerReading) ?? 0,
+                    recordedAt: form.entryDate
+                ),
+                vehicleId: vehicle.id
+            )
+        }
     }
 }

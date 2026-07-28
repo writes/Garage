@@ -19,7 +19,7 @@ final class EntryFormViewModel {
     private let suppressReviewPrompt: @MainActor () -> Void
     // `internal`: called by +DetailsEncoding.swift's recordWear. A closure rather than the service
     // so a hermetic test can capture the snapshots without touching Firestore.
-    let wearService: @MainActor ([WearSnapshot], String) async throws -> Void
+    let wearService: @MainActor (WearSnapshotFactory.WearWrite, String) async throws -> Void
     let entryAttachmentService: EntryAttachmentService
     private let syncService: SyncService
     private let userID: () -> String?
@@ -42,10 +42,6 @@ final class EntryFormViewModel {
     var lastKnownOdometer: Int?
     private(set) var isSaving = false
     private(set) var error: AppError?
-    /// The id of the entry the last successful save wrote. `pendingEntryID` is cleared on success,
-    /// so without this a form has no way to attach follow-on records (wear snapshots) to the entry
-    /// it just created.
-    private(set) var lastSavedEntryID: String?
     // `internal`: EntryFormViewModel+EditPrefill.swift's applyExistingEntry sets these four.
     var pendingEntryID: String?
     var pendingCreatedAt: Date?
@@ -70,8 +66,8 @@ final class EntryFormViewModel {
         suppressReviewPrompt: @escaping @MainActor () -> Void = {
             ReviewPromptStore.shared.suppressForSession()
         },
-        wearService: @escaping @MainActor ([WearSnapshot], String) async throws -> Void = {
-            try await WearService.shared.saveSnapshots($0, vehicleId: $1)
+        wearService: @escaping @MainActor (WearSnapshotFactory.WearWrite, String) async throws -> Void = {
+            try await WearService.shared.apply($0, vehicleId: $1)
         },
         firstEntryFollowUp: @escaping FirstEntryFollowUp = { operation in
             await operation()
@@ -124,14 +120,6 @@ final class EntryFormViewModel {
         }
     }
 
-    // `internal`: applyExistingEntry (EntryFormViewModel+EditPrefill.swift) formats cost the same way.
-    static func costString(_ value: Double) -> String {
-        if value == value.rounded(), abs(value) < 1_000_000_000 {
-            return String(Int(value))
-        }
-        return String(format: "%.2f", value)
-    }
-
     func validateOdometer() -> Bool {
         if let validationError = Validators.odometer(odometerReading, lastKnown: odometerFloor) {
             error = validationError
@@ -140,7 +128,17 @@ final class EntryFormViewModel {
         return true
     }
 
-    func save<T: Encodable>(vehicle: Vehicle, entryType: EntryType, details: T) async -> Bool {
+    /// `followUp` runs INSIDE the `isSaving` window, before the scaffold is told the save
+    /// succeeded. Forms that write follow-on records (wear snapshots) used to do it after `save`
+    /// returned, which left the Save button live and `isSaving` false across that write — a second
+    /// tap in that window passed the reentrancy guard, allocated a fresh entry id, and wrote a
+    /// DUPLICATE entry. Keeping the work in here closes the window.
+    func save<T: Encodable>(
+        vehicle: Vehicle,
+        entryType: EntryType,
+        details: T,
+        followUp: (_ entryID: String) async -> Void = { _ in }
+    ) async -> Bool {
         guard !isSaving, let uid = validatedUID(for: vehicle) else { return false }
 
         let session = syncService.activateSession(uid: uid)
@@ -175,13 +173,13 @@ final class EntryFormViewModel {
             await applyQueuedAttachmentRemovals()
 
             // These all rotate only after local acceptance completes.
-            lastSavedEntryID = entryID
             pendingEntryID = nil
             pendingCreatedAt = nil
             editingEntryID = nil
             editingEntryOriginalOdometer = nil
             editingEntryVehicleId = nil
             error = nil
+            await followUp(entryID)
             scheduleFirstEntryFollowUp(vehicleId: vehicle.id, entryType: entryType)
             recordReviewMoment(.entryLogged)
             return true

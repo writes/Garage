@@ -50,10 +50,18 @@ struct BrakeFormView: View {
         position = details.position
         padBrand = details.padBrand ?? ""
         padCompound = details.padCompound ?? ""
-        frontPad = details.frontPadPct.map { String(Int($0)) } ?? ""
-        rearPad = details.rearPadPct.map { String(Int($0)) } ?? ""
-        frontRotor = details.frontRotorPct.map { String(Int($0)) } ?? ""
-        rearRotor = details.rearRotorPct.map { String(Int($0)) } ?? ""
+        frontPad = Self.percentText(details.frontPadPct)
+        rearPad = Self.percentText(details.rearPadPct)
+        frontRotor = Self.percentText(details.frontRotorPct)
+        rearRotor = Self.percentText(details.rearRotorPct)
+    }
+
+    /// `Int(_:)` traps on a non-finite or out-of-Int64 Double. New values are clamped to 0...100
+    /// on write, but a document written by an older build or corrupted in transit is not, and this
+    /// runs on every edit — so the guard belongs here rather than resting on the writer.
+    private static func percentText(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "" }
+        return String(Int(min(100, max(0, value)).rounded()))
     }
 
     private func save() async -> Bool {
@@ -71,20 +79,20 @@ struct BrakeFormView: View {
             rearRotorPct: Double(rearRotor),
             fluidFlushed: action == .fluidFlush
         )
-        let didSave = await form.save(vehicle: vehicle, entryType: .brake, details: details)
-        // Wear is written only after the entry is accepted, and only ever fail-soft: the entry is
-        // the user's record, and losing a dashboard bar must not turn a good save into a bad one.
-        guard didSave, let entryID = form.lastSavedEntryID else { return didSave }
-        await form.recordWear(
-            WearSnapshotFactory.snapshots(
-                from: details,
-                vehicleId: vehicle.id,
-                entryId: entryID,
-                odometerReading: Int(form.odometerReading) ?? 0,
-                recordedAt: form.entryDate
-            ),
-            vehicleId: vehicle.id
-        )
-        return didSave
+        // Runs inside save()'s isSaving window so the Save button cannot be tapped again while
+        // the wear write is in flight, and fail-soft inside recordWear: the entry is the user's
+        // record, and losing a dashboard bar must not turn a good save into a bad one.
+        return await form.save(vehicle: vehicle, entryType: .brake, details: details) { entryID in
+            await form.recordWear(
+                WearSnapshotFactory.write(
+                    from: details,
+                    vehicleId: vehicle.id,
+                    entryId: entryID,
+                    odometerReading: Int(form.odometerReading) ?? 0,
+                    recordedAt: form.entryDate
+                ),
+                vehicleId: vehicle.id
+            )
+        }
     }
 }

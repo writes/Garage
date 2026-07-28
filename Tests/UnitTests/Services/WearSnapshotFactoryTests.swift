@@ -35,18 +35,26 @@ struct WearSnapshotFactoryTests {
         )
     }
 
-    private func makeBrakeSnapshots(_ entry: BrakeEntry) -> [WearSnapshot] {
-        WearSnapshotFactory.snapshots(
+    private func brakeWrite(_ entry: BrakeEntry) -> WearSnapshotFactory.WearWrite {
+        WearSnapshotFactory.write(
             from: entry, vehicleId: "v", entryId: "e",
-            odometerReading: 50_000, recordedAt: recordedAt, idFactory: { "id" }
+            odometerReading: 50_000, recordedAt: recordedAt
         )
     }
 
-    private func makeTireSnapshots(_ entry: TireEntry) -> [WearSnapshot] {
-        WearSnapshotFactory.snapshots(
+    private func tireWrite(_ entry: TireEntry) -> WearSnapshotFactory.WearWrite {
+        WearSnapshotFactory.write(
             from: entry, vehicleId: "v", entryId: "e",
-            odometerReading: 50_000, recordedAt: recordedAt, idFactory: { "id" }
+            odometerReading: 50_000, recordedAt: recordedAt
         )
+    }
+
+    private func makeBrakeSnapshots(_ entry: BrakeEntry) -> [WearSnapshot] {
+        brakeWrite(entry).snapshots
+    }
+
+    private func makeTireSnapshots(_ entry: TireEntry) -> [WearSnapshot] {
+        tireWrite(entry).snapshots
     }
 
     // MARK: - Brakes
@@ -154,5 +162,66 @@ struct WearSnapshotFactoryTests {
 
     @Test func fractionalTreadKeepsItsPrecisionInTheRawLabel() {
         #expect(makeTireSnapshots(tire(frontLeft: "6.5")).first?.valueRaw == "6.5/32")
+    }
+
+    // MARK: - Crash and duplication defects found by adversarial review
+
+    /// `Double("1e400")` is `+infinity`, and `infinity >= 0` is TRUE — so a plain non-negative
+    /// check let it reach `Int(_:)`, which TRAPS and takes the app down. The decimal keypad can
+    /// also produce a 25-digit number, which overflows Int64 by itself.
+    @Test func absurdTreadInputIsRejectedRatherThanCrashingTheApp() {
+        #expect(WearSnapshotFactory.parseTread32nds("1e400") == nil)
+        #expect(WearSnapshotFactory.parseTread32nds("9999999999999999999999999") == nil)
+        #expect(WearSnapshotFactory.parseTread32nds("-1e400") == nil)
+        // And the whole pipeline survives it, which is the property that actually matters.
+        #expect(makeTireSnapshots(tire(frontLeft: "1e400", frontRight: "99999999999999999999")).isEmpty)
+    }
+
+    @Test func treadExactlyAtThePlausibilityBoundIsStillAccepted() {
+        #expect(WearSnapshotFactory.parseTread32nds("100") == 100)
+        #expect(WearSnapshotFactory.parseTread32nds("101") == nil)
+    }
+
+    /// min/max with NaN silently return the other operand, so an unguarded NaN would be stored as
+    /// a genuine 0%-remaining reading — the app telling someone their pads are gone.
+    @Test func aNonFiniteBrakePercentageIsNotRecordedAsZeroPercent() {
+        let write = brakeWrite(brake(front: .nan, rear: .infinity))
+        #expect(write.snapshots.isEmpty)
+    }
+
+    /// Ids were fresh UUIDs, so every edit of the same entry appended ANOTHER wear document rather
+    /// than replacing the original — unbounded growth, and two snapshots sharing one recordedAt
+    /// where the dashboard's "latest wins" tiebreak could restore the value just corrected.
+    @Test func reSavingTheSameEntryProducesTheSameSnapshotIDs() {
+        let first = brakeWrite(brake(front: 80)).snapshots.map(\.id)
+        let second = brakeWrite(brake(front: 40)).snapshots.map(\.id)
+        #expect(first == second)
+        #expect(first == [WearSnapshotFactory.snapshotID(entryID: "e", item: .frontBrakePads)])
+    }
+
+    @Test func snapshotIDsAreDistinctPerWearItem() {
+        let ids = brakeWrite(brake(front: 80, rear: 60, frontRotor: 90, rearRotor: 70)).snapshots.map(\.id)
+        #expect(Set(ids).count == 4)
+    }
+
+    /// Editing an entry to REMOVE a reading must delete the snapshot it created, or the dashboard
+    /// keeps showing a value the user explicitly cleared.
+    @Test func aClearedReadingIsMarkedForDeletionNotLeftBehind() {
+        let write = brakeWrite(brake(front: 80))
+        #expect(write.snapshots.count == 1)
+        #expect(write.clearedIDs.count == 3)
+        #expect(write.clearedIDs.contains(WearSnapshotFactory.snapshotID(entryID: "e", item: .rearBrakePads)))
+        #expect(!write.clearedIDs.contains(WearSnapshotFactory.snapshotID(entryID: "e", item: .frontBrakePads)))
+    }
+
+    @Test func aClearedTireAxleIsMarkedForDeletion() {
+        let write = tireWrite(tire(frontLeft: "8/32"))
+        #expect(write.snapshots.map(\.wearItem) == [.frontTires])
+        #expect(write.clearedIDs == [WearSnapshotFactory.snapshotID(entryID: "e", item: .rearTires)])
+    }
+
+    @Test func anEntryWithNoReadingsAtAllClearsEveryItemItCouldHaveWritten() {
+        #expect(brakeWrite(brake()).clearedIDs.count == 4)
+        #expect(tireWrite(tire()).clearedIDs.count == 2)
     }
 }
