@@ -17,10 +17,26 @@ struct VehicleSwitcher: View {
                 }
             }
             Divider()
-            Button("Add Vehicle") {
-                router.present(.vehicleForm)
+            // Preflight, not enforcement — VehicleService still validates server-side. This only
+            // stops a free user from filling the entire form and waiting for a round trip just to
+            // be told "no" by a banner whose one button is "Try Again".
+            if appState.canAddVehicle {
+                Button("Add Vehicle") {
+                    router.present(.vehicleForm)
+                }
+                .accessibilityIdentifier("vehicle.switcher.add")
+            } else if appState.vehicleLimitUpgradeWouldHelp {
+                Button("Add Vehicle (Pro)") {
+                    router.present(.subscription(.vehicleLimit))
+                }
+                .accessibilityIdentifier("vehicle.switcher.add")
+            } else {
+                // A Pro user at their own ceiling: no purchase resolves this, so offering the
+                // paywall would be selling something they already own.
+                Button("Vehicle limit reached") {}
+                    .disabled(true)
+                    .accessibilityIdentifier("vehicle.switcher.add")
             }
-            .accessibilityIdentifier("vehicle.switcher.add")
         } label: {
             HStack(spacing: Theme.Spacing.sm) {
                 Image(systemName: "car.2.fill")
