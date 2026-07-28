@@ -24,8 +24,8 @@ final class WearService {
         return Self.latestDashboardItems(from: snapshots)
     }
 
-    func saveSnapshots(_ snapshots: [WearSnapshot], vehicleId: String) async throws {
-        try await apply(
+    func saveSnapshots(_ snapshots: [WearSnapshot], vehicleId: String) throws {
+        try apply(
             WearSnapshotFactory.WearWrite(snapshots: snapshots), vehicleId: vehicleId
         )
     }
@@ -35,16 +35,35 @@ final class WearService {
     /// Deletes are best-effort: a snapshot id that was never written is an ordinary case (most
     /// entries record no wear at all), and Firestore treats deleting a missing document as
     /// success, so this needs no existence check. What it must not do is fail the save.
-    func apply(_ write: WearSnapshotFactory.WearWrite, vehicleId: String) async throws {
+    func apply(_ write: WearSnapshotFactory.WearWrite, vehicleId: String) throws {
         guard !AppRuntime.isLocalDemoMode else { return }
         guard !write.snapshots.isEmpty || !write.clearedIDs.isEmpty else { return }
 
         let collection = firestore.db.collection(FirestorePaths.vehicleWear(vehicleId: vehicleId))
+        // NOT `try await setData(...)`. Firestore resolves the awaited form only on SERVER
+        // acknowledgement, so offline it never resumes — and offline is where people log service:
+        // garages, parking structures, rural roads. The non-awaiting form persists locally at once
+        // and syncs when the device reconnects, which is the whole point of Firestore's offline
+        // cache. The entry batch already works this way (`batch.commit { }` with a callback).
+        // This method is deliberately NOT async. Firestore ships both `setData(_:completion:)`
+        // (persists locally, returns now) and `setData(_:) async throws` (resolves only on SERVER
+        // acknowledgement, so offline it never resumes). Inside an async function Swift picks the
+        // latter, and Swift 6 then refuses the callback form outright — so the only way to get the
+        // offline-safe write is for this function not to be async. It never awaited anything
+        // meaningful anyway. The completion keeps a real sync failure visible in the log.
         for snapshot in write.snapshots {
-            try await collection.document(snapshot.id).setData(firestore.encode(snapshot))
+            collection.document(snapshot.id).setData(try firestore.encode(snapshot)) { error in
+                if let error {
+                    AppLogger.shared.error("Wear snapshot sync failed: \(error.localizedDescription)")
+                }
+            }
         }
         for id in write.clearedIDs {
-            try await collection.document(id).delete()
+            collection.document(id).delete { error in
+                if let error {
+                    AppLogger.shared.error("Wear snapshot clear failed: \(error.localizedDescription)")
+                }
+            }
         }
         VehicleDataRevisionStore.shared.bump(vehicleId: vehicleId)
     }
@@ -52,14 +71,15 @@ final class WearService {
     /// Removes snapshots produced by an entry that has been deleted. Fail-soft: a stale wear bar
     /// is a smaller harm than a delete that appears to fail, and Firestore treats deleting a
     /// missing document as success, so no existence check is needed.
-    func deleteSnapshots(ids: [String], vehicleId: String) async {
+    func deleteSnapshots(ids: [String], vehicleId: String) {
         guard !ids.isEmpty, !AppRuntime.isLocalDemoMode else { return }
+        // See `apply` — the non-awaiting form so an offline delete cannot hang its caller.
         let collection = firestore.db.collection(FirestorePaths.vehicleWear(vehicleId: vehicleId))
         for id in ids {
-            do {
-                try await collection.document(id).delete()
-            } catch {
-                AppLogger.shared.error("Wear snapshot delete failed for \(id): \(error.localizedDescription)")
+            collection.document(id).delete { error in
+                if let error {
+                    AppLogger.shared.error("Wear snapshot delete failed: \(error.localizedDescription)")
+                }
             }
         }
         VehicleDataRevisionStore.shared.bump(vehicleId: vehicleId)

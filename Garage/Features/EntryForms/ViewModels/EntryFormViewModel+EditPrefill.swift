@@ -42,11 +42,29 @@ extension EntryFormViewModel {
     /// the entry's own value (validateOdometer already guarantees that's the max); edit mode is
     /// what lets lowering the max entry drop the vehicle, and raising a non-max entry above the
     /// current max raise it. `internal` (moved out of the class body for the file cap).
+    /// The vehicle's own `currentOdometer` joins the max on CREATE but not on EDIT, and the
+    /// asymmetry is the whole point.
+    ///
+    /// Omitting it entirely — which is what this did — meant the reading the owner typed when
+    /// adding the car was discarded by their first entry: add a vehicle at 85,000, log an oil
+    /// change you had done at 84,500, and the dashboard silently reads 84,500. That number was
+    /// evidence, not a placeholder, and nothing warned or offered to undo it.
+    ///
+    /// Including it unconditionally would be equally wrong in the other direction: someone who
+    /// fat-fingers 200,000 and edits it back to 100,000 must see the vehicle follow, or the typo
+    /// is permanent. Correcting a reading is exactly what editing is for — so on an edit the
+    /// value is recomputed from entries alone, as before.
     static func updatedVehicle(
-        from vehicle: Vehicle, for entry: FirestoreEntry, otherEntriesMaxOdometer: Int?
+        from vehicle: Vehicle,
+        for entry: FirestoreEntry,
+        otherEntriesMaxOdometer: Int?,
+        isEditingExistingEntry: Bool
     ) -> Vehicle {
         var updatedVehicle = vehicle
-        updatedVehicle.currentOdometer = max(entry.odometerReading, otherEntriesMaxOdometer ?? 0)
+        let declaredFloor = isEditingExistingEntry ? 0 : vehicle.currentOdometer
+        updatedVehicle.currentOdometer = max(
+            entry.odometerReading, otherEntriesMaxOdometer ?? 0, declaredFloor
+        )
         updatedVehicle.updatedAt = .now
         return updatedVehicle
     }

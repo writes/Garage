@@ -40,7 +40,7 @@ final class WarrantyViewModel {
             let known = Set(recalls.compactMap(\.campaignNumber))
             for result in response.recalls where !known.contains(result.campaignNumber) {
                 let recall = result.asRecall(vehicleId: vehicle.id, id: UUID().uuidString)
-                try await warrantyService.saveRecall(recall)
+                try warrantyService.saveRecall(recall)
             }
             lastRecallCheck = "Checked \(response.modelYear) \(response.make) \(response.model) — "
                 + "\(response.recalls.count) recall\(response.recalls.count == 1 ? "" : "s") on file."
@@ -77,13 +77,13 @@ final class WarrantyViewModel {
     /// Reloading on success is what makes the new row appear without leaving the screen.
     func add(_ warranty: Warranty) async -> Bool {
         await save(vehicleId: warranty.vehicleId) {
-            try await self.warrantyService.saveWarranty(warranty)
+            try self.warrantyService.saveWarranty(warranty)
         }
     }
 
     func add(_ recall: Recall) async -> Bool {
         await save(vehicleId: recall.vehicleId) {
-            try await self.warrantyService.saveRecall(recall)
+            try self.warrantyService.saveRecall(recall)
         }
     }
 

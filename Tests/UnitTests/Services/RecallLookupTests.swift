@@ -112,7 +112,10 @@ struct RecallImportTests {
     @Test func aVehicleWithNoVinIsToldToAddOneRatherThanFailingObscurely() async {
         let stub = StubLookup()
         stub.error = RecallLookupError.vinMissing
-        let model = WarrantyViewModel(recallLookup: stub)
+        let model = WarrantyViewModel(
+            warrantyService: WarrantyService(testWarranties: [], testRecalls: []),
+            recallLookup: stub
+        )
 
         await model.checkForRecalls(vehicle: vehicle(vin: nil))
 
@@ -123,7 +126,10 @@ struct RecallImportTests {
     @Test func anUnrecognisedVinIsReportedAsATypoNotAServerFault() async {
         let stub = StubLookup()
         stub.error = RecallLookupError.vinNotRecognised
-        let model = WarrantyViewModel(recallLookup: stub)
+        let model = WarrantyViewModel(
+            warrantyService: WarrantyService(testWarranties: [], testRecalls: []),
+            recallLookup: stub
+        )
 
         await model.checkForRecalls(vehicle: vehicle())
 
@@ -135,7 +141,10 @@ struct RecallImportTests {
     @Test func aCleanVehicleStillReportsThatTheCheckHappened() async {
         let stub = StubLookup()
         stub.response = RecallLookupResponse(make: "FORD", model: "F-150", modelYear: "2013", recalls: [])
-        let model = WarrantyViewModel(recallLookup: stub)
+        let model = WarrantyViewModel(
+            warrantyService: WarrantyService(testWarranties: [], testRecalls: []),
+            recallLookup: stub
+        )
 
         await model.checkForRecalls(vehicle: vehicle())
 
@@ -145,7 +154,10 @@ struct RecallImportTests {
 
     @Test func theVinIsPassedThroughToTheLookup() async {
         let stub = StubLookup()
-        let model = WarrantyViewModel(recallLookup: stub)
+        let model = WarrantyViewModel(
+            warrantyService: WarrantyService(testWarranties: [], testRecalls: []),
+            recallLookup: stub
+        )
 
         await model.checkForRecalls(vehicle: vehicle())
 
@@ -155,7 +167,10 @@ struct RecallImportTests {
     /// A second check while the first is still running would double-import everything.
     @Test func aSecondCheckIsIgnoredWhileOneIsInFlight() async {
         let stub = StubLookup()
-        let model = WarrantyViewModel(recallLookup: stub)
+        let model = WarrantyViewModel(
+            warrantyService: WarrantyService(testWarranties: [], testRecalls: []),
+            recallLookup: stub
+        )
 
         async let first: Void = model.checkForRecalls(vehicle: vehicle())
         async let second: Void = model.checkForRecalls(vehicle: vehicle())

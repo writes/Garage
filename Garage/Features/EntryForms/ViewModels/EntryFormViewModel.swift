@@ -67,7 +67,7 @@ final class EntryFormViewModel {
             ReviewPromptStore.shared.suppressForSession()
         },
         wearService: @escaping @MainActor (WearSnapshotFactory.WearWrite, String) async throws -> Void = {
-            try await WearService.shared.apply($0, vehicleId: $1)
+            try WearService.shared.apply($0, vehicleId: $1)
         },
         firstEntryFollowUp: @escaping FirstEntryFollowUp = { operation in
             await operation()
@@ -164,7 +164,8 @@ final class EntryFormViewModel {
                 vehicleId: vehicle.id, excludingEntryID: editingEntryID
             )
             let updatedVehicle = Self.updatedVehicle(
-                from: vehicle, for: entry, otherEntriesMaxOdometer: freshOtherEntriesMax
+                from: vehicle, for: entry, otherEntriesMaxOdometer: freshOtherEntriesMax,
+                isEditingExistingEntry: editingEntryID != nil
             )
             let disposition = try entryService.save(entry, updatingVehicle: updatedVehicle, session: session)
             if disposition == .entryOnlyAcceptedForHermeticStore {

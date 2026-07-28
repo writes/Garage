@@ -10,11 +10,31 @@ final class WarrantyService {
 
     private init() {}
 
+#if DEBUG
+    /// In-memory seam, mirroring `EntryService.init(testEntries:)`. Without it a test that
+    /// exercises anything ending in `load()` reaches real Firestore and fails on permissions —
+    /// which is how the recall-import tests first went red.
+    private var testWarranties: [Warranty]?
+    private var testRecalls: [Recall]?
+
+    init(testWarranties: [Warranty], testRecalls: [Recall]) {
+        self.testWarranties = testWarranties
+        self.testRecalls = testRecalls
+    }
+#endif
+
     /// Demo writes go to the in-memory overlay rather than being dropped. A bare early return
     /// let the form dismiss as if it had saved while the record vanished — the screen then showed
     /// "No warranty records yet" immediately after the user added one, which is the app lying
     /// about the user's own action. Matches the entry/vehicle/reminder overlay precedent.
-    func saveWarranty(_ warranty: Warranty) async throws {
+    func saveWarranty(_ warranty: Warranty) throws {
+#if DEBUG
+        if testWarranties != nil {
+            testWarranties?.removeAll { $0.id == warranty.id }
+            testWarranties?.append(warranty)
+            return
+        }
+#endif
         // DemoSessionStore is `#if DEBUG` — the Release archive cannot see it, which is what the
         // regenerate-and-archive gate caught. The guard below preserves the old Release behaviour.
 #if DEBUG
@@ -27,11 +47,23 @@ final class WarrantyService {
 
         let reference = firestore.db.collection(FirestorePaths.vehicleWarranties(vehicleId: warranty.vehicleId))
             .document(warranty.id)
-        try await reference.setData(firestore.encode(warranty), merge: true)
+        // NOT `try await setData(...)`. Firestore resolves the awaited form only on SERVER
+        // acknowledgement, so offline it never resumes — and offline is where people log service:
+        // garages, parking structures, rural roads. The non-awaiting form persists locally at once
+        // and syncs when the device reconnects, which is the whole point of Firestore's offline
+        // cache. The entry batch already works this way (`batch.commit { }` with a callback).
+        reference.setData(try firestore.encode(warranty), merge: true) { error in
+            if let error {
+                AppLogger.shared.error("Warranty sync failed: \(error.localizedDescription)")
+            }
+        }
         VehicleDataRevisionStore.shared.bump(vehicleId: warranty.vehicleId)
     }
 
     func fetchWarranties(vehicleId: String) async throws -> [Warranty] {
+#if DEBUG
+        if let testWarranties { return testWarranties.filter { $0.vehicleId == vehicleId } }
+#endif
 #if DEBUG
         if AppRuntime.isLocalDemoMode {
             return DemoSessionStore.shared.warranties(for: vehicleId)
@@ -51,7 +83,14 @@ final class WarrantyService {
     }
 
     /// See saveWarranty: demo writes persist to the overlay instead of being silently discarded.
-    func saveRecall(_ recall: Recall) async throws {
+    func saveRecall(_ recall: Recall) throws {
+#if DEBUG
+        if testRecalls != nil {
+            testRecalls?.removeAll { $0.id == recall.id }
+            testRecalls?.append(recall)
+            return
+        }
+#endif
 #if DEBUG
         if AppRuntime.isLocalDemoMode {
             DemoSessionStore.shared.save(recall)
@@ -62,11 +101,19 @@ final class WarrantyService {
 
         let reference = firestore.db.collection(FirestorePaths.vehicleRecalls(vehicleId: recall.vehicleId))
             .document(recall.id)
-        try await reference.setData(firestore.encode(recall), merge: true)
+        // See saveWarranty: the non-awaiting form, so an offline save cannot hang the sheet.
+        reference.setData(try firestore.encode(recall), merge: true) { error in
+            if let error {
+                AppLogger.shared.error("Recall sync failed: \(error.localizedDescription)")
+            }
+        }
         VehicleDataRevisionStore.shared.bump(vehicleId: recall.vehicleId)
     }
 
     func fetchRecalls(vehicleId: String) async throws -> [Recall] {
+#if DEBUG
+        if let testRecalls { return testRecalls.filter { $0.vehicleId == vehicleId } }
+#endif
 #if DEBUG
         if AppRuntime.isLocalDemoMode {
             return DemoSessionStore.shared.recalls(for: vehicleId)
