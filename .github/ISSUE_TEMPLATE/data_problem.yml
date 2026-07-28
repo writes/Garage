@@ -1,0 +1,78 @@
+name: A number or record looks wrong
+description: Data that saved incorrectly, went missing, didn't sync, or shows a value you didn't enter.
+title: "[Data] "
+labels: ["data", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Every field below is optional.** This template exists separately because wrong data is
+        worth more attention than a cosmetic problem — please don't let the number of boxes stop
+        you filing a one-liner.
+
+        **Please don't delete or re-enter the affected record before filing** if you can help it.
+        Whatever is currently stored is the evidence.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of problem
+      options:
+        - "A number is wrong (odometer, cost, MPG, cost per mile)"
+        - "Something I saved is missing"
+        - "Something I deleted came back"
+        - "A change didn't sync to my other device"
+        - "Something shows on one screen but not another"
+        - "A reminder didn't notify me"
+        - "The exported PDF or CSV is wrong or incomplete"
+        - "Something else"
+
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: What it shows, and what it should show
+      description: Both numbers if you know them. "Dashboard reads 84,500 but I entered 85,000."
+      placeholder: |
+        Shows:
+        Should show:
+
+  - type: textarea
+    id: sequence
+    attributes:
+      label: What you did before you noticed
+      description: >
+        Especially useful: whether you *edited* or *deleted* anything, and whether you were offline
+        at the time. Several problems in this area only appear on the second or third action.
+
+  - type: dropdown
+    id: connectivity
+    attributes:
+      label: Were you online when you entered it?
+      options:
+        - "Yes — normal Wi-Fi or cellular"
+        - "No — airplane mode, underground, or no signal"
+        - "Patchy — weak or dropping signal"
+        - "Not sure"
+
+  - type: input
+    id: sync-badge
+    attributes:
+      label: What the sync badge said
+      description: >
+        The small label next to the vehicle name at the top — "Up to date", "Syncing",
+        "Saved on this iPhone", "Needs attention". It records what the app believed at the time.
+      placeholder: Saved on this iPhone
+
+  - type: input
+    id: build
+    attributes:
+      label: Build number
+      placeholder: 1.0 (4)
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: >
+        Drag it in. Please blank out anything you'd rather not share — a VIN or licence plate
+        identifies your car.

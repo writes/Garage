@@ -1,0 +1,15 @@
+# Blank issues stay enabled on purpose. A reporter who cannot find the right template should
+# still be able to tell us something, rather than give up — a badly-filed report beats a
+# silent one.
+blank_issues_enabled: true
+contact_links:
+  - name: Something in the app is confusing rather than broken
+    url: https://github.com/writes/Harry-s-Playhouse/discussions
+    about: >
+      Questions, "is this supposed to work like this?", and general feedback. If it turns out to
+      be a bug we'll open one from there — you don't have to decide which it is.
+  - name: Security or privacy concern
+    url: https://github.com/writes/Harry-s-Playhouse/security/advisories/new
+    about: >
+      Please report privately rather than in a public issue, especially anything involving
+      account access or other people's data.
