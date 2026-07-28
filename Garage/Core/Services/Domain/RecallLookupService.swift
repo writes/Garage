@@ -42,7 +42,17 @@ protocol RecallLooking {
 final class RecallLookupService: RecallLooking {
     static let shared = RecallLookupService()
 
-    private let functions = Functions.functions(region: Secrets.anthroProxyRegion)
+    /// LAZY, and that is load-bearing. `Functions.functions()` traps if `FirebaseApp.configure()`
+    /// has not run — and demo and UI-test bootstraps deliberately never configure Firebase. This
+    /// service is reached through `WarrantyViewModel`'s default argument, which SwiftUI evaluates
+    /// when it builds `WarrantyRecallView`, so an eager `let` here crashed the whole Garage tab in
+    /// those modes. Same pre-configure hazard the app already avoids for Crashlytics via
+    /// NoopCrashReporter; deferring construction to first use keeps merely *having* the service
+    /// free of side effects.
+    /// `@ObservationIgnored` because `@Observable` rewrites stored properties into tracked
+    /// computed ones, and `lazy` cannot apply to those. It is also simply true: a Functions handle
+    /// is not state anyone observes.
+    @ObservationIgnored private lazy var functions = Functions.functions(region: Secrets.anthroProxyRegion)
 
     private init() {}
 
