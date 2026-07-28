@@ -214,3 +214,116 @@ protected-surface change and belongs in a deliberate commit rather than bundled 
 `.tools/bin/xcodegen` is **2.45.3**; the PATH binary is **2.45.4**. The CI regenerate-equality gate
 uses the pinned one. Regenerating with the PATH binary can fail the gate spuriously — always use
 `.tools/bin/xcodegen generate` before committing a project change.
+
+---
+
+# Second audit sweep — 2026-07-28
+
+A six-dimension parallel audit (activation UX, retention, monetisation, reliability, AI,
+architecture) over the whole Swift tree, then an independent verification pass that dropped eight
+of the eighteen raw findings. Everything below was confirmed by reading the code, not by trusting
+the finder.
+
+## The pattern that hid the two worst defects
+
+**Demo mode masks dead write paths.** `AppRuntime.isLocalDemoMode` branches live inside the
+*service* layer and return `SeedData`. Demo mode therefore exercises the read path with rich data
+and never touches the write path — so a feature with a read path, a seed path, and **no write path
+at all** looks complete in every manual walkthrough and every App Store screenshot.
+
+Two shipped features were in exactly that state:
+
+### ✅ Wear tracking was a dead pipeline
+`WearService.saveSnapshots` had **zero callers**. `BrakeFormView` and `TireFormView` hardcoded
+`frontPadPct`/`rearPadPct`/`frontRotorPct`/`rearRotorPct` and all four tread-depth fields to `nil`.
+`TireActionType.treadDepthReading` was an offered action that recorded nothing measurable. So the
+Dashboard wear section and `WearHistoryChart` were permanently empty for every real user — the
+empty state added to `WearHistoryChart` earlier in this branch was treating the symptom.
+
+Both forms now collect the readings, and `WearSnapshotFactory` maps them to snapshots. The
+tread-depth scale is a **safety judgement, not arithmetic**: percentage is measured against the
+usable range (10/32" new → 2/32" legal minimum), so a tire at the legal limit reads 0%, not the 20%
+a naive divide-by-ten would show. An axle reports its **worst** corner, because averaging hides one
+bald tire behind a healthy one — the exact case a wear display exists to catch.
+
+### ✅ Warranty & Recalls could never hold a record
+`WarrantyService.saveWarranty` and `saveRecall` had **zero callers**; `WarrantyRecallView` was
+read-only. An advertised Pro feature that showed "No warranty records yet" forever. Both now have
+add-forms. They deliberately collect a subset of their models' fields — `Warranty` declares 20+,
+and demanding all of them to record "bumper-to-bumper until March" would be worse than not having
+the feature.
+
+## Data trust
+
+### ✅ One corrupt entry blanked the log, stats and export
+Every `EntryService` decode site used `try documents.map { try decode }`. One undecodable document
+threw out of the whole fetch, emptying the Log tab, the Dashboard recent card, the Stats charts and
+**both exports** — the resale dossier being the paid artifact the product exists to produce.
+`VehicleService` had been explicitly hardened against this ("one corrupt doc must not blank the
+garage"); entries never were, despite being more numerous and carrying a per-type `details` payload
+far likelier to drift.
+
+Now tolerant, with a Crashlytics non-fatal per skip. The cursor anchors on the last **document**
+consumed, not the last decoded entry, so paging resumes past a bad row instead of looping on it.
+
+## The core loop
+
+### ✅ The Dashboard never reloaded after saving from the Dashboard
+The FAB opens the entry form as a sheet on `ContentView`, so on save neither the vehicle id nor the
+selected tab changes — and those were the only two reload triggers. A new user's very first entry
+appeared to vanish. `LogView` had carried the fix (`.onChange(of: router.activeSheet)`) all along,
+which is what marks this as an oversight rather than a decision. Safe on every dismissal because
+`loadDashboard` is revision-gated.
+
+`RecentEntryFeed` also rendered a bare heading over nothing when empty, while both sections above
+it showed proper empty states.
+
+## Money and measurement
+
+### ✅ The vehicle cap was a dead end, not an offer
+Free tier is **1 vehicle**, enforced only server-side. The user filled the entire form, waited for
+a round trip, and got a banner whose only button was "Try Again" — for a condition retrying can
+never fix. Every other Pro boundary routes to `ProGateView`. This one, the highest-intent
+conversion moment in the product, offered nothing.
+
+Now preflighted in `VehicleSwitcher`. A **Pro** user at the 5-vehicle ceiling is deliberately *not*
+shown the paywall — no purchase resolves that, so it would be the same dead end with a payment
+sheet attached.
+
+### ✅ Three paywall surfaces shared one analytics source
+Voice Quick-Add and the oil-analysis PDF import both reported `settings`. With three surfaces in
+one bucket, per-surface conversion is not noisy — it is **uncomputable**, and that is worse than
+having no data because it looks like data. Nine sites, nine sources now.
+
+### ✅ App Store rating prompt (new)
+The app never asked. For a utility app, star count is the largest single lever on impression →
+install, so launching with zero ratings suppresses every other acquisition effort. The system caps
+prompts at three per user per year and reports nothing back, so the design protects that budget:
+weighted value moments (a finished PDF dossier counts 3, a logged entry 1), a threshold no
+first-run action can reach, never twice per version, a 120-day cooldown, and full suppression for
+the session after any failed save.
+
+## Honesty
+
+### ✅ Mileage-only reminders never fired, and never said so
+`hasDueDate` defaults to **false** and "Due mileage" is the first field, so the natural path
+produces a mileage-only reminder — and `ReminderNotificationCoordinator.plan` returns nil without a
+`dueDate`, scheduling nothing. The form still said "Reminder saved". A user setting "Oil change at
+95,000 mi" was silently promised an alert that could never arrive.
+
+A local notification genuinely cannot fire on an odometer reading, so the fix is disclosure rather
+than a fake. Predicting the date from logged mileage history is a real follow-up, not done here.
+
+## Deliberately not done
+
+- **Receipt/invoice parsing via Claude** (L). The attachment pipeline stores bytes and never reads
+  them; extending the oil-analysis extractor to general receipts is the largest remaining AI
+  opportunity, but it is a feature project, not a fix.
+- **Offline entry delete** uses Firestore's ack-gated async API, which this codebase documents as
+  hanging forever offline — it can orphan a Storage blob. Real, and a bigger change than anything
+  in this sweep.
+- **Structured outputs for the Claude functions.** Both parse free-text JSON with regex fence
+  stripping. Worth doing; needs verification that strict tool-use is available on Haiku 4.5 with
+  extended thinking before changing a money-adjacent path.
+- **The vehicle's declared starting odometer** is discarded and can be overwritten downward by the
+  first entry. Confirmed real; needs a floor and a hint, not a one-liner.
