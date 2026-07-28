@@ -29,15 +29,23 @@ struct DashboardView: View {
                         } else if let error = viewModel.error {
                             ErrorBanner(error: error, retry: { Task { await reload() } })
                         } else {
-                            // Above wear and reminders: this is the only section that says what
-                            // the car needs rather than replaying what the owner already entered.
-                            MaintenanceDueCard(
-                                items: viewModel.maintenanceDue,
-                                historyDepth: DashboardViewModel.historyDepth
-                            )
-                            wearSection
-                            remindersSection
-                            RecentEntryFeed(entries: viewModel.recentEntries)
+                            // A vehicle with no entries would otherwise stack FOUR negative panels
+                            // — needs-attention, wear, reminders, recent activity — on the very
+                            // first screen after adding a car. Four "nothing here" cards in a row
+                            // read as a broken app rather than a new one. One next step instead.
+                            if viewModel.hasNoHistory {
+                                firstEntryState
+                            } else {
+                                // Above wear and reminders: the only section that says what the car
+                                // needs rather than replaying what the owner already entered.
+                                MaintenanceDueCard(
+                                    items: viewModel.maintenanceDue,
+                                    historyDepth: DashboardViewModel.historyDepth
+                                )
+                                wearSection
+                                remindersSection
+                                RecentEntryFeed(entries: viewModel.recentEntries)
+                            }
                         }
                     }
                 }
@@ -64,6 +72,24 @@ struct DashboardView: View {
                 Task { await reload() }
             }
         }
+    }
+
+    /// The activation moment: one vehicle, no history. Mirrors zeroVehicleState below — a single
+    /// explicit next step rather than a column of empty sections.
+    private var firstEntryState: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            EmptyStateView(
+                title: "Log your first service",
+                message: "Add an oil change, a fill-up, or whatever you did last. "
+                    + "Wear, reminders and cost per mile all build from your entries.",
+                systemImage: "wrench.and.screwdriver"
+            )
+            PrimaryButton(title: "Add First Entry", systemImage: "plus") {
+                router.present(.entryPicker)
+            }
+            .accessibilityIdentifier("dashboard.firstEntry.cta")
+        }
+        .garageCard()
     }
 
     private var zeroVehicleState: some View {

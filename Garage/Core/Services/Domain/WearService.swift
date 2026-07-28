@@ -49,6 +49,22 @@ final class WearService {
         VehicleDataRevisionStore.shared.bump(vehicleId: vehicleId)
     }
 
+    /// Removes snapshots produced by an entry that has been deleted. Fail-soft: a stale wear bar
+    /// is a smaller harm than a delete that appears to fail, and Firestore treats deleting a
+    /// missing document as success, so no existence check is needed.
+    func deleteSnapshots(ids: [String], vehicleId: String) async {
+        guard !ids.isEmpty, !AppRuntime.isLocalDemoMode else { return }
+        let collection = firestore.db.collection(FirestorePaths.vehicleWear(vehicleId: vehicleId))
+        for id in ids {
+            do {
+                try await collection.document(id).delete()
+            } catch {
+                AppLogger.shared.error("Wear snapshot delete failed for \(id): \(error.localizedDescription)")
+            }
+        }
+        VehicleDataRevisionStore.shared.bump(vehicleId: vehicleId)
+    }
+
     nonisolated static func latestDashboardItems(from snapshots: [WearSnapshot]) -> [WearItem] {
         let latestByType = Dictionary(grouping: snapshots.sorted(by: { $0.recordedAt > $1.recordedAt }), by: \.wearItem)
             .compactMapValues(\.first)

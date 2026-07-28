@@ -128,6 +128,21 @@ struct MaintenanceAdvisorTests {
         }
     }
 
+    /// With no history at all every item is `neverLogged`, and rendering four "no record" rows to
+    /// someone who just added their first car is the app reporting its own ignorance four times —
+    /// stacked above three more empty sections. Silence until there is something to reason from.
+    @Test func noHistoryProducesNoAdviceRatherThanFourUnknowns() {
+        #expect(MaintenanceAdvisor.attentionNeeded(entries: [], currentOdometer: 50_000, now: now).isEmpty)
+        #expect(MaintenanceAdvisor.attentionNeeded(entries: [], currentOdometer: nil, now: now).isEmpty)
+    }
+
+    /// One unrelated entry IS history, so the advisor speaks — the guard is about having nothing
+    /// at all, not about having nothing relevant.
+    @Test func aSingleUnrelatedEntryIsEnoughHistoryToAdvise() {
+        let entries = [entry(.fuel, odometer: 50_000, daysAgo: 1)]
+        #expect(!MaintenanceAdvisor.attentionNeeded(entries: entries, currentOdometer: 50_000, now: now).isEmpty)
+    }
+
     @Test func everyItemIsClearedByADistinctEntryType() {
         let types = MaintenanceItem.allCases.map(\.clearedBy)
         #expect(Set(types).count == types.count)

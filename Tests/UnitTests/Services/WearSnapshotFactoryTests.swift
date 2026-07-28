@@ -220,6 +220,21 @@ struct WearSnapshotFactoryTests {
         #expect(write.clearedIDs == [WearSnapshotFactory.snapshotID(entryID: "e", item: .rearTires)])
     }
 
+    /// Deleting an entry must be able to remove exactly the snapshots it produced, with no query
+    /// — which only works because the ids are derived from the entry id. If that derivation ever
+    /// changes, the delete cascade silently stops matching and stale wear bars survive forever.
+    @Test func everyWearItemIDIsDerivableFromTheEntryIDAlone() {
+        let ids = WearItemType.allCases.map { WearSnapshotFactory.snapshotID(entryID: "entry-7", item: $0) }
+        #expect(Set(ids).count == WearItemType.allCases.count)
+        for id in ids {
+            #expect(id.hasPrefix("entry-7-"))
+        }
+        // The ids a brake save writes are a subset of the ids a delete would remove.
+        let written = brakeWrite(brake(front: 80, rear: 60)).snapshots.map(\.id)
+        let deletable = WearItemType.allCases.map { WearSnapshotFactory.snapshotID(entryID: "e", item: $0) }
+        #expect(written.allSatisfy(deletable.contains))
+    }
+
     @Test func anEntryWithNoReadingsAtAllClearsEveryItemItCouldHaveWritten() {
         #expect(brakeWrite(brake()).clearedIDs.count == 4)
         #expect(tireWrite(tire()).clearedIDs.count == 2)

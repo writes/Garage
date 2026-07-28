@@ -38,6 +38,7 @@ extension EntryService {
 #endif
         try await deleteLive(entry, updatingVehicle: vehicle)
         await cascadeDeleteAttachments(for: entry)
+        await cascadeDeleteWear(for: entry)
     }
 
     /// Best-effort, only ever reached after the entry-doc delete already succeeded above: an
@@ -49,6 +50,22 @@ extension EntryService {
     /// identically; there is exactly one cascade site.
     private func cascadeDeleteAttachments(for entry: FirestoreEntry) async {
         await entryAttachmentService.deleteAttachments(paths: entry.attachmentPaths)
+    }
+
+    /// Wear snapshots are keyed to the entry that produced them, and nothing removed them when the
+    /// entry went. So an owner who typed a wrong tread depth or pad percentage, noticed, and
+    /// deleted the entry still saw the bad reading on their Dashboard afterwards — with no
+    /// remaining record to edit or delete. The app contradicting a correction the user already
+    /// made is worse than never having shown the bar.
+    ///
+    /// No query is needed: snapshot ids are derived from the entry id, so the exact documents are
+    /// known. Fail-soft for the same reason as attachments above — a stale wear bar must not block
+    /// a delete the user asked for.
+    private func cascadeDeleteWear(for entry: FirestoreEntry) async {
+        let ids = WearItemType.allCases.map {
+            WearSnapshotFactory.snapshotID(entryID: entry.id, item: $0)
+        }
+        await wearCascade(entry.vehicleId, ids)
     }
 
     private func deleteLive(_ entry: FirestoreEntry, updatingVehicle vehicle: Vehicle?) async throws {

@@ -27,6 +27,11 @@ struct EntryCursor { let document: DocumentSnapshot?
     // directly and never went through EntryDetailView's (now-removed) cascade, orphaning
     // attachments. Putting it here means every caller gets it for free.
     let entryAttachmentService: EntryAttachmentService
+    /// `internal`: used by EntryService+Mutations.swift's cascadeDeleteWear. A closure rather than
+    /// the service so a hermetic test can observe the cascade without Firestore.
+    var wearCascade: @MainActor (String, [String]) async -> Void = { vehicleId, ids in
+        await WearService.shared.deleteSnapshots(ids: ids, vehicleId: vehicleId)
+    }
     var testEntries: [FirestoreEntry]?
 #if DEBUG
     private let hermeticSaveFailure: ((FirestoreEntry) -> Error?)?

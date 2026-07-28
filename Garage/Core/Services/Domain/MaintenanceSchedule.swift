@@ -150,7 +150,12 @@ enum MaintenanceAdvisor {
     static func attentionNeeded(
         entries: [FirestoreEntry], currentOdometer: Int?, now: Date
     ) -> [MaintenanceDue] {
-        MaintenanceItem.allCases
+        // With no history at all, every item is `neverLogged` — and rendering four rows of "no
+        // record" to someone who just added their first car is not advice, it is the app reporting
+        // its own ignorance four times. You cannot counsel on a vehicle you have never seen
+        // serviced, so say nothing until there is something to reason from.
+        guard !entries.isEmpty else { return [] }
+        return MaintenanceItem.allCases
             .map { status(for: $0, entries: entries, currentOdometer: currentOdometer, now: now) }
             .filter { $0.status != .upToDate }
             .sorted { lhs, rhs in

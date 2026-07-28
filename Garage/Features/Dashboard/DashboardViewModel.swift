@@ -34,6 +34,10 @@ final class DashboardViewModel {
 
     private(set) var recentEntries: [FirestoreEntry] = []
     private(set) var maintenanceDue: [MaintenanceDue] = []
+    /// True once a load has completed and found no entries at all. Distinct from `recentEntries
+    /// .isEmpty` alone, which is also true before the first load lands — showing the activation CTA
+    /// during loading would flash it at owners who have plenty of history.
+    private(set) var hasNoHistory = false
     private(set) var wearItems: [WearItem] = []
     private(set) var upcomingReminders: [Reminder] = []
     private(set) var openRecalls = 0
@@ -108,6 +112,7 @@ final class DashboardViewModel {
         // The feed shows the newest few; the fetch deliberately reaches further back for the
         // advisor below, so slice rather than widening what the card renders.
         recentEntries = Array(content.entries.prefix(Constants.dashboardRecentLimit))
+        hasNoHistory = content.entries.isEmpty
         maintenanceDue = MaintenanceAdvisor.attentionNeeded(
             entries: content.entries,
             currentOdometer: content.entries.map(\.odometerReading).max(),
