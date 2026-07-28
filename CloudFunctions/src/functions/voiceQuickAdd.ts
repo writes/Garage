@@ -151,7 +151,7 @@ function vehicleContextLine(data: unknown): string {
  * first is sometimes a partial draft, so reading `content[0]` silently discards most of what the
  * model heard.
  */
-function toolInputFromPayload(payload: unknown): Record<string, unknown> | undefined {
+export function toolInputFromPayload(payload: unknown): Record<string, unknown> | undefined {
   if (!isRecord(payload) || !Array.isArray(payload.content)) return undefined;
 
   let best: Record<string, unknown> | undefined;
@@ -204,18 +204,95 @@ export const VOICE_ENTRY_TOOL = {
 } as const;
 
 /**
- * Deliberately short. Three longer variants were benchmarked against this one on eight realistic
- * spoken sentences at three runs each — adding spoken-number guidance, a fill-every-field
- * instruction, and relative-date resolution — and every variant scored identically (42/45 fields,
- * 21/24 exact). Richer field descriptions in the tool schema scored the same as bare ones too.
+ * Every clause here is evidence-backed by scripts/voiceGoldenEval.ts (18 dictations, scored
+ * field-by-field, 3 runs each — reports/voice-golden-*.json):
  *
- * The accuracy came from strict tool use, not from prompt length: the enum constrains entryType,
- * and the schema forces types. Elaborating this prompt would have cost tokens on every call and
- * bought nothing measurable — a single-sample comparison had suggested otherwise, and was noise.
+ * - The original one-line prompt ("record only what was said — never invent") scored 77.4%:
+ *   its chilling effect made the model treat word-to-digit CONVERSION as invention, so
+ *   "four eighty seven total" and "had 88,450 on it" came back null, deterministically.
+ *   Reframing conversion-as-recording plus the worked example below fixed exactly that.
+ * - Without a reference date the model HALLUCINATED years: "July tenth" became 2024-07-10,
+ *   "last Saturday" a Saturday from 2024 — past dates the sanitizer accepts. The date line
+ *   must be in the SYSTEM prompt: prepended to the user message it fixed dates but collapsed
+ *   every other field (the model stopped trusting the quoted sentence).
+ * - The weekday anchors exist because Haiku cannot reliably count weekdays backwards
+ *   ("last Saturday" resolved to a Sunday, 3/3) — the anchors hand it the answer.
+ * - The dme_report fence stops "inspection … passed" from misfiling as a diagnostics report.
+ *
+ * Baseline 77.4% -> this configuration 97.8% (Haiku; residue is sporadic cost omission).
+ * Sonnet 5 on the same set scored 85.5% WITHOUT the few-shot — the example, not the model
+ * tier, is what carries the accuracy, so the cheap model stays.
  */
-const SYSTEM_PROMPT =
-  "You convert a car owner's spoken sentence into a single maintenance-log entry. " +
-  "Record only what was actually said — never invent a value that was not spoken.";
+export const SYSTEM_PROMPT =
+  "You convert a car owner's spoken sentence into a single maintenance-log entry." +
+  " Never fabricate a value the owner did not speak — but converting spoken words to digits is" +
+  " recording, not inventing. Capture every number the owner said into its matching field:" +
+  " 'one forty' is 140, 'one twenty nine ninety nine' is 129.99, 'about forty bucks' is 40," +
+  " 'eighty seven five' on an odometer is 87500, 'had 88,450 on it' means the odometer read" +
+  " 88450. Omit a field only when the owner said nothing about it." +
+  " dme_report is only for engine-computer (DME/ECU) diagnostic report exports.";
+
+const DAY_MS = 86_400_000;
+
+function utcDay(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function utcWeekday(date: Date): string {
+  return date.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
+}
+
+/** See the SYSTEM_PROMPT note: anchors, not arithmetic, are what make relative dates land. */
+export function referenceDateLine(now: Date): string {
+  const anchors = [-1, -2, -3, -4, -5, -6, -7]
+    .map((offset) => {
+      const d = new Date(now.getTime() + offset * DAY_MS);
+      return `${utcWeekday(d)} was ${utcDay(d)}`;
+    })
+    .join(", ");
+  return ` Today is ${utcWeekday(now)} ${utcDay(now)}. Going back: ${anchors}.`;
+}
+
+/**
+ * One worked exchange, packing the forms instructions alone could not unlock on Haiku:
+ * compressed cost with an "about" hedge, "had … on it" odometer phrasing, a shop, and a
+ * relative date. The example's date is COMPUTED from `now` ("last Wednesday", matching its
+ * transcript) — a hardcoded date would drift stale and teach the model to emit old years.
+ */
+export function fewShotMessages(now: Date): unknown[] {
+  const daysSinceWednesday = ((new Date(now).getUTCDay() - 3) + 7) % 7 || 7;
+  const lastWednesday = utcDay(new Date(now.getTime() - daysSinceWednesday * DAY_MS));
+  return [
+    {
+      role: "user",
+      content: [{
+        type: "text",
+        text: "The owner said: \"Timing belt and water pump at Pep Boys, about six fifty total," +
+          " truck had one oh five two fifty on it, last Wednesday\"",
+      }],
+    },
+    {
+      role: "assistant",
+      content: [{
+        type: "tool_use",
+        id: "toolu_voice_example_01",
+        name: "record_entry",
+        input: {
+          entryType: "repair",
+          odometerReading: 105250,
+          cost: 650,
+          shopName: "Pep Boys",
+          entryDate: lastWednesday,
+          notes: "Timing belt and water pump",
+        },
+      }],
+    },
+    {
+      role: "user",
+      content: [{ type: "tool_result", tool_use_id: "toolu_voice_example_01", content: "Recorded." }],
+    },
+  ];
+}
 
 export async function voiceQuickAddRequest(
   request: VoiceQuickAddRequest,
@@ -249,13 +326,16 @@ export async function voiceQuickAddRequest(
         // different name, and two conventions for one model invites them drifting apart.
         model: "claude-haiku-4-5",
         max_tokens: 512,
-        system: SYSTEM_PROMPT,
+        system: SYSTEM_PROMPT + referenceDateLine(now),
         tools: [VOICE_ENTRY_TOOL],
         tool_choice: { type: "tool", name: VOICE_ENTRY_TOOL.name },
-        messages: [{
-          role: "user",
-          content: [{ type: "text", text: vehicleContextLine(request.data) + `The owner said: "${transcript}"` }],
-        }],
+        messages: [
+          ...fewShotMessages(now),
+          {
+            role: "user",
+            content: [{ type: "text", text: vehicleContextLine(request.data) + `The owner said: "${transcript}"` }],
+          },
+        ],
       }),
     });
   } catch (error) {
