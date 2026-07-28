@@ -14,6 +14,9 @@ final class EntryFormViewModel {
     let entryService: EntryService
     let vehicleService: VehicleService
     let analytics: any AnalyticsTracking
+    // Defaults to the real store, never a no-op — see ExportViewModel for the reasoning.
+    private let recordReviewMoment: @MainActor (ReviewMoment) -> Void
+    private let suppressReviewPrompt: @MainActor () -> Void
     let entryAttachmentService: EntryAttachmentService
     private let syncService: SyncService
     private let userID: () -> String?
@@ -54,6 +57,12 @@ final class EntryFormViewModel {
         syncService: SyncService = .shared,
         entryAttachmentService: EntryAttachmentService = .shared,
         analytics: any AnalyticsTracking = AnalyticsService.shared,
+        recordReviewMoment: @escaping @MainActor (ReviewMoment) -> Void = {
+            ReviewPromptStore.shared.record($0)
+        },
+        suppressReviewPrompt: @escaping @MainActor () -> Void = {
+            ReviewPromptStore.shared.suppressForSession()
+        },
         firstEntryFollowUp: @escaping FirstEntryFollowUp = { operation in
             await operation()
         },
@@ -66,6 +75,8 @@ final class EntryFormViewModel {
         self.syncService = syncService
         self.entryAttachmentService = entryAttachmentService
         self.analytics = analytics
+        self.recordReviewMoment = recordReviewMoment
+        self.suppressReviewPrompt = suppressReviewPrompt
         self.firstEntryFollowUp = firstEntryFollowUp
         self.userID = userID
     }
@@ -160,9 +171,14 @@ final class EntryFormViewModel {
             editingEntryVehicleId = nil
             error = nil
             scheduleFirstEntryFollowUp(vehicleId: vehicle.id, entryType: entryType)
+            recordReviewMoment(.entryLogged)
             return true
         } catch {
             self.error = AppError(from: error)
+            // A save that failed is the worst possible moment to ask for a rating, and the user is
+            // likely to hit a value moment (a retry that works) minutes later — so the whole
+            // session is taken off the table, not just this call.
+            suppressReviewPrompt()
             return false
         }
     }

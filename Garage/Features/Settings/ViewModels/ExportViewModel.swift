@@ -22,6 +22,9 @@ final class ExportViewModel {
     private let pdfExportService: PDFExportService
     private let csvExportService: CSVExportService
     private let analytics: any AnalyticsTracking
+    // A closure so tests can substitute a recorder. The DEFAULT is the real store, never a no-op:
+    // a feature whose production path needs every call site to opt in is a feature that ships dead.
+    private let recordReviewMoment: @MainActor (ReviewMoment) -> Void
     private let pdfEntryFetch: EntryPageFetch
     // `internal` (not `private`): read by ExportViewModel+CSVArtifact.swift's appendCSVPages.
     let csvPageFetch: EntryPageFetch
@@ -55,6 +58,7 @@ final class ExportViewModel {
         pdfExportService: PDFExportService = .shared,
         csvExportService: CSVExportService = .shared,
         analytics: any AnalyticsTracking = AnalyticsService.shared,
+        recordReviewMoment: @escaping @MainActor (ReviewMoment) -> Void = { ReviewPromptStore.shared.record($0) },
         pdfEntryFetch: EntryPageFetch? = nil,
         csvPageFetch: EntryPageFetch? = nil,
         csvURLFactory: @escaping () -> URL = {
@@ -70,6 +74,7 @@ final class ExportViewModel {
         self.pdfExportService = pdfExportService
         self.csvExportService = csvExportService
         self.analytics = analytics
+        self.recordReviewMoment = recordReviewMoment
         self.pdfEntryFetch = pdfEntryFetch ?? { query, limit, cursor in
             try await entryService.fetchEntries(query: query, limit: limit, after: cursor)
         }
@@ -126,6 +131,8 @@ final class ExportViewModel {
             try persistPDFArtifact()
             pdfAuthorization = expectedAuthorization
             analytics.track(.exportPDF(entryCount: resolvedEntries.count))
+            // The dossier is the reason to keep a service log at all — the app's peak-value moment.
+            recordReviewMoment(.pdfExported)
         } catch {
             guard operationIsCurrent(operationID), authorization() == expectedAuthorization else { return }
             self.error = AppError(from: error)

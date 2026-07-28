@@ -62,9 +62,10 @@ struct GarageApp: App {
 
     var body: some Scene {
         WindowGroup {
-            // The design system defines no dark-appearance asset variants, so dark mode renders
-            // broken (white text on white surfaces). Lock the app to light until a real dark
-            // palette is designed. This covers presented sheets too.
+            // Follows the system appearance. All 15 colorsets now carry dark-appearance variants
+            // and ColorContrastTests asserts WCAG AA in BOTH appearances, so the light-only lock
+            // this comment used to describe is gone. (The lock was never actually applied in code
+            // — there is no preferredColorScheme call here or anywhere else.)
             Group {
                 switch bootstrapMode {
                 case .uiTest:
@@ -81,6 +82,10 @@ struct GarageApp: App {
                         .environment(appState)
                         .environment(router)
                         .modelContainer(modelContainer)
+                        // Production only. A demo or UI-test run earns value moments too, and a
+                        // rating prompt raised there would spend one of the three the system
+                        // allows per year on a session that is not a real user.
+                        .reviewPrompt(.shared)
                         .onOpenURL { url in
                             if GIDSignIn.sharedInstance.handle(url) {
                                 return
