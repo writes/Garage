@@ -27,6 +27,28 @@ struct WarrantyRecallView: View {
             }
 
             Section("Recalls") {
+                // The lookup is free, keyless and safety-relevant, so it is NOT behind the Pro
+                // fence — a recall the owner does not know about is the one thing in this app that
+                // can hurt someone.
+                Button {
+                    guard let vehicle = appState.currentVehicle else { return }
+                    Task { await viewModel.checkForRecalls(vehicle: vehicle) }
+                } label: {
+                    if viewModel.isCheckingRecalls {
+                        Label("Checking NHTSA…", systemImage: "arrow.triangle.2.circlepath")
+                    } else {
+                        Label("Check NHTSA for recalls", systemImage: "magnifyingglass")
+                    }
+                }
+                .disabled(viewModel.isCheckingRecalls || appState.currentVehicle == nil)
+                .accessibilityIdentifier("recall.check")
+
+                if let summary = viewModel.lastRecallCheck {
+                    Text(summary)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .accessibilityIdentifier("recall.checkSummary")
+                }
                 if viewModel.recalls.isEmpty {
                     Text("No recall records yet")
                 } else {

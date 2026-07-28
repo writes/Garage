@@ -5,14 +5,54 @@ import Observation
 @Observable
 final class WarrantyViewModel {
     private let warrantyService: WarrantyService
+    private let recallLookup: any RecallLooking
 
     private(set) var warranties: [Warranty] = []
     private(set) var recalls: [Recall] = []
     private(set) var error: AppError?
     private var reloadToken = 0
 
-    init(warrantyService: WarrantyService = .shared) {
+    private(set) var isCheckingRecalls = false
+    /// Set after a successful check so the screen can report "nothing found" — otherwise a lookup
+    /// that legitimately returns zero recalls is indistinguishable from one that did nothing.
+    private(set) var lastRecallCheck: String?
+
+    init(
+        warrantyService: WarrantyService = .shared,
+        recallLookup: any RecallLooking = RecallLookupService.shared
+    ) {
         self.warrantyService = warrantyService
+        self.recallLookup = recallLookup
+    }
+
+    /// Looks the vehicle's VIN up against NHTSA and stores anything new.
+    ///
+    /// Existing campaign numbers are skipped rather than overwritten: once a recall is in the
+    /// user's list they may have marked it completed, and re-importing would silently reset that
+    /// to outstanding — the app undoing a record of work the owner actually had done.
+    func checkForRecalls(vehicle: Vehicle) async {
+        guard !isCheckingRecalls else { return }
+        isCheckingRecalls = true
+        defer { isCheckingRecalls = false }
+
+        do {
+            let response = try await recallLookup.lookup(vin: vehicle.vin ?? "")
+            let known = Set(recalls.compactMap(\.campaignNumber))
+            for result in response.recalls where !known.contains(result.campaignNumber) {
+                let recall = result.asRecall(vehicleId: vehicle.id, id: UUID().uuidString)
+                try await warrantyService.saveRecall(recall)
+            }
+            lastRecallCheck = "Checked \(response.modelYear) \(response.make) \(response.model) — "
+                + "\(response.recalls.count) recall\(response.recalls.count == 1 ? "" : "s") on file."
+            error = nil
+            await load(vehicleId: vehicle.id)
+        } catch RecallLookupError.vinMissing {
+            error = .validation("Add this vehicle's VIN to check for recalls.")
+        } catch RecallLookupError.vinNotRecognised {
+            error = .validation("NHTSA did not recognise that VIN. Check it for typos.")
+        } catch {
+            self.error = AppError(from: error)
+        }
     }
 
     func load(vehicleId: String) async {
