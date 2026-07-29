@@ -215,8 +215,11 @@ export const RECEIPT_ENTRY_TOOL = {
 } as const;
 
 /**
- * Each clause targets a receipt failure class (plan §4); iterate ONLY under the golden eval
- * (scripts/receiptGoldenEval.ts) — a drop is a regression regardless of plausibility:
+ * Every clause here is evidence-backed by scripts/receiptGoldenEval.ts (18 synthetic receipts,
+ * scored field-by-field, 2 runs each — reports/receipt-golden-prod.json). Iterate ONLY under the
+ * eval; a drop is a regression regardless of plausibility.
+ *
+ * Cycle-1 clauses (the original ship set, 96.8% overall / 100% money):
  * - GRAND TOTAL vs the subtotal/tendered/change stack (the classic receipt money trap).
  * - Odometer vs the RO#/invoice#/phone/ZIP/VIN mileage-shaped numbers invoices are covered in.
  * - SERVICE date vs payment-due/statement/reprint dates.
@@ -224,6 +227,26 @@ export const RECEIPT_ENTRY_TOOL = {
  * - Unreadable values are omitted, never guessed.
  * - Parts-only receipts suggest DIY.
  * - documentLooksLikeReceipt=false is the non-receipt escape hatch (G1).
+ *
+ * Cycle-2 clauses (added 2026-07-29; 96.8% -> 98.1% overall, money held at 100%):
+ * - The `upgrade` fence: a battery-replacement invoice was filed as `upgrade` 2/2 — the model
+ *   read "new AGM battery, install + register" as a chosen improvement rather than a dead part
+ *   being replaced. Naming the failed-part case fixed it 2/2 (96.8% -> 97.2%).
+ * - Classify-by-main-work: a 30,000-mile service (oil/filter + rotate + cabin filter + brake
+ *   inspection) was filed as `oil_change` from its first line, which would lose the rest of the
+ *   service. Naming the multi-line-package case fixed it 2/2 (97.2% -> 98.1%).
+ *
+ * MEASURED DEAD END — do not re-add (cycle 3, 2026-07-29): "replacing or resealing a gasket,
+ * seal, or hose is a repair" fixed the valve-cover-reseal case 2/2 and raised the overall score
+ * to 98.6%, but it over-fired on the transmission-fluid-service trap ("Drain/fill, new gasket +
+ * filter"), flipping it maintenance -> repair and taking a deliberately engineered trap case
+ * from 2/2 to 1/2. A gasket named incidentally inside a fluid service overrode the
+ * classify-by-main-work rule. Trading trap coverage for a boundary case is a bad trade even at
+ * net +1 field; reverted. Residual known misses at 98.1%: the valve-cover invoice reading
+ * `maintenance` rather than `repair` (genuinely ambiguous — the receipt states no failure), and
+ * a single-digit odometer misread on the 7-degree-skewed photo (a vision limit, not a prompt
+ * one — this is the pre-registered P1 VisionKit evidence case, plan §8).
+ *
  * referenceDateLine(now) is appended at call time — the documented voice lesson: without it the
  * model hallucinates past years the sanitizer accepts, and it must live in the SYSTEM prompt.
  */
@@ -237,6 +260,14 @@ export const SYSTEM_PROMPT =
   " Converting printed text to digits and dates is recording, not inventing: capture every value" +
   " the receipt prints into its matching field. Omit a value you cannot read — never guess." +
   " A retail parts receipt with no labor lines suggests the owner did the work (isDiy)." +
+  " upgrade is only for an aftermarket or performance modification the owner chose to add —" +
+  " never for replacing a part that failed, died, or wore out. A new battery, alternator," +
+  " starter, or belt is a repair even when the replacement part is newer or better than the" +
+  " original." +
+  " When one receipt covers several jobs, classify by the main work, not by the first line:" +
+  " a multi-line scheduled mileage service (e.g. a 30,000 mile service) is maintenance, not" +
+  " the type of one item inside it; work that fixes something broken, leaking, or worn out is" +
+  " repair even when routine items were done in the same visit." +
   " Set documentLooksLikeReceipt to false for anything that is not a vehicle service receipt" +
   " or invoice.";
 

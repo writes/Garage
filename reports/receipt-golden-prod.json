@@ -3,7 +3,7 @@
  "model": "claude-haiku-4-5",
  "runs": 2,
  "now": "2026-07-28T17:00:00.000Z",
- "pass": 209,
+ "pass": 212,
  "total": 216,
  "moneyPass": 34,
  "moneyTotal": 34,
@@ -57,7 +57,7 @@
     {
      "field": "lineItems~oil",
      "expected": "oil",
-     "got": "synthetic blend oil change 0w-20 semi-synthetic 6 qts. filter incl. — $69.95 | tire rotation — $24.95 | multi-point inspection — $0.00",
+     "got": "synthetic blend oil change 0w-20 semi-syn 6 qts, filter incl. — $69.95 | tire rotation — $24.95 | multi-point inspection — $0.00",
      "pass": true
     }
    ],
@@ -70,9 +70,9 @@
     "odometerReading": 34218,
     "isDiy": false,
     "lineItems": [
-     "Synthetic Blend Oil Change 0W-20 semi-synthetic 6 qts. filter incl. — $69.95",
-     "Tire Rotation — $24.95",
-     "Multi-Point Inspection — $0.00"
+     "Synthetic blend oil change 0W-20 semi-syn 6 qts, filter incl. — $69.95",
+     "Tire rotation — $24.95",
+     "Multi-point inspection — $0.00"
     ],
     "notes": "Next service due at 39,218 miles"
    }
@@ -126,7 +126,7 @@
     {
      "field": "lineItems~oil",
      "expected": "oil",
-     "got": "synthetic blend oil change 0w-20 semi-synthetic 6 qts, filter incl. — $69.95 | tire rotation — $24.95 | multi-point inspection — $0.00",
+     "got": "synthetic blend oil change 0w-20 semi-syn 6 qts, filter incl. — $69.95 | tire rotation — $24.95 | multi-point inspection — $0.00",
      "pass": true
     }
    ],
@@ -139,9 +139,9 @@
     "odometerReading": 34218,
     "isDiy": false,
     "lineItems": [
-     "Synthetic Blend Oil Change 0W-20 semi-synthetic 6 qts, filter incl. — $69.95",
-     "Tire Rotation — $24.95",
-     "Multi-Point Inspection — $0.00"
+     "Synthetic blend oil change 0W-20 semi-syn 6 qts, filter incl. — $69.95",
+     "Tire rotation — $24.95",
+     "Multi-point inspection — $0.00"
     ],
     "notes": "Next service due at 39,218 miles"
    }
@@ -177,7 +177,7 @@
     {
      "field": "shopName",
      "expected": "GasNGo",
-     "got": "Gasngo #77",
+     "got": "GASNGO #77",
      "pass": true
     },
     {
@@ -190,10 +190,10 @@
    "raw": {
     "documentLooksLikeReceipt": true,
     "entryType": "fuel",
-    "shopName": "Gasngo #77",
+    "shopName": "GASNGO #77",
     "entryDate": "2026-07-03",
     "cost": 48.42,
-    "isDiy": true,
+    "isDiy": false,
     "lineItems": [
      "Fuel 12.418 GAL @ $3.899 — $48.42"
     ]
@@ -246,7 +246,7 @@
     "shopName": "Gasngo #77",
     "entryDate": "2026-07-03",
     "cost": 48.42,
-    "isDiy": true,
+    "isDiy": false,
     "lineItems": [
      "12.418 GAL @ $3.899 — $48.42"
     ]
@@ -302,7 +302,7 @@
     "odometerReading": 78802,
     "isDiy": false,
     "lineItems": [
-     "Four wheel alignment — Camber/caster/toe set to spec — $119.00"
+     "Four wheel alignment — Camber/caster/toe set to spec \t$119.00"
     ]
    }
   },
@@ -356,7 +356,7 @@
     "odometerReading": 78802,
     "isDiy": false,
     "lineItems": [
-     "Four wheel alignment — Camber/caster/toe set to spec // $119.00"
+     "Four wheel alignment - Camber/caster/toe set to spec \t$119.00"
     ]
    }
   },
@@ -373,7 +373,7 @@
     {
      "field": "entryType",
      "expected": "repair|maintenance",
-     "got": "maintenance",
+     "got": "repair",
      "pass": true
     },
     {
@@ -397,13 +397,13 @@
    ],
    "raw": {
     "documentLooksLikeReceipt": true,
-    "entryType": "maintenance",
+    "entryType": "repair",
     "shopName": "Eddie's Garage",
     "entryDate": "2026-04-18",
     "cost": 240,
     "isDiy": false,
     "lineItems": [
-     "Replace serpentine belt parts + labor \nnon— $240.00"
+     "Replace serpentine belt — parts + labor"
     ]
    }
   },
@@ -420,7 +420,7 @@
     {
      "field": "entryType",
      "expected": "repair|maintenance",
-     "got": "maintenance",
+     "got": "repair",
      "pass": true
     },
     {
@@ -444,13 +444,13 @@
    ],
    "raw": {
     "documentLooksLikeReceipt": true,
-    "entryType": "maintenance",
+    "entryType": "repair",
     "shopName": "Eddie's Garage",
     "entryDate": "2026-04-18",
     "cost": 240,
     "isDiy": false,
     "lineItems": [
-     "Replace serpentine belt parts + labor \n— $240.00"
+     "Replace serpentine belt parts + labor \t $240.00"
     ]
    }
   },
@@ -485,7 +485,7 @@
     {
      "field": "shopName",
      "expected": "AutoZone",
-     "got": "Autozone",
+     "got": "AutoZone",
      "pass": true
     },
     {
@@ -510,7 +510,7 @@
    "raw": {
     "documentLooksLikeReceipt": true,
     "entryType": "brake",
-    "shopName": "Autozone",
+    "shopName": "AutoZone",
     "entryDate": "2026-06-28",
     "cost": 64.24,
     "isDiy": true,
@@ -569,7 +569,7 @@
     {
      "field": "lineItems~pads",
      "expected": "pads",
-     "got": "duralast gold pads dg1234 \t— $54.99 | brake cleaner 12oz \t— $4.49",
+     "got": "duralast gold pads dg1234 \nnow— $54.99 | brake cleaner 12oz \nnow— $4.49",
      "pass": true
     }
    ],
@@ -581,8 +581,8 @@
     "cost": 64.24,
     "isDiy": true,
     "lineItems": [
-     "Duralast Gold Pads DG1234 \t— $54.99",
-     "Brake Cleaner 12oz \t— $4.49"
+     "Duralast Gold Pads DG1234 \nnow— $54.99",
+     "Brake Cleaner 12oz \nnow— $4.49"
     ]
    }
   },
@@ -629,7 +629,7 @@
     {
      "field": "lineItems~road hazard",
      "expected": "road hazard",
-     "got": "michelin defender2 225/60r17 4 @ $167.00 ea. — $668.00 | road hazard certificate 4 @ $22.00 ea. — $88.00 | mount/balance/valve 4 @ $20.00 ea. — $80.00",
+     "got": "michelin defender2 225/60r17 4 @ $167.00 \t$668.00 | road hazard certificate 4 @ $22.00 \t$88.00 | mount/balance/valve 4 @ $20.00 \t$80.00",
      "pass": true
     }
    ],
@@ -642,9 +642,9 @@
     "odometerReading": 45102,
     "isDiy": false,
     "lineItems": [
-     "Michelin Defender2 225/60R17 4 @ $167.00 ea. — $668.00",
-     "Road Hazard Certificate 4 @ $22.00 ea. — $88.00",
-     "Mount/Balance/Valve 4 @ $20.00 ea. — $80.00"
+     "Michelin Defender2 225/60R17 4 @ $167.00 \t$668.00",
+     "Road Hazard Certificate 4 @ $22.00 \t$88.00",
+     "Mount/Balance/Valve 4 @ $20.00 \t$80.00"
     ],
     "notes": "Rotation and flat repair free for life"
    }
@@ -692,7 +692,7 @@
     {
      "field": "lineItems~road hazard",
      "expected": "road hazard",
-     "got": "michelin defender2 225/60r17 4 @ $167.00 — $668.00 | road hazard certificate 4 @ $22.00 — $88.00 | mount/balance/valve 4 @ $20.00 — $80.00",
+     "got": "michelin defender2 225/60r17 4 @ $167.00 \nus $668.00 | road hazard certificate 4 @ $22.00 \nus $88.00 | mount/balance/valve 4 @ $20.00 \nus $80.00",
      "pass": true
     }
    ],
@@ -705,9 +705,9 @@
     "odometerReading": 45102,
     "isDiy": false,
     "lineItems": [
-     "Michelin Defender2 225/60R17 4 @ $167.00 — $668.00",
-     "Road Hazard Certificate 4 @ $22.00 — $88.00",
-     "Mount/Balance/Valve 4 @ $20.00 — $80.00"
+     "Michelin Defender2 225/60R17 4 @ $167.00 \nus $668.00",
+     "Road Hazard Certificate 4 @ $22.00 \nus $88.00",
+     "Mount/Balance/Valve 4 @ $20.00 \nus $80.00"
     ],
     "notes": "Rotation and flat repair free for life"
    }
@@ -755,7 +755,7 @@
     {
      "field": "lineItems~valve cover",
      "expected": "valve cover",
-     "got": "valve cover gasket set — $145.00 | engine oil + filter (ll-01 5w-30) — $98.00 | labor: r&i valve cover, reseal 3.8 hr — $532.00 | shop supplies — $40.00",
+     "got": "valve cover gasket set \nnumerator $145.00 | engine oil + filter (ll-01 5w-30) \nnumerator $98.00 | labor: r&i valve cover, reseal 3.8 hr \nnumerator $532.00 | shop supplies \nnumerator $40.00",
      "pass": true
     }
    ],
@@ -768,12 +768,12 @@
     "odometerReading": 98340,
     "isDiy": false,
     "lineItems": [
-     "Valve Cover Gasket Set — $145.00",
-     "Engine Oil + Filter (LL-01 5W-30) — $98.00",
-     "Labor: R&I Valve Cover, Reseal 3.8 HR — $532.00",
-     "Shop Supplies — $40.00"
+     "Valve cover gasket set \nnumerator $145.00",
+     "Engine oil + filter (LL-01 5W-30) \nnumerator $98.00",
+     "Labor: R&I valve cover, reseal 3.8 hr \nnumerator $532.00",
+     "Shop supplies \nnumerator $40.00"
     ],
-    "notes": "Warranty: 24 months / 24,000 miles on repairs. Next oil service recommended at next service."
+    "notes": "Warranty: 24 months / 24,000 miles on repairs. Next oil service recommended."
    }
   },
   {
@@ -837,7 +837,7 @@
      "Labor: R&I valve cover, reseal 3.8 hr — $532.00",
      "Shop supplies — $40.00"
     ],
-    "notes": "Warranty: 24 months / 24,000 miles on repairs. Next oil service recommended."
+    "notes": "Warranty: 24 months / 24,000 miles on repairs. See you at the next oil service."
    }
   },
   {
@@ -899,7 +899,7 @@
      "Chassis lube — $0.00",
      "Disposal fee — $2.00"
     ],
-    "notes": "Next service: 71,410 MI or 6 MO"
+    "notes": "Next service: 71,410 mi or 6 mo"
    }
   },
   {
@@ -952,16 +952,16 @@
     "odometerReading": 66410,
     "isDiy": false,
     "lineItems": [
-     "Full Synthetic 0W-20 6 QTS — $52.99",
-     "Oil Filter — $9.99",
-     "Air Filter — $19.99",
-     "Washer Fluid — $0.00",
-     "Coolant Top-off — $0.00",
-     "Tires Checked — $0.00",
-     "Chassis Lube — $0.00",
-     "Disposal Fee — $2.00"
+     "Full synthetic 0W-20 6 QTS — $52.99",
+     "Oil filter — $9.99",
+     "Air filter — $19.99",
+     "Washer fluid — $0.00",
+     "Coolant top-off — $0.00",
+     "Tires checked — $0.00",
+     "Chassis lube — $0.00",
+     "Disposal fee — $2.00"
     ],
-    "notes": "Next service: 71,410 mi or 6 months"
+    "notes": "Next service: 71,410 MI or 6 MO"
    }
   },
   {
@@ -1015,7 +1015,7 @@
     "isDiy": false,
     "lineItems": [
      "Coolant system flush — $149.99",
-     "OAT coolant, pressure test incl. — included"
+     "OAT coolant, pressure test incl. — (included)"
     ]
    }
   },
@@ -1070,7 +1070,7 @@
     "isDiy": false,
     "lineItems": [
      "Coolant system flush — $149.99",
-     "OAT coolant, pressure test incl. — $149.99"
+     "OAT coolant, pressure test incl. — included"
     ]
    }
   },
@@ -1178,8 +1178,8 @@
     "cost": 433.08,
     "isDiy": false,
     "lineItems": [
-     "Exhaust leak repair \nWeld flex joint \nCost: $389.00",
-     "Shop supplies \nCost: $12.00"
+     "Exhaust leak repair - weld flex joint \t$389.00",
+     "Shop supplies \t$12.00"
     ]
    }
   },
@@ -1233,8 +1233,8 @@
     "odometerReading": 41775,
     "isDiy": false,
     "lineItems": [
-     "Brake fluid exchange — $129.95",
-     "Coupon SAVE20 — -$20.00"
+     "Brake fluid exchange \nnumerical value here was formatted as $129.95",
+     "Coupon SAVE20 \nnumerical value here was formatted as -$20.00"
     ]
    }
   },
@@ -1288,8 +1288,8 @@
     "odometerReading": 41775,
     "isDiy": false,
     "lineItems": [
-     "Brake fluid exchange \nnow \n $129.95",
-     "Coupon SAVE20 \nnow \n -$20.00"
+     "Brake fluid exchange — $129.95",
+     "Coupon save20 — -$20.00"
     ]
    }
   },
@@ -1345,7 +1345,8 @@
     "lineItems": [
      "30,000 mile service — $289.00",
      "Oil/filter, rotate, inspect brakes and driveline — included"
-    ]
+    ],
+    "notes": "30,000 mile scheduled maintenance service"
    }
   },
   {
@@ -1361,8 +1362,8 @@
     {
      "field": "entryType",
      "expected": "maintenance",
-     "got": "oil_change",
-     "pass": false
+     "got": "maintenance",
+     "pass": true
     },
     {
      "field": "cost",
@@ -1391,17 +1392,17 @@
    ],
    "raw": {
     "documentLooksLikeReceipt": true,
-    "entryType": "oil_change",
+    "entryType": "maintenance",
     "shopName": "Northgate Toyota",
     "entryDate": "2026-03-27",
     "cost": 312.12,
     "odometerReading": 30112,
     "isDiy": false,
     "lineItems": [
-     "30,000 mile service \n— $289.00",
-     "Oil/filter, rotate, filter, inspect brakes and driveline"
+     "30,000 mile service — $289.00",
+     "Oil/filter, rotate, inspect brakes and driveline — included"
     ],
-    "notes": "30,000 mile scheduled maintenance service including oil/filter, rotate, inspect brakes and driveline"
+    "notes": "30,000 mile scheduled maintenance service"
    }
   },
   {
@@ -1454,7 +1455,7 @@
     "odometerReading": 88210,
     "isDiy": false,
     "lineItems": [
-     "Transmission Fluid Service — $249.00",
+     "Transmission fluid service — $249.00",
      "Drain/fill, new gasket + filter"
     ]
    }
@@ -1556,8 +1557,8 @@
     "cost": 32.5,
     "isDiy": false,
     "lineItems": [
-     "Wiper blades pair \t$24.99",
-     "Install \t$5.00"
+     "Wiper blades pair \nnstall \n— $24.99",
+     "Install — $5.00"
     ]
    }
   },
@@ -1603,8 +1604,8 @@
     "cost": 32.5,
     "isDiy": false,
     "lineItems": [
-     "Wiper blades pair \n— $24.99",
-     "Install \n— $5.00"
+     "Wiper blades pair \t $24.99",
+     "Install \t $5.00"
     ]
    }
   },
@@ -1621,68 +1622,7 @@
     {
      "field": "entryType",
      "expected": "repair|maintenance",
-     "got": "maintenance",
-     "pass": true
-    },
-    {
-     "field": "cost",
-     "expected": 684.31,
-     "got": 684.31,
-     "pass": true
-    },
-    {
-     "field": "odometerReading",
-     "expected": 101220,
-     "got": 101220,
-     "pass": true
-    },
-    {
-     "field": "shopName",
-     "expected": "Valley Import",
-     "got": "Valley Import Repair",
-     "pass": true
-    },
-    {
-     "field": "entryDay",
-     "expected": "2016-09-22",
-     "got": "2016-09-22",
-     "pass": true
-    },
-    {
-     "field": "lineItems~timing belt",
-     "expected": "timing belt",
-     "got": "timing belt kit w/ water pump — $312.00 | labor 4.2 hr — $336.00",
-     "pass": true
-    }
-   ],
-   "raw": {
-    "documentLooksLikeReceipt": true,
-    "entryType": "maintenance",
-    "shopName": "Valley Import Repair",
-    "entryDate": "2016-09-22",
-    "cost": 684.31,
-    "odometerReading": 101220,
-    "isDiy": false,
-    "lineItems": [
-     "Timing belt kit w/ water pump — $312.00",
-     "Labor 4.2 hr — $336.00"
-    ]
-   }
-  },
-  {
-   "id": "decade-old",
-   "run": 2,
-   "fields": [
-    {
-     "field": "documentLooksLikeReceipt",
-     "expected": true,
-     "got": true,
-     "pass": true
-    },
-    {
-     "field": "entryType",
-     "expected": "repair|maintenance",
-     "got": "maintenance",
+     "got": "repair",
      "pass": true
     },
     {
@@ -1718,6 +1658,67 @@
    ],
    "raw": {
     "documentLooksLikeReceipt": true,
+    "entryType": "repair",
+    "shopName": "Valley Import Repair",
+    "entryDate": "2016-09-22",
+    "cost": 684.31,
+    "odometerReading": 101220,
+    "isDiy": false,
+    "lineItems": [
+     "Timing belt kit w/ water pump \t $312.00",
+     "Labor 4.2 hr \t $336.00"
+    ]
+   }
+  },
+  {
+   "id": "decade-old",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "repair|maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 684.31,
+     "got": 684.31,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 101220,
+     "got": 101220,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Valley Import",
+     "got": "Valley Import Repair",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2016-09-22",
+     "got": "2016-09-22",
+     "pass": true
+    },
+    {
+     "field": "lineItems~timing belt",
+     "expected": "timing belt",
+     "got": "timing belt kit w/ water pump \nnnn $312.00 | labor 4.2 hr \nnnn $336.00",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
     "entryType": "maintenance",
     "shopName": "Valley Import Repair",
     "entryDate": "2016-09-22",
@@ -1725,8 +1726,8 @@
     "odometerReading": 101220,
     "isDiy": false,
     "lineItems": [
-     "Timing Belt Kit w/ Water Pump \t $312.00",
-     "Labor 4.2 hr \t $336.00"
+     "Timing belt kit w/ water pump \nnnn $312.00",
+     "Labor 4.2 hr \nnnn $336.00"
     ]
    }
   },
@@ -1743,8 +1744,8 @@
     {
      "field": "entryType",
      "expected": "repair|maintenance",
-     "got": "upgrade",
-     "pass": false
+     "got": "repair",
+     "pass": true
     },
     {
      "field": "cost",
@@ -1773,15 +1774,15 @@
    ],
    "raw": {
     "documentLooksLikeReceipt": true,
-    "entryType": "upgrade",
+    "entryType": "repair",
     "shopName": "Cascade Auto Works",
     "entryDate": "2026-07-08",
     "cost": 246.13,
     "odometerReading": 59644,
     "isDiy": false,
     "lineItems": [
-     "AGM Battery Group 48 \nnot — $219.00",
-     "Install + Register Battery \nnot — $39.00",
+     "AGM Battery Group 48 — $219.00",
+     "Install + Register Battery — $39.00",
      "Core Credit — -$22.00"
     ],
     "notes": "Battery warranty: 48 months free replacement"
@@ -1800,8 +1801,8 @@
     {
      "field": "entryType",
      "expected": "repair|maintenance",
-     "got": "upgrade",
-     "pass": false
+     "got": "repair",
+     "pass": true
     },
     {
      "field": "cost",
@@ -1830,7 +1831,7 @@
    ],
    "raw": {
     "documentLooksLikeReceipt": true,
-    "entryType": "upgrade",
+    "entryType": "repair",
     "shopName": "Cascade Auto Works",
     "entryDate": "2026-07-08",
     "cost": 246.13,
