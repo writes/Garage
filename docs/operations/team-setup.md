@@ -6,12 +6,12 @@
 2. Require pull requests before merge.
 3. Require the `CI / functions` and `CI / ios` workflow checks from `.github/workflows/ios.yml`.
 4. Add the repository admins and developers as collaborators before enabling required reviews.
-5. Install `gh` or use the GitHub web UI for branch protection, because this workstation does not currently have GitHub CLI available.
+5. Use `gh` (installed and used routinely from this workstation) or the GitHub web UI for branch protection.
 
 ## Firebase
 
 1. Keep `harrys-playhouse-prod` on Blaze.
-2. Resolve the billing-account project-link quota issue, then move `harrys-playhouse-dev` to Blaze.
+2. `harrys-playhouse-dev` is on Blaze (moved 2026-07-24; see `docs/DEPLOY_RUNBOOK.md`).
 3. After development is on Blaze, create its default Storage bucket and deploy Storage rules.
 4. Mirror the production function environment keys into `CloudFunctions/.env.harrys-playhouse-dev`.
 5. Keep Firestore and Storage rules deployed from this repo only.

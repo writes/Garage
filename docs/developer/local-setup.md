@@ -54,14 +54,18 @@ Common alias commands:
 - `firebase use dev`
 - `firebase use prod`
 
-Current state as of 2026-04-16:
+Current state as of 2026-07-29:
 
 - Firestore rules and indexes are deployed to both projects.
-- Production is on Blaze billing.
+- Both projects are on Blaze billing (`harrys-playhouse-dev` moved off Spark on 2026-07-24; see
+  `docs/DEPLOY_RUNBOOK.md`).
 - Production has a default Storage bucket: `harrys-playhouse-prod.firebasestorage.app`.
 - Production Storage rules are deployed.
-- Development is still on Spark because the visible billing account hit its project-link quota while linking a second Firebase project.
-- Development Storage and deployed Functions remain blocked until that billing quota issue is cleared.
+- Cloud Functions are deployed to both projects — verified live via `firebase functions:list`:
+  `deleteAccount`, `deleteVehicle`, `enforceAttachmentProGate`, `handleRevenueCatWebhook`,
+  `lookupRecalls`, `parseOilAnalysis`, `recomputeVehicleOdometer`, `voiceQuickAdd`.
+  `receiptQuickAdd` is code-complete but not yet deployed to either project (see
+  `docs/GARAGE_MASTER_PLAN.md`).
 
 ## Authentication Providers
 

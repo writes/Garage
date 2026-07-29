@@ -1,3 +1,17 @@
+## Status update — 2026-07-29
+
+> Later addendum; the record below is the original 2026-07-22 point-in-time audit and is left
+> unchanged. Verified resolved since:
+
+- **RESOLVED** — "[BLOCKER] Real Privacy Policy + Terms URLs" (§ Remaining, item 1):
+  `Constants.swift` now ships real `https://harrys-playhouse-prod.web.app/privacy` and `/terms`
+  URLs; no `.invalid`/`OPERATOR-REPLACE` placeholder remains.
+- **RESOLVED** — the app and both subscriptions were submitted to Apple (2026-07-28): build 3 is
+  `IN_BETA_TESTING` and the subscriptions moved `READY_TO_SUBMIT` → `WAITING_FOR_REVIEW`.
+  `releaseType` is `MANUAL`, so an approval does not auto-publish.
+
+---
+
 # Prod-Readiness Audit + Remediation — 2026-07-22
 
 Source: an 8-dimension adversarially-verified audit (53 agents, prod-readiness-audit workflow) of

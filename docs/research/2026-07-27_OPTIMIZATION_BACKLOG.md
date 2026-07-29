@@ -1,5 +1,10 @@
 # Optimization backlog — evidence to code
 
+> **SUPERSEDED 2026-07-29** by `2026-07-29_ENTERPRISE_OPTIMIZATION_ROADMAP.md`, which absorbs
+> every still-open item. Note the "Deliberately not done" list at the bottom is now stale:
+> receipt parsing shipped, offline writes are local-first, and strict tool use is live.
+> Kept as a point-in-time record.
+
 > Translates `2026-07-27_BRANDING_AND_LAUNCH_PLAN.md` into concrete engineering work, ranked by
 > measured leverage. Every item states the evidence, the current code state, and what "done" means.
 > Items are marked ✅ done · 🔨 in progress · ⏸ blocked on an operator decision · 📋 queued.

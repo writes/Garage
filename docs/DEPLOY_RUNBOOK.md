@@ -177,8 +177,10 @@ enum Secrets {
 node .claude/workflows/instrument-audit.js       # 4-lens GO/NO-GO brief (advisory)
 cd CloudFunctions && npm run test:rules          # Firestore + Storage security-rules tests (emulator)
 ```
-`release-checks.sh` currently FAILS (by design) until you (a) replace the `.invalid` Privacy/Terms
-URLs in `Constants.swift` and (b) add `ITSAppUsesNonExemptEncryption` to `project.yml`.
+Both preconditions are satisfied as of 2026-07-24: `Constants.swift` carries real
+`https://harrys-playhouse-prod.web.app/privacy` and `/terms` URLs (no `.invalid` placeholders
+remain), and `project.yml` declares `ITSAppUsesNonExemptEncryption`. `release-checks.sh` now
+prints "Release checks passed".
 
 ## 9. Verify the RUNNING image (landmine #9)
 After deploy, hit each function once from a real device build and confirm success — never trust a

@@ -48,7 +48,7 @@ word of mouth + ownership transfer → new owners onboarded with history already
 
 | Workstream | Deliverable | Effort |
 |---|---|---|
-| AI ingestion (generalized) | Snap *any* invoice/receipt/email/sticker → structured entries | L |
+| AI ingestion (generalized) | Snap *any* invoice/receipt/email/sticker → structured entries — receipt-capture client shipped (merged to main); server (`receiptQuickAdd`) is code-complete (98.1% field-level eval) but not yet deployed to prod | L |
 | Resale Passport | Shareable read-only web record (history, mods, oil trends, receipts) | L |
 | Ownership Transfer | Hand the full documented history to the buyer's account | M |
 | OEM schedule ingestion | Factory-correct intervals per VIN → auto-reminders | M |

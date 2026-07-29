@@ -18,8 +18,8 @@ Garage helps you keep a clean record of everything that happens to your car. The
 
 ## Free vs Pro
 
-- Free: one vehicle, core logging, odometer tracking, basic wear dashboard
-- Pro: unlimited vehicles, reminders, attachments, exports, gallery, detailing, parts, warranty, recalls, stats, and AI-assisted oil analysis
+- Free: one vehicle, core logging, odometer tracking, basic wear dashboard, reminders
+- Pro: unlimited vehicles, attachments, exports, gallery, detailing, parts, warranty, recalls, stats, and AI-assisted oil analysis
 
 ## Offline Use
 

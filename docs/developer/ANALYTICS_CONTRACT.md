@@ -228,10 +228,16 @@ funnel above — same shape, same rules (closed enums only, shared `reason` wire
 | `receipt_entry_confirmed` | — | `EntryFormViewModel.finishSaveTracking`, via `wasReceiptSeeded` — fires exactly once, and never alongside `voice_entry_confirmed` (a form is seeded by at most one AI source) |
 
 **Why receipts are not Pro-gated at the entry point, unlike voice.** The quota model is a
-free-lifetime teaser (3 scans) plus a Pro daily cap (20/day), not a hard Pro fence — a receipt is
+free-lifetime teaser (5 scans) plus a Pro daily cap (20/day), not a hard Pro fence — a receipt is
 the artifact every prospective user is already holding at evaluation time, so the capture row
 stays visible to free users and only quota exhaustion (`receipt_quota_denied`) upsells, via the new
 `PaywallSource.receiptScan`.
+
+**Quota-unit redesign agreed 2026-07-29 (designed, not yet implemented).** The unit is planned to
+change from a scan attempt to a confirmed, cleared receipt; Pro's allowance is planned to move
+from a daily cap to a monthly one (pending operator confirmation); and a scan ceiling at 4x the
+confirmed allowance would bound API spend — none of this is built yet, so the numbers above still
+describe the shipped behavior.
 
 **Attachment interplay.** A parsed receipt's original image/PDF is staged as a pending attachment
 only when the user is Pro (`EntryFormViewModel.receiptAttachmentNeedsPro` surfaces the upsell hint
