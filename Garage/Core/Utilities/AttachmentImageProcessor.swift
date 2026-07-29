@@ -14,7 +14,14 @@ enum AttachmentImageProcessor {
     /// compression pass regardless of source format (HEIC, PNG, etc.).
     static func downsampledJPEG(from data: Data) -> Data? {
         guard let image = UIImage(data: data) else { return nil }
-        return resized(image, maxDimension: maxDimension).jpegData(compressionQuality: jpegQuality)
+        return downsampledJPEG(from: image)
+    }
+
+    /// Same downsampling pass, for a caller that already has a decoded `UIImage` — e.g.
+    /// ReceiptPreflighter, which derives two independently-sized outputs (a small parse variant
+    /// and this attachment variant) from ONE decode instead of decoding the source image twice.
+    static func downsampledJPEG(from image: UIImage) -> Data? {
+        resized(image, maxDimension: maxDimension).jpegData(compressionQuality: jpegQuality)
     }
 
     /// Scales `image` down so its longest edge is at most `maxDimension`, preserving aspect

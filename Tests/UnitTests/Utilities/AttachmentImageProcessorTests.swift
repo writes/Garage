@@ -58,6 +58,35 @@ struct AttachmentImageProcessorTests {
         #expect(resized.size == image.size)
     }
 
+    // MARK: - UIImage overload (ReceiptPreflighter's single-decode path)
+
+    @Test func downsampledJPEG_fromImage_matchesTheDataOverloadsBehavior() throws {
+        // Same bound/quality pass, just skipping the decode a caller that already has a UIImage
+        // (ReceiptPreflighter) doesn't need to repeat.
+        let image = Self.solidImage(width: 4_000, height: 3_000)
+        let fromImage = try #require(AttachmentImageProcessor.downsampledJPEG(from: image))
+        let decoded = try #require(UIImage(data: fromImage))
+        #expect(max(decoded.size.width, decoded.size.height) <= AttachmentImageProcessor.maxDimension)
+    }
+
+    @Test func downsampledJPEG_fromImage_normalizesRetinaBackingScaleToPixels() throws {
+        let retina = Self.solidImage(width: 200, height: 100, scale: 3)
+        let result = try #require(AttachmentImageProcessor.downsampledJPEG(from: retina))
+        let decoded = try #require(UIImage(data: result))
+        #expect(decoded.scale == 1)
+        #expect(decoded.size == CGSize(width: 200, height: 100))
+    }
+
+    @Test func downsampledJPEG_bothOverloadsProduceEquivalentOutputForTheSameSource() throws {
+        let image = Self.solidImage(width: 3_000, height: 1_500)
+        let data = try #require(image.pngData())
+        let fromData = try #require(AttachmentImageProcessor.downsampledJPEG(from: data))
+        let fromImage = try #require(AttachmentImageProcessor.downsampledJPEG(from: image))
+        let decodedFromData = try #require(UIImage(data: fromData))
+        let decodedFromImage = try #require(UIImage(data: fromImage))
+        #expect(decodedFromData.size == decodedFromImage.size)
+    }
+
     private static func solidImagePNGData(width: Int, height: Int) throws -> Data {
         try #require(solidImage(width: width, height: height).pngData())
     }

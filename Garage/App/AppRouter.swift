@@ -7,6 +7,7 @@ final class AppRouter {
     enum Sheet: Identifiable, Equatable {
         case entryPicker
         case voiceQuickAdd
+        case receiptCapture
         case entryForm(EntryType)
         case vehicleForm
         case export
@@ -16,6 +17,7 @@ final class AppRouter {
             switch self {
             case .entryPicker: return "entryPicker"
             case .voiceQuickAdd: return "voiceQuickAdd"
+            case .receiptCapture: return "receiptCapture"
             case .entryForm(let type): return "entryForm-\(type.rawValue)"
             case .vehicleForm: return "vehicleForm"
             case .export: return "export"
@@ -39,6 +41,10 @@ final class AppRouter {
     /// Carries a voice proposal from the capture sheet to the entry form it opens. Consumed once
     /// by the form that appears next, so a manually-opened form never picks up a stale prefill.
     private(set) var pendingVoicePrefill: VoiceEntryProposal?
+
+    /// Same one-shot pattern as pendingVoicePrefill, kept separate (plan §2): a receipt scan and
+    /// a voice dictation are independent AI sources and must never be conflated into one slot.
+    private(set) var pendingReceiptPrefill: ReceiptPrefillPackage?
 
     /// Carries an existing entry from EntryDetailView to the edit form it opens. Same one-shot
     /// pattern as pendingVoicePrefill: consumed once by the form that appears next.
@@ -66,7 +72,7 @@ final class AppRouter {
     func present(_ sheet: Sheet) {
         let isGatedSheet: Bool
         switch sheet {
-        case .entryPicker, .voiceQuickAdd, .entryForm:
+        case .entryPicker, .voiceQuickAdd, .receiptCapture, .entryForm:
             isGatedSheet = true
         case .vehicleForm, .export, .subscription:
             isGatedSheet = false
@@ -78,6 +84,7 @@ final class AppRouter {
             return
         }
         pendingVoicePrefill = nil
+        pendingReceiptPrefill = nil
         pendingEditEntry = nil
         activeSheet = .vehicleForm
         // Report the redirect target, not the request: attributing this open to `entry` would
@@ -94,6 +101,7 @@ final class AppRouter {
         case .entryPicker: form = .entryPicker
         case .entryForm: form = .entry
         case .voiceQuickAdd: form = .voiceQuickAdd
+        case .receiptCapture: form = .receiptCapture
         case .export: form = .export
         case .subscription: return
         }
@@ -113,6 +121,17 @@ final class AppRouter {
     func consumeVoicePrefill() -> VoiceEntryProposal? {
         defer { pendingVoicePrefill = nil }
         return pendingVoicePrefill
+    }
+
+    /// Swap the receipt sheet for the proposed entry form, seeding it with the parsed receipt.
+    func presentReceiptPrefilledForm(_ package: ReceiptPrefillPackage) {
+        pendingReceiptPrefill = package
+        present(.entryForm(package.proposal.entryType))
+    }
+
+    func consumeReceiptPrefill() -> ReceiptPrefillPackage? {
+        defer { pendingReceiptPrefill = nil }
+        return pendingReceiptPrefill
     }
 
     /// Opens the edit form for an existing entry, seeding it via the same one-shot handoff as

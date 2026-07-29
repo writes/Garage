@@ -22,6 +22,18 @@ struct AppRouterTests {
         #expect(router.activeSheet == .vehicleForm)
     }
 
+    @Test func presentReceiptCaptureWithNoVehiclesRedirectsToVehicleCreation() {
+        let router = AppRouter(hasVehicles: { false })
+        router.present(.receiptCapture)
+        #expect(router.activeSheet == .vehicleForm)
+    }
+
+    @Test func presentReceiptCaptureWithVehiclesPresentsItDirectly() {
+        let router = AppRouter(hasVehicles: { true })
+        router.present(.receiptCapture)
+        #expect(router.activeSheet == .receiptCapture)
+    }
+
     @Test func presentEntryFormWithNoVehiclesRedirectsToVehicleCreation() {
         let router = AppRouter(hasVehicles: { false })
         router.present(.entryForm(.fuel))
@@ -72,6 +84,36 @@ struct AppRouterTests {
         #expect(router.pendingVoicePrefill != nil)
     }
 
+    @Test func presentReceiptPrefilledFormSeedsAOneShotPendingPrefill() {
+        let router = AppRouter(hasVehicles: { true })
+        let package = receiptPackage()
+        router.presentReceiptPrefilledForm(package)
+        #expect(router.activeSheet == .entryForm(.maintenance))
+        #expect(router.consumeReceiptPrefill() == package)
+        #expect(router.consumeReceiptPrefill() == nil)
+    }
+
+    @Test func gateRedirectDropsAnyPendingReceiptPrefillSoALaterFormNeverConsumesStaleState() {
+        var hasVehicles = true
+        let router = AppRouter(hasVehicles: { hasVehicles })
+        router.presentReceiptPrefilledForm(receiptPackage())
+        #expect(router.pendingReceiptPrefill != nil)
+
+        hasVehicles = false
+        router.present(.entryForm(.fuel))
+        #expect(router.activeSheet == .vehicleForm)
+        #expect(router.pendingReceiptPrefill == nil)
+        #expect(router.consumeReceiptPrefill() == nil)
+    }
+
+    @Test func dismissSheetClearsActiveSheetButNotPendingReceiptPrefill() {
+        let router = AppRouter(hasVehicles: { true })
+        router.presentReceiptPrefilledForm(receiptPackage())
+        router.dismissSheet()
+        #expect(router.activeSheet == nil)
+        #expect(router.pendingReceiptPrefill != nil)
+    }
+
     @Test func presentEditFormSeedsAOneShotPendingEditEntryAndGoesThroughTheVehicleGate() {
         let router = AppRouter(hasVehicles: { true })
         let entry = makeEntry()
@@ -100,6 +142,16 @@ struct AppRouterTests {
         VoiceEntryProposal(
             entryType: .maintenance, odometerReading: 100, cost: nil,
             shopName: nil, isDiy: nil, entryDate: nil, notes: nil
+        )
+    }
+
+    private func receiptPackage() -> ReceiptPrefillPackage {
+        ReceiptPrefillPackage(
+            proposal: ReceiptEntryProposal(
+                entryType: .maintenance, odometerReading: 100, cost: nil,
+                shopName: nil, isDiy: nil, entryDate: nil, notes: nil, lineItems: nil
+            ),
+            attachments: []
         )
     }
 
