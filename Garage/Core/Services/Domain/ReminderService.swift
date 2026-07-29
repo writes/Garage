@@ -123,8 +123,7 @@ final class ReminderService {
             completed.completedAt = .now
             testReminders[reminder.id] = completed
             self.testReminders = testReminders
-            notificationCoordinator.cancel(id: reminder.id)
-            await scheduleSuccessorIfRepeating(reminder)
+            await finishCompletion(of: reminder)
             return
         }
 #if DEBUG
@@ -132,16 +131,29 @@ final class ReminderService {
             var completed = reminder
             completed.completedAt = .now
             DemoSessionStore.shared.save(completed)
-            notificationCoordinator.cancel(id: reminder.id)
-            await scheduleSuccessorIfRepeating(reminder)
+            await finishCompletion(of: reminder)
             return
         }
 #endif
 
         let reference = firestore.db.collection(FirestorePaths.vehicleReminders(vehicleId: reminder.vehicleId))
             .document(reminder.id)
-        try await reference.setData(["completedAt": Timestamp(date: .now)], merge: true)
+        // Was `try await reference.setData(…)`, which resumes only on SERVER acknowledgement — so
+        // completing a reminder in a garage or underground car park hung forever AND, because both
+        // side effects below sit after it, the stale notification was never cancelled and a
+        // repeating reminder permanently lost its next occurrence. See LocalFirstWrite.swift.
+        firestore.writeLocalFirst(
+            ["completedAt": Timestamp(date: .now)],
+            to: reference,
+            context: "reminder completion"
+        )
         VehicleDataRevisionStore.shared.bump(vehicleId: reminder.vehicleId)
+        await finishCompletion(of: reminder)
+    }
+
+    /// The two side effects a completion owes, in one place so no branch can drop one again:
+    /// retire the now-stale local notification, then mint the successor for a repeating reminder.
+    private func finishCompletion(of reminder: Reminder) async {
         notificationCoordinator.cancel(id: reminder.id)
         await scheduleSuccessorIfRepeating(reminder)
     }
