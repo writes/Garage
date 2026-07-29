@@ -1,8 +1,8 @@
 import Foundation
 import Observation
 
-// Phase/failure/page types and the ReceiptCaptureFailure -> analytics-reason mapping live in
-// ReceiptCaptureTypes.swift — split out to stay under the file-length cap.
+// Receipt state, failure policy, and task result wrappers live in ReceiptCaptureTypes.swift —
+// split out to stay under the file-length cap.
 
 /// Drives one receipt capture: pick page(s) -> preflight locally -> a Cloud-Function proposal.
 /// Pattern lineage is VoiceQuickAddViewModel (capture sheet -> strict parse -> one-shot AppRouter
@@ -33,6 +33,8 @@ final class ReceiptCaptureViewModel {
     /// stays enabled through the whole `.parsing` round trip. Without this a double-tap re-enters
     /// `confirmAndParse` and calls the metered proposeEntry TWICE for one scan.
     private var isSubmitting = false
+    private var quotaFailure: ReceiptCaptureFailure?
+    private var notAReceiptBlocked = false
 
     init(
         preflighter: any ReceiptPreflighting = ReceiptPreflighter(),
@@ -51,16 +53,18 @@ final class ReceiptCaptureViewModel {
     var hasPages: Bool { pdfPage != nil || !imagePages.isEmpty }
     /// A PDF is a whole document (server-side one item); images stack up to `maxPages`. Once
     /// either kind is present the other is locked out — the wire request is images XOR pdfBase64.
-    var canAddPage: Bool { pdfPage == nil && imagePages.count < Self.maxPages }
+    var canAddImage: Bool { pdfPage == nil && imagePages.count < Self.maxPages }
+    var canAddPDF: Bool { pdfPage == nil && imagePages.isEmpty }
+    var canSubmit: Bool { hasPages && !isSubmitting && quotaFailure == nil && !notAReceiptBlocked }
 
     func addImage(_ data: Data, source: ReceiptCaptureSource) {
-        guard canAddPage else { return }
+        guard canAddImage else { return }
         reportStartIfFirstPage(source: source)
-        phase = .preflighting
+        if quotaFailure == nil { phase = .preflighting }
         do {
             let preflight = try preflighter.preflightImage(data)
             imagePages.append(ReceiptImagePage(preflight: preflight))
-            phase = .ready
+            finishPageMutation()
         } catch let error as ReceiptPreflightError {
             fail(.preflight(error.appError))
         } catch {
@@ -69,38 +73,45 @@ final class ReceiptCaptureViewModel {
     }
 
     func addPDF(url: URL) {
-        guard pdfPage == nil, imagePages.isEmpty else { return }
+        guard canAddPDF else {
+            let message = imagePages.isEmpty ? "Only one PDF can be used in a scan."
+                : "A PDF and photos cannot be combined in one scan."
+            fail(.preflight(.unknown(message)))
+            return
+        }
         reportStartIfFirstPage(source: .pdf)
         guard let lease = OilAnalysisPDFSecurityScopeLease(url: url, access: securityScope) else {
             fail(.preflight(.unknown("Couldn't access that file.")))
             return
         }
         pdfLease = lease
-        phase = .preflighting
+        if quotaFailure == nil { phase = .preflighting }
         let displayName = url.lastPathComponent
         pdfPreflightTask = Task { [weak self, preflighter] in
-            let result = await Self.runPDFPreflight(preflighter: preflighter, url: url)
+            let result = await ReceiptCaptureTaskRunner.preflightPDF(preflighter: preflighter, url: url)
             self?.finishPDFPreflight(result: result, displayName: displayName)
         }
     }
 
     func removeImagePage(_ id: ReceiptImagePage.ID) {
-        imagePages.removeAll { $0.id == id }
-        if !hasPages { phase = .idle }
+        guard let index = imagePages.firstIndex(where: { $0.id == id }) else { return }
+        imagePages.remove(at: index)
+        finishPageMutation()
     }
 
     func removePDFPage() {
+        guard pdfPage != nil else { return }
         pdfLease?.release()
         pdfLease = nil
         pdfPage = nil
-        phase = .idle
+        finishPageMutation()
     }
 
     /// The metered call is owned by a stored Task (mirrors `pdfPreflightTask`) rather than just
     /// running inline, so `abandon()` can cancel it — without this, dismissing the sheet mid-parse
     /// left the callable running with no UI attached, and its (stale) result could still land.
     func confirmAndParse(vehicle: Vehicle?) async {
-        guard !isSubmitting, hasPages else { return }
+        guard canSubmit else { return }
         isSubmitting = true
         defer { isSubmitting = false }
         phase = .parsing
@@ -108,7 +119,7 @@ final class ReceiptCaptureViewModel {
         let pdfBase64 = pdfPage?.base64
         let requestNow = now()
         let task = Task { [weak self, service] in
-            let result = await Self.runParse(
+            let result = await ReceiptCaptureTaskRunner.parse(
                 service: service, images: images, pdfBase64: pdfBase64, vehicle: vehicle, now: requestNow
             )
             self?.finishParse(result: result)
@@ -125,13 +136,10 @@ final class ReceiptCaptureViewModel {
         return ReceiptPrefillPackage(proposal: proposal, attachments: buildAttachments())
     }
 
-    /// Recovers from a non-fatal failure WITHOUT clearing any staged page (review finding:
-    /// `.failed` used to be a dead end only `abandon()` could exit, silently discarding pages
-    /// that had already succeeded). Goes to `.ready` when a page survived, `.idle` otherwise. A
-    /// retry of `confirmAndParse` after this is a fresh call, so it re-enters the reentrancy guard
-    /// exactly like any other tap.
+    /// Restores only transient failures without clearing staged pages; retrying a model verdict or
+    /// quota denial would spend another unit without creating a more meaningful request.
     func retryAfterFailure() {
-        guard case .failed = phase else { return }
+        guard case .failed(let failure) = phase, failure.allowsRetry, quotaFailure == nil else { return }
         phase = hasPages ? .ready : .idle
     }
 
@@ -150,6 +158,8 @@ final class ReceiptCaptureViewModel {
         imagePages = []
         pdfPage = nil
         proposal = nil
+        quotaFailure = nil
+        notAReceiptBlocked = false
     }
 
     private func buildAttachments() -> [ReceiptPrefillAttachment] {
@@ -166,18 +176,6 @@ final class ReceiptCaptureViewModel {
         analytics.track(.receiptCaptureStarted(source: source))
     }
 
-    private static func runParse(
-        service: any ReceiptQuickAddCalling, images: [String]?, pdfBase64: String?, vehicle: Vehicle?, now: Date
-    ) async -> Result<ReceiptEntryProposal, Error> {
-        do {
-            return .success(
-                try await service.proposeEntry(images: images, pdfBase64: pdfBase64, vehicle: vehicle, now: now)
-            )
-        } catch {
-            return .failure(error)
-        }
-    }
-
     /// `Task.isCancelled` here reflects `parseTask` itself (this runs inside its closure) — a
     /// belt-and-braces check beyond catching `CancellationError`, since the underlying callable is
     /// not guaranteed to observe Swift's cooperative cancellation while genuinely in flight. A
@@ -191,21 +189,11 @@ final class ReceiptCaptureViewModel {
             phase = .ready
             analytics.track(.receiptProposalSucceeded(entryType: ready.entryType))
         case .failure(let error as ReceiptCallableError):
-            fail(Self.map(error))
+            fail(ReceiptCaptureFailure.map(error))
         case .failure(is CancellationError):
             break
         case .failure(let error):
             fail(.generic(error.localizedDescription))
-        }
-    }
-
-    private static func runPDFPreflight(
-        preflighter: any ReceiptPreflighting, url: URL
-    ) async -> Result<String, Error> {
-        do {
-            return .success(try await preflighter.preflightPDF(url: url))
-        } catch {
-            return .failure(error)
         }
     }
 
@@ -214,10 +202,11 @@ final class ReceiptCaptureViewModel {
             pdfLease?.release()
             pdfLease = nil
         }
+        guard !Task.isCancelled else { return }
         switch result {
         case .success(let base64):
             pdfPage = ReceiptPDFPage(base64: base64, displayName: displayName)
-            phase = .ready
+            finishPageMutation()
         case .failure(let error as ReceiptPreflightError):
             fail(.preflight(error.appError))
         case .failure(is CancellationError):
@@ -227,10 +216,12 @@ final class ReceiptCaptureViewModel {
         }
     }
 
-    /// Single funnel exit for non-quota endings: quota denials keep their own richer event
-    /// (`receipt_quota_denied`, the oil-analysis convention) rather than folding into this one.
+    /// One funnel keeps quota denials in their richer event family (`receipt_quota_denied`) rather
+    /// than folding them into the generic proposal-failure analytics convention.
     private func fail(_ failure: ReceiptCaptureFailure) {
-        phase = .failed(failure)
+        if failure.isQuotaDenial { quotaFailure = failure }
+        if failure == .notAReceipt { notAReceiptBlocked = true }
+        phase = .failed(quotaFailure ?? failure)
         if let reason = failure.proposalFailureReason {
             analytics.track(.receiptProposalFailed(reason: reason))
         }
@@ -239,11 +230,10 @@ final class ReceiptCaptureViewModel {
         }
     }
 
-    private static func map(_ error: ReceiptCallableError) -> ReceiptCaptureFailure {
-        switch error {
-        case .notAReceipt: return .notAReceipt
-        case .freeLifetimeExhausted: return .freeLifetimeExhausted
-        case .dailyExhausted(let resetAt): return .dailyExhausted(resetAt: resetAt)
-        }
+    /// A changed document clears the model verdict but never clears account quota state: only a
+    /// new session can make a quota-blocked scan eligible again.
+    private func finishPageMutation() {
+        notAReceiptBlocked = false
+        phase = quotaFailure.map { .failed($0) } ?? (hasPages ? .ready : .idle)
     }
 }

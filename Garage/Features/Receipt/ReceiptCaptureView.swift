@@ -54,8 +54,8 @@ struct ReceiptCaptureView: View {
             centeredStatus { ProgressView("Reading…") }
         case .ready:
             pagesSummary
-            if viewModel.canAddPage { pickerButtons }
-            confirmButton
+            if viewModel.canAddImage || viewModel.canAddPDF { pickerButtons }
+            if viewModel.canSubmit { confirmButton }
         case .parsing:
             centeredStatus {
                 HStack(spacing: Theme.Spacing.sm) {
@@ -69,12 +69,13 @@ struct ReceiptCaptureView: View {
             // page-2 failure after page 1 already succeeded left dismissal (which wipes
             // imagePages) as the only exit, forcing a re-photograph and risking a second
             // unrefunded metered scan. Affordances stay reachable, mirroring VoiceQuickAddView
-            // (the mic stays live through every phase): if a page survived, the summary/pickers/
-            // confirm button all stay live right alongside the error.
+            // (the mic stays live through every phase): if a page survived, its summary and
+            // pickers stay live; the view model alone decides whether another metered submit is
+            // meaningful for the unchanged document.
             if viewModel.hasPages {
                 pagesSummary
-                if viewModel.canAddPage { pickerButtons }
-                confirmButton
+                if viewModel.canAddImage || viewModel.canAddPDF { pickerButtons }
+                if viewModel.canSubmit { confirmButton }
             }
             failureView(failure)
         }
@@ -88,20 +89,24 @@ struct ReceiptCaptureView: View {
 
     private var pickerButtons: some View {
         HStack(spacing: Theme.Spacing.md) {
-            if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                Button { showCamera = true } label: {
-                    Label("Camera", systemImage: "camera.fill")
+            if viewModel.canAddImage {
+                if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                    Button { showCamera = true } label: {
+                        Label("Camera", systemImage: "camera.fill")
+                    }
+                    .accessibilityIdentifier("receipt.capture.camera")
                 }
-                .accessibilityIdentifier("receipt.capture.camera")
+                PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                    Label("Library", systemImage: "photo")
+                }
+                .accessibilityIdentifier("receipt.capture.library")
             }
-            PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                Label("Library", systemImage: "photo")
+            if viewModel.canAddPDF {
+                Button { isImportingPDF = true } label: {
+                    Label("PDF", systemImage: "doc")
+                }
+                .accessibilityIdentifier("receipt.capture.pdf")
             }
-            .accessibilityIdentifier("receipt.capture.library")
-            Button { isImportingPDF = true } label: {
-                Label("PDF", systemImage: "doc")
-            }
-            .accessibilityIdentifier("receipt.capture.pdf")
         }
     }
 

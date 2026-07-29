@@ -36,7 +36,6 @@ final class SuspendedReceiptPreflighter: ReceiptPreflighting {
         let result = await withCheckedContinuation { continuation in
             self.continuation = continuation
         }
-        try Task.checkCancellation()
         return try result.get()
     }
 

@@ -30,7 +30,7 @@ struct ReceiptCaptureViewModelTests {
         let viewModel = makeReceiptCaptureViewModel()
         viewModel.addImage(Data([0x01]), source: .camera)
         viewModel.addImage(Data([0x02]), source: .camera)
-        #expect(!viewModel.canAddPage)
+        #expect(!viewModel.canAddImage)
 
         viewModel.addImage(Data([0x03]), source: .camera)
         #expect(viewModel.imagePages.count == 2)
@@ -138,23 +138,6 @@ struct ReceiptCaptureViewModelTests {
         #expect(securityScope.events == [.acquired, .released])
     }
 
-    /// Sheet dismissal mid-flow must cancel the in-flight PDF preflight and release the held
-    /// security-scope lease — mirrors VoiceQuickAddViewModel.abandon.
-    @Test func abandon_cancelsAnInFlightPDFPreflightAndReleasesTheLease() async {
-        let preflighter = SuspendedReceiptPreflighter()
-        let securityScope = RecordingOilAnalysisSecurityScope()
-        let viewModel = makeReceiptCaptureViewModel(preflighter: preflighter, securityScope: securityScope)
-
-        viewModel.addPDF(url: URL(fileURLWithPath: "/tmp/receipt.pdf"))
-        await waitForReceiptPDFCall(preflighter)
-
-        viewModel.abandon()
-
-        #expect(viewModel.phase == .idle)
-        #expect(securityScope.events == [.acquired, .released])
-        preflighter.completePDF(with: .success("cGRm")) // resolves the leaked continuation cleanly
-    }
-
     // MARK: - Review findings: `.failed` must never destroy a page that already succeeded
 
     /// Page 1 succeeds, page 2's local preflight fails: page 1 must survive the failure (not be
@@ -182,28 +165,6 @@ struct ReceiptCaptureViewModelTests {
         await viewModel.confirmAndParse(vehicle: nil)
         #expect(service.callCount == 1)
         #expect(viewModel.phase == .ready)
-    }
-
-    /// A server-side parse failure (e.g. `not_a_receipt`) must not discard the staged page either
-    /// — retrying re-submits the SAME page through a fresh `confirmAndParse` call.
-    @Test func confirmAndParse_failureKeepsPagesAndRetryReparses() async {
-        let service = FakeReceiptService(result: .failure(ReceiptCallableError.notAReceipt))
-        let viewModel = makeReceiptCaptureViewModel(service: service)
-        viewModel.addImage(Data([0x01]), source: .camera)
-
-        await viewModel.confirmAndParse(vehicle: nil)
-        #expect(viewModel.phase == .failed(.notAReceipt))
-        #expect(viewModel.imagePages.count == 1)
-
-        viewModel.retryAfterFailure()
-        #expect(viewModel.phase == .ready)
-
-        service.result = .success(sampleReceiptProposal)
-        await viewModel.confirmAndParse(vehicle: nil)
-
-        #expect(service.callCount == 2)
-        #expect(viewModel.phase == .ready)
-        #expect(viewModel.consumeProposalPackage()?.proposal == sampleReceiptProposal)
     }
 
     /// Sheet dismissal mid-parse must cancel the metered call so its (possibly late-arriving)
