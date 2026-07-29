@@ -34,7 +34,7 @@ export { toolInputFromPayload, referenceDateLine };
  * Quota model of record (plan §5; tri-vote checkpoint A may adjust the numbers — they are
  * isolated here as the single source of truth for both buckets).
  */
-export const FREE_LIFETIME_RECEIPT_QUOTA = 3;
+export const FREE_LIFETIME_RECEIPT_QUOTA = 5;
 export const DAILY_RECEIPT_QUOTA = 20;
 
 export const MAX_RECEIPT_IMAGES = 2;
