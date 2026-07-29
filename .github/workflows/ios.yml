@@ -44,11 +44,19 @@ jobs:
         run: |
           set -euo pipefail
           BASE="origin/${{ github.base_ref }}"
-          # grep -q -v -E succeeds when ANY line does not match the docs pattern, i.e. when at
-          # least one real file changed. A PR touching only docs exits 1 and skips the gate.
-          if git diff --name-only "$BASE"...HEAD \
-              | grep -qvE '(^(docs|reports|results|logs)/|^\.github/ISSUE_TEMPLATE/|\.md$)'; then
+          DOCS_ONLY='(^(docs|reports|results|logs)/|^\.github/ISSUE_TEMPLATE/|\.md$)'
+          # Deliberately NOT `grep -qv`: on BSD grep that combination returns 1 even when -v
+          # alone correctly selects a line, so a docs+code PR would report docs-only and skip the
+          # gate. GNU grep (what ubuntu-latest ships) gets it right, but a filter that decides
+          # whether 31 minutes of verification runs must not depend on which grep is installed.
+          # Collecting the non-doc paths and testing for a non-empty result is unambiguous
+          # everywhere. `|| true` because grep exits 1 on no match, which set -e would treat as
+          # fatal.
+          CODE_FILES="$(git diff --name-only "$BASE"...HEAD | grep -vE "$DOCS_ONLY" || true)"
+          if [ -n "$CODE_FILES" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Non-doc files changed; running the full gate:"
+            printf '%s\n' "$CODE_FILES"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
             echo "Docs-only change; skipping the macOS gate."
