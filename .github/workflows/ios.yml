@@ -1,10 +1,21 @@
 name: CI
 
+# The PR gate is the only gate. There is deliberately NO `push: main` trigger: every change
+# reaches main through a PR whose gate compiled main+PR together, so re-running the same
+# 31-minute macOS gate on the merge result re-proves what the PR gate proved minutes earlier.
+# Measured 2026-07-29: 94.5 of that day's 249 macOS minutes (38%) went to those re-runs, before
+# the 10x macOS billing multiplier.
+#
+# KNOWN GAP, accepted deliberately: main has no required status checks, so nothing *prevents*
+# merging a red or still-running PR — and without this trigger, such a merge would not be caught
+# until the next PR's gate compiles main. Close it by making `ios` and `functions` required
+# status checks with the strict (branches-up-to-date) policy, which also makes the PR gate
+# formally equivalent to a main gate. Until then this trades a small detection delay for 38% of
+# the CI bill. If you ever want that guarantee back without the ruleset change, restore:
+#   push:
+#     branches: [main]
 on:
   pull_request:
-  push:
-    branches:
-      - main
 
 # One run per ref: a new push supersedes the previous run instead of both burning a full
 # macOS gate to completion. This plus the 75-minute job cap are the two structural answers to
@@ -16,6 +27,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decides whether the 31-minute macOS gate is worth starting, on a runner that costs ~10 seconds
+  # of ubuntu time. This has to be a separate JOB rather than trigger-level `paths-ignore`: a
+  # workflow filtered out at the trigger never reports its checks at all, so a REQUIRED check stays
+  # Pending and the PR is unmergeable forever. A job skipped by `if:` reports as skipped, which
+  # does satisfy a required check.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        run: |
+          set -euo pipefail
+          BASE="origin/${{ github.base_ref }}"
+          # grep -q -v -E succeeds when ANY line does not match the docs pattern, i.e. when at
+          # least one real file changed. A PR touching only docs exits 1 and skips the gate.
+          if git diff --name-only "$BASE"...HEAD \
+              | grep -qvE '(^(docs|reports|results|logs)/|^\.github/ISSUE_TEMPLATE/|\.md$)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "Docs-only change; skipping the macOS gate."
+          fi
+
   functions:
     runs-on: ubuntu-latest
     defaults:
@@ -36,10 +74,11 @@ jobs:
     # A single deadlocked test once held a runner for 2h14m (GitHub's default cap is 6h).
     # Known-good full gate is ~53 min; anything past this is a hang, not a slow run.
     timeout-minutes: 75
-    # Docs/reports/templates-only changes never affect the iOS build; skipping them saves a
-    # full macOS gate per docs push (macOS bills at 10x).
-    if: >-
-      ${{ !contains(github.event.head_commit.message, '[skip ios]') }}
+    needs: changes
+    # Replaces the old `[skip ios]` hatch, which tested github.event.head_commit.message — that
+    # is populated only on push events, so with the push:main trigger removed it could never fire
+    # again. The `changes` job is the PR-event equivalent.
+    if: needs.changes.outputs.code == 'true'
     steps:
       - uses: actions/checkout@v4
       # The runner's DEFAULT Xcode diverges from the local toolchain in both directions
