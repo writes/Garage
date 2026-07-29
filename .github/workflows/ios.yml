@@ -24,6 +24,9 @@ jobs:
 
   ios:
     runs-on: macos-15
+    # A single deadlocked test once held a runner for 2h14m (GitHub's default cap is 6h).
+    # Known-good full gate is ~53 min; anything past this is a hang, not a slow run.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       # The runner's DEFAULT Xcode diverges from the local toolchain in both directions
