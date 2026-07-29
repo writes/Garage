@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="620" height="720" viewBox="0 0 620 720">
+<defs></defs>
+<rect width="620" height="720" fill="#e8e4da"/>
+<g>
+  <text x="310" y="58" font-family="Georgia, 'Times New Roman', serif" font-size="22" font-weight="bold" text-anchor="middle" fill="#4a4a4a" style="white-space:pre">VALLEY IMPORT REPAIR</text>
+  <text x="310" y="77" font-family="Georgia, 'Times New Roman', serif" font-size="12" text-anchor="middle" fill="#4a4a4a" style="white-space:pre">Invoice 5512</text>
+  <text x="24" y="100" font-family="Georgia, 'Times New Roman', serif" font-size="15" font-weight="bold" text-anchor="start" fill="#4a4a4a" style="white-space:pre">Date: 09/22/2016     Mileage: 101,220</text>
+  <text x="24" y="120" font-family="Georgia, 'Times New Roman', serif" font-size="13" text-anchor="start" fill="#4a4a4a" style="white-space:pre">--------------------------------------------------------------------</text>
+  <text x="24" y="140" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#4a4a4a" style="white-space:pre">TIMING BELT KIT W/ WATER PUMP        $312.00</text>
+  <text x="24" y="160" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#4a4a4a" style="white-space:pre">LABOR 4.2 HR                         $336.00</text>
+  <text x="24" y="180" font-family="Georgia, 'Times New Roman', serif" font-size="13" text-anchor="start" fill="#4a4a4a" style="white-space:pre">--------------------------------------------------------------------</text>
+  <text x="24" y="200" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#4a4a4a" style="white-space:pre">Subtotal                             $648.00</text>
+  <text x="24" y="220" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#4a4a4a" style="white-space:pre">Tax                                   $36.31</text>
+  <text x="24" y="245" font-family="'Courier New', Courier, monospace" font-size="16" font-weight="bold" text-anchor="start" fill="#4a4a4a" style="white-space:pre">TOTAL                                $684.31</text>
+</g>
+<rect width="620" height="720" fill="#101020" opacity="0.34"/>
+</svg>

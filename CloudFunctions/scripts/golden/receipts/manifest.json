@@ -1,0 +1,345 @@
+{
+  "generator": "scripts/makeGoldenReceipts.ts",
+  "renderer": "chrome-headless+sips",
+  "note": "All receipts are SYNTHETIC — every name, address, VIN, and number is invented (plan G6/F7).",
+  "cases": [
+    {
+      "id": "clean-dealer",
+      "kind": "images",
+      "files": [
+        "clean-dealer.jpg"
+      ],
+      "description": "Clean dealer service invoice with a printed mileage line.",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "oil_change",
+          "maintenance"
+        ],
+        "cost": 102.49,
+        "odometerReading": 34218,
+        "shopName": "Helmsworth Ford",
+        "entryDay": "2026-06-12",
+        "isDiy": false,
+        "lineItemsContain": [
+          "oil"
+        ]
+      }
+    },
+    {
+      "id": "thermal-faded",
+      "kind": "images",
+      "files": [
+        "thermal-faded.jpg"
+      ],
+      "description": "Faded gas-station thermal receipt (fuel, no odometer).",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "fuel"
+        ],
+        "cost": 48.42,
+        "odometerReading": null,
+        "shopName": "GasNGo",
+        "entryDay": "2026-07-03"
+      }
+    },
+    {
+      "id": "skewed-photo",
+      "kind": "images",
+      "files": [
+        "skewed-photo.jpg"
+      ],
+      "description": "Skewed phone photo of an alignment invoice on a workbench.",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "alignment"
+        ],
+        "cost": 128.52,
+        "odometerReading": 78902,
+        "shopName": "Torrey Pines",
+        "entryDay": "2026-05-21"
+      }
+    },
+    {
+      "id": "handwritten-total",
+      "kind": "images",
+      "files": [
+        "handwritten-total.jpg"
+      ],
+      "description": "Small-shop invoice with a handwritten total and date.",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "repair",
+          "maintenance"
+        ],
+        "cost": 240,
+        "shopName": "Eddie's Garage",
+        "entryDay": "2026-04-18"
+      }
+    },
+    {
+      "id": "parts-store",
+      "kind": "images",
+      "files": [
+        "parts-store.jpg"
+      ],
+      "description": "Retail parts-store receipt with no labor lines (DIY signal).",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "brake"
+        ],
+        "cost": 64.24,
+        "odometerReading": null,
+        "shopName": "AutoZone",
+        "entryDay": "2026-06-28",
+        "isDiy": true,
+        "lineItemsContain": [
+          "pads"
+        ]
+      }
+    },
+    {
+      "id": "tire-roadhazard",
+      "kind": "images",
+      "files": [
+        "tire-roadhazard.jpg"
+      ],
+      "description": "Tire invoice with road-hazard certificate lines.",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "tire"
+        ],
+        "cost": 902.88,
+        "odometerReading": 45102,
+        "shopName": "Discount Tire",
+        "entryDay": "2026-03-09",
+        "lineItemsContain": [
+          "road hazard"
+        ]
+      }
+    },
+    {
+      "id": "twopage",
+      "kind": "images",
+      "files": [
+        "twopage-1.jpg",
+        "twopage-2.jpg"
+      ],
+      "description": "Two-page independent-shop invoice: lines on page 1, totals on page 2.",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "repair"
+        ],
+        "cost": 880.2,
+        "odometerReading": 98340,
+        "shopName": "Bavarian Motor Werks",
+        "entryDay": "2026-02-14",
+        "lineItemsContain": [
+          "valve cover"
+        ]
+      }
+    },
+    {
+      "id": "tall-thermal",
+      "kind": "images",
+      "files": [
+        "tall-thermal.jpg"
+      ],
+      "description": "Tall 3:1 quick-lube thermal receipt (P1 VisionKit/tiling evidence case).",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "oil_change"
+        ],
+        "cost": 89.99,
+        "odometerReading": 66410,
+        "shopName": "Quick Lube Express",
+        "entryDay": "2026-07-15"
+      }
+    },
+    {
+      "id": "ro-mileage-trap",
+      "kind": "images",
+      "files": [
+        "ro-mileage-trap.jpg"
+      ],
+      "description": "TRAP: RO number printed beside the mileage; phone and ZIP also mileage-shaped.",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "maintenance"
+        ],
+        "cost": 162.11,
+        "odometerReading": 52880,
+        "shopName": "Summit Automotive",
+        "entryDay": "2026-06-02"
+      }
+    },
+    {
+      "id": "subtotal-trap",
+      "kind": "images",
+      "files": [
+        "subtotal-trap.jpg"
+      ],
+      "description": "TRAP: subtotal / supplies / tax / TOTAL / tendered / change stack; slight focus blur.",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "repair"
+        ],
+        "cost": 433.08,
+        "odometerReading": null,
+        "shopName": "Precision Muffler",
+        "entryDay": "2026-05-30"
+      }
+    },
+    {
+      "id": "discount-line",
+      "kind": "images",
+      "files": [
+        "discount-line.jpg"
+      ],
+      "description": "Coupon/discount line between the service line and the total.",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "brake",
+          "maintenance"
+        ],
+        "cost": 118.75,
+        "odometerReading": 41775,
+        "shopName": "Lakeside Honda",
+        "entryDay": "2026-04-02"
+      }
+    },
+    {
+      "id": "vin-prominent",
+      "kind": "images",
+      "files": [
+        "vin-prominent.jpg"
+      ],
+      "description": "TRAP: dealer invoice with a prominent VIN near the mileage line.",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "maintenance"
+        ],
+        "cost": 312.12,
+        "odometerReading": 30112,
+        "shopName": "Northgate Toyota",
+        "entryDay": "2026-03-27"
+      }
+    },
+    {
+      "id": "due-date-trap",
+      "kind": "images",
+      "files": [
+        "due-date-trap.jpg"
+      ],
+      "description": "TRAP: service date vs invoice date vs PAYMENT DUE date.",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "maintenance"
+        ],
+        "cost": 289.44,
+        "odometerReading": 88210,
+        "shopName": "Meridian Fleet",
+        "entryDay": "2026-06-10"
+      }
+    },
+    {
+      "id": "date-free",
+      "kind": "images",
+      "files": [
+        "date-free.jpg"
+      ],
+      "description": "No date printed anywhere — the model must omit entryDate, not invent one.",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "maintenance"
+        ],
+        "cost": 32.5,
+        "shopName": "Corner Car Care",
+        "entryDay": null
+      }
+    },
+    {
+      "id": "decade-old",
+      "kind": "images",
+      "files": [
+        "decade-old.jpg"
+      ],
+      "description": "Decade-old backfill receipt — the sanitizer must keep the 2016 date.",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "repair",
+          "maintenance"
+        ],
+        "cost": 684.31,
+        "odometerReading": 101220,
+        "shopName": "Valley Import",
+        "entryDay": "2016-09-22",
+        "lineItemsContain": [
+          "timing belt"
+        ]
+      }
+    },
+    {
+      "id": "pdf-invoice",
+      "kind": "pdf",
+      "files": [
+        "pdf-invoice.pdf"
+      ],
+      "description": "PDF invoice (document block path).",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "repair",
+          "maintenance"
+        ],
+        "cost": 246.13,
+        "odometerReading": 59644,
+        "shopName": "Cascade Auto Works",
+        "entryDay": "2026-07-08"
+      }
+    },
+    {
+      "id": "non-receipt",
+      "kind": "images",
+      "files": [
+        "non-receipt.jpg"
+      ],
+      "description": "Control: a cartoon dog, not a document — documentLooksLikeReceipt must be false.",
+      "expect": {
+        "documentLooksLikeReceipt": false
+      }
+    },
+    {
+      "id": "fewshot-anchor",
+      "kind": "images",
+      "files": [
+        "fewshot-anchor.jpg"
+      ],
+      "description": "A/B anchor mirroring the few-shot exemplar's structure with different values.",
+      "expect": {
+        "documentLooksLikeReceipt": true,
+        "entryType": [
+          "brake"
+        ],
+        "cost": 432,
+        "odometerReading": 64388,
+        "shopName": "Harbor View",
+        "entryDay": "2026-07-20"
+      }
+    }
+  ]
+}

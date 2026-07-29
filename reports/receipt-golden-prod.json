@@ -1,0 +1,1990 @@
+{
+ "variant": "prod",
+ "model": "claude-haiku-4-5",
+ "runs": 2,
+ "now": "2026-07-28T17:00:00.000Z",
+ "pass": 209,
+ "total": 216,
+ "moneyPass": 34,
+ "moneyTotal": 34,
+ "results": [
+  {
+   "id": "clean-dealer",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "oil_change|maintenance",
+     "got": "oil_change",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 102.49,
+     "got": 102.49,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 34218,
+     "got": 34218,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Helmsworth Ford",
+     "got": "Helmsworth Ford Service",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-06-12",
+     "got": "2026-06-12",
+     "pass": true
+    },
+    {
+     "field": "isDiy",
+     "expected": false,
+     "got": false,
+     "pass": true
+    },
+    {
+     "field": "lineItems~oil",
+     "expected": "oil",
+     "got": "synthetic blend oil change 0w-20 semi-synthetic 6 qts. filter incl. — $69.95 | tire rotation — $24.95 | multi-point inspection — $0.00",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "oil_change",
+    "shopName": "Helmsworth Ford Service",
+    "entryDate": "2026-06-12",
+    "cost": 102.49,
+    "odometerReading": 34218,
+    "isDiy": false,
+    "lineItems": [
+     "Synthetic Blend Oil Change 0W-20 semi-synthetic 6 qts. filter incl. — $69.95",
+     "Tire Rotation — $24.95",
+     "Multi-Point Inspection — $0.00"
+    ],
+    "notes": "Next service due at 39,218 miles"
+   }
+  },
+  {
+   "id": "clean-dealer",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "oil_change|maintenance",
+     "got": "oil_change",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 102.49,
+     "got": 102.49,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 34218,
+     "got": 34218,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Helmsworth Ford",
+     "got": "Helmsworth Ford Service",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-06-12",
+     "got": "2026-06-12",
+     "pass": true
+    },
+    {
+     "field": "isDiy",
+     "expected": false,
+     "got": false,
+     "pass": true
+    },
+    {
+     "field": "lineItems~oil",
+     "expected": "oil",
+     "got": "synthetic blend oil change 0w-20 semi-synthetic 6 qts, filter incl. — $69.95 | tire rotation — $24.95 | multi-point inspection — $0.00",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "oil_change",
+    "shopName": "Helmsworth Ford Service",
+    "entryDate": "2026-06-12",
+    "cost": 102.49,
+    "odometerReading": 34218,
+    "isDiy": false,
+    "lineItems": [
+     "Synthetic Blend Oil Change 0W-20 semi-synthetic 6 qts, filter incl. — $69.95",
+     "Tire Rotation — $24.95",
+     "Multi-Point Inspection — $0.00"
+    ],
+    "notes": "Next service due at 39,218 miles"
+   }
+  },
+  {
+   "id": "thermal-faded",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "fuel",
+     "got": "fuel",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 48.42,
+     "got": 48.42,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": null,
+     "got": null,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "GasNGo",
+     "got": "Gasngo #77",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-03",
+     "got": "2026-07-03",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "fuel",
+    "shopName": "Gasngo #77",
+    "entryDate": "2026-07-03",
+    "cost": 48.42,
+    "isDiy": true,
+    "lineItems": [
+     "Fuel 12.418 GAL @ $3.899 — $48.42"
+    ]
+   }
+  },
+  {
+   "id": "thermal-faded",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "fuel",
+     "got": "fuel",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 48.42,
+     "got": 48.42,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": null,
+     "got": null,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "GasNGo",
+     "got": "Gasngo #77",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-03",
+     "got": "2026-07-03",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "fuel",
+    "shopName": "Gasngo #77",
+    "entryDate": "2026-07-03",
+    "cost": 48.42,
+    "isDiy": true,
+    "lineItems": [
+     "12.418 GAL @ $3.899 — $48.42"
+    ]
+   }
+  },
+  {
+   "id": "skewed-photo",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "alignment",
+     "got": "alignment",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 128.52,
+     "got": 128.52,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 78902,
+     "got": 78802,
+     "pass": false
+    },
+    {
+     "field": "shopName",
+     "expected": "Torrey Pines",
+     "got": "Torrey Pines Tire & Auto",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-05-21",
+     "got": "2026-05-21",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "alignment",
+    "shopName": "Torrey Pines Tire & Auto",
+    "entryDate": "2026-05-21",
+    "cost": 128.52,
+    "odometerReading": 78802,
+    "isDiy": false,
+    "lineItems": [
+     "Four wheel alignment — Camber/caster/toe set to spec — $119.00"
+    ]
+   }
+  },
+  {
+   "id": "skewed-photo",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "alignment",
+     "got": "alignment",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 128.52,
+     "got": 128.52,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 78902,
+     "got": 78802,
+     "pass": false
+    },
+    {
+     "field": "shopName",
+     "expected": "Torrey Pines",
+     "got": "Torrey Pines Tire & Auto",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-05-21",
+     "got": "2026-05-21",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "alignment",
+    "shopName": "Torrey Pines Tire & Auto",
+    "entryDate": "2026-05-21",
+    "cost": 128.52,
+    "odometerReading": 78802,
+    "isDiy": false,
+    "lineItems": [
+     "Four wheel alignment — Camber/caster/toe set to spec // $119.00"
+    ]
+   }
+  },
+  {
+   "id": "handwritten-total",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "repair|maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 240,
+     "got": 240,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Eddie's Garage",
+     "got": "Eddie's Garage",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-04-18",
+     "got": "2026-04-18",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "maintenance",
+    "shopName": "Eddie's Garage",
+    "entryDate": "2026-04-18",
+    "cost": 240,
+    "isDiy": false,
+    "lineItems": [
+     "Replace serpentine belt parts + labor \nnon— $240.00"
+    ]
+   }
+  },
+  {
+   "id": "handwritten-total",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "repair|maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 240,
+     "got": 240,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Eddie's Garage",
+     "got": "Eddie's Garage",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-04-18",
+     "got": "2026-04-18",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "maintenance",
+    "shopName": "Eddie's Garage",
+    "entryDate": "2026-04-18",
+    "cost": 240,
+    "isDiy": false,
+    "lineItems": [
+     "Replace serpentine belt parts + labor \n— $240.00"
+    ]
+   }
+  },
+  {
+   "id": "parts-store",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "brake",
+     "got": "brake",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 64.24,
+     "got": 64.24,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": null,
+     "got": null,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "AutoZone",
+     "got": "Autozone",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-06-28",
+     "got": "2026-06-28",
+     "pass": true
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "lineItems~pads",
+     "expected": "pads",
+     "got": "duralast gold pads dg1234 — $54.99 | brake cleaner 12oz — $4.49",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "brake",
+    "shopName": "Autozone",
+    "entryDate": "2026-06-28",
+    "cost": 64.24,
+    "isDiy": true,
+    "lineItems": [
+     "Duralast Gold Pads DG1234 — $54.99",
+     "Brake Cleaner 12oz — $4.49"
+    ]
+   }
+  },
+  {
+   "id": "parts-store",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "brake",
+     "got": "brake",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 64.24,
+     "got": 64.24,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": null,
+     "got": null,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "AutoZone",
+     "got": "AutoZone",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-06-28",
+     "got": "2026-06-28",
+     "pass": true
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "lineItems~pads",
+     "expected": "pads",
+     "got": "duralast gold pads dg1234 \t— $54.99 | brake cleaner 12oz \t— $4.49",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "brake",
+    "shopName": "AutoZone",
+    "entryDate": "2026-06-28",
+    "cost": 64.24,
+    "isDiy": true,
+    "lineItems": [
+     "Duralast Gold Pads DG1234 \t— $54.99",
+     "Brake Cleaner 12oz \t— $4.49"
+    ]
+   }
+  },
+  {
+   "id": "tire-roadhazard",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "tire",
+     "got": "tire",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 902.88,
+     "got": 902.88,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 45102,
+     "got": 45102,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Discount Tire",
+     "got": "Discount Tire",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-03-09",
+     "got": "2026-03-09",
+     "pass": true
+    },
+    {
+     "field": "lineItems~road hazard",
+     "expected": "road hazard",
+     "got": "michelin defender2 225/60r17 4 @ $167.00 ea. — $668.00 | road hazard certificate 4 @ $22.00 ea. — $88.00 | mount/balance/valve 4 @ $20.00 ea. — $80.00",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "tire",
+    "shopName": "Discount Tire",
+    "entryDate": "2026-03-09",
+    "cost": 902.88,
+    "odometerReading": 45102,
+    "isDiy": false,
+    "lineItems": [
+     "Michelin Defender2 225/60R17 4 @ $167.00 ea. — $668.00",
+     "Road Hazard Certificate 4 @ $22.00 ea. — $88.00",
+     "Mount/Balance/Valve 4 @ $20.00 ea. — $80.00"
+    ],
+    "notes": "Rotation and flat repair free for life"
+   }
+  },
+  {
+   "id": "tire-roadhazard",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "tire",
+     "got": "tire",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 902.88,
+     "got": 902.88,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 45102,
+     "got": 45102,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Discount Tire",
+     "got": "Discount Tire",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-03-09",
+     "got": "2026-03-09",
+     "pass": true
+    },
+    {
+     "field": "lineItems~road hazard",
+     "expected": "road hazard",
+     "got": "michelin defender2 225/60r17 4 @ $167.00 — $668.00 | road hazard certificate 4 @ $22.00 — $88.00 | mount/balance/valve 4 @ $20.00 — $80.00",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "tire",
+    "shopName": "Discount Tire",
+    "entryDate": "2026-03-09",
+    "cost": 902.88,
+    "odometerReading": 45102,
+    "isDiy": false,
+    "lineItems": [
+     "Michelin Defender2 225/60R17 4 @ $167.00 — $668.00",
+     "Road Hazard Certificate 4 @ $22.00 — $88.00",
+     "Mount/Balance/Valve 4 @ $20.00 — $80.00"
+    ],
+    "notes": "Rotation and flat repair free for life"
+   }
+  },
+  {
+   "id": "twopage",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "repair",
+     "got": "maintenance",
+     "pass": false
+    },
+    {
+     "field": "cost",
+     "expected": 880.2,
+     "got": 880.2,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 98340,
+     "got": 98340,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Bavarian Motor Werks",
+     "got": "Bavarian Motor Werks Independent",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-02-14",
+     "got": "2026-02-14",
+     "pass": true
+    },
+    {
+     "field": "lineItems~valve cover",
+     "expected": "valve cover",
+     "got": "valve cover gasket set — $145.00 | engine oil + filter (ll-01 5w-30) — $98.00 | labor: r&i valve cover, reseal 3.8 hr — $532.00 | shop supplies — $40.00",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "maintenance",
+    "shopName": "Bavarian Motor Werks Independent",
+    "entryDate": "2026-02-14",
+    "cost": 880.2,
+    "odometerReading": 98340,
+    "isDiy": false,
+    "lineItems": [
+     "Valve Cover Gasket Set — $145.00",
+     "Engine Oil + Filter (LL-01 5W-30) — $98.00",
+     "Labor: R&I Valve Cover, Reseal 3.8 HR — $532.00",
+     "Shop Supplies — $40.00"
+    ],
+    "notes": "Warranty: 24 months / 24,000 miles on repairs. Next oil service recommended at next service."
+   }
+  },
+  {
+   "id": "twopage",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "repair",
+     "got": "maintenance",
+     "pass": false
+    },
+    {
+     "field": "cost",
+     "expected": 880.2,
+     "got": 880.2,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 98340,
+     "got": 98340,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Bavarian Motor Werks",
+     "got": "Bavarian Motor Werks Independent",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-02-14",
+     "got": "2026-02-14",
+     "pass": true
+    },
+    {
+     "field": "lineItems~valve cover",
+     "expected": "valve cover",
+     "got": "valve cover gasket set — $145.00 | engine oil + filter (ll-01 5w-30) — $98.00 | labor: r&i valve cover, reseal 3.8 hr — $532.00 | shop supplies — $40.00",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "maintenance",
+    "shopName": "Bavarian Motor Werks Independent",
+    "entryDate": "2026-02-14",
+    "cost": 880.2,
+    "odometerReading": 98340,
+    "isDiy": false,
+    "lineItems": [
+     "Valve cover gasket set — $145.00",
+     "Engine oil + filter (LL-01 5W-30) — $98.00",
+     "Labor: R&I valve cover, reseal 3.8 hr — $532.00",
+     "Shop supplies — $40.00"
+    ],
+    "notes": "Warranty: 24 months / 24,000 miles on repairs. Next oil service recommended."
+   }
+  },
+  {
+   "id": "tall-thermal",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "oil_change",
+     "got": "oil_change",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 89.99,
+     "got": 89.99,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 66410,
+     "got": 66410,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Quick Lube Express",
+     "got": "Quick Lube Express",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-15",
+     "got": "2026-07-15",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "oil_change",
+    "shopName": "Quick Lube Express",
+    "entryDate": "2026-07-15",
+    "cost": 89.99,
+    "odometerReading": 66410,
+    "isDiy": false,
+    "lineItems": [
+     "Full synthetic 0W-20 6 QTS — $52.99",
+     "Oil filter — $9.99",
+     "Air filter — $19.99",
+     "Washer fluid — $0.00",
+     "Coolant top-off — $0.00",
+     "Tires checked — $0.00",
+     "Chassis lube — $0.00",
+     "Disposal fee — $2.00"
+    ],
+    "notes": "Next service: 71,410 MI or 6 MO"
+   }
+  },
+  {
+   "id": "tall-thermal",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "oil_change",
+     "got": "oil_change",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 89.99,
+     "got": 89.99,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 66410,
+     "got": 66410,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Quick Lube Express",
+     "got": "Quick Lube Express",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-15",
+     "got": "2026-07-15",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "oil_change",
+    "shopName": "Quick Lube Express",
+    "entryDate": "2026-07-15",
+    "cost": 89.99,
+    "odometerReading": 66410,
+    "isDiy": false,
+    "lineItems": [
+     "Full Synthetic 0W-20 6 QTS — $52.99",
+     "Oil Filter — $9.99",
+     "Air Filter — $19.99",
+     "Washer Fluid — $0.00",
+     "Coolant Top-off — $0.00",
+     "Tires Checked — $0.00",
+     "Chassis Lube — $0.00",
+     "Disposal Fee — $2.00"
+    ],
+    "notes": "Next service: 71,410 mi or 6 months"
+   }
+  },
+  {
+   "id": "ro-mileage-trap",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 162.11,
+     "got": 162.11,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 52880,
+     "got": 52880,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Summit Automotive",
+     "got": "Summit Automotive",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-06-02",
+     "got": "2026-06-02",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "maintenance",
+    "shopName": "Summit Automotive",
+    "entryDate": "2026-06-02",
+    "cost": 162.11,
+    "odometerReading": 52880,
+    "isDiy": false,
+    "lineItems": [
+     "Coolant system flush — $149.99",
+     "OAT coolant, pressure test incl. — included"
+    ]
+   }
+  },
+  {
+   "id": "ro-mileage-trap",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 162.11,
+     "got": 162.11,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 52880,
+     "got": 52880,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Summit Automotive",
+     "got": "Summit Automotive",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-06-02",
+     "got": "2026-06-02",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "maintenance",
+    "shopName": "Summit Automotive",
+    "entryDate": "2026-06-02",
+    "cost": 162.11,
+    "odometerReading": 52880,
+    "isDiy": false,
+    "lineItems": [
+     "Coolant system flush — $149.99",
+     "OAT coolant, pressure test incl. — $149.99"
+    ]
+   }
+  },
+  {
+   "id": "subtotal-trap",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "repair",
+     "got": "repair",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 433.08,
+     "got": 433.08,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": null,
+     "got": null,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Precision Muffler",
+     "got": "Precision Muffler",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-05-30",
+     "got": "2026-05-30",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "repair",
+    "shopName": "Precision Muffler",
+    "entryDate": "2026-05-30",
+    "cost": 433.08,
+    "isDiy": false,
+    "lineItems": [
+     "Exhaust leak repair — $389.00",
+     "Weld flex joint — $389.00",
+     "Shop supplies — $12.00"
+    ]
+   }
+  },
+  {
+   "id": "subtotal-trap",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "repair",
+     "got": "repair",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 433.08,
+     "got": 433.08,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": null,
+     "got": null,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Precision Muffler",
+     "got": "Precision Muffler",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-05-30",
+     "got": "2026-05-30",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "repair",
+    "shopName": "Precision Muffler",
+    "entryDate": "2026-05-30",
+    "cost": 433.08,
+    "isDiy": false,
+    "lineItems": [
+     "Exhaust leak repair \nWeld flex joint \nCost: $389.00",
+     "Shop supplies \nCost: $12.00"
+    ]
+   }
+  },
+  {
+   "id": "discount-line",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "brake|maintenance",
+     "got": "brake",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 118.75,
+     "got": 118.75,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 41775,
+     "got": 41775,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Lakeside Honda",
+     "got": "Lakeside Honda Service",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-04-02",
+     "got": "2026-04-02",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "brake",
+    "shopName": "Lakeside Honda Service",
+    "entryDate": "2026-04-02",
+    "cost": 118.75,
+    "odometerReading": 41775,
+    "isDiy": false,
+    "lineItems": [
+     "Brake fluid exchange — $129.95",
+     "Coupon SAVE20 — -$20.00"
+    ]
+   }
+  },
+  {
+   "id": "discount-line",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "brake|maintenance",
+     "got": "brake",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 118.75,
+     "got": 118.75,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 41775,
+     "got": 41775,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Lakeside Honda",
+     "got": "Lakeside Honda Service",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-04-02",
+     "got": "2026-04-02",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "brake",
+    "shopName": "Lakeside Honda Service",
+    "entryDate": "2026-04-02",
+    "cost": 118.75,
+    "odometerReading": 41775,
+    "isDiy": false,
+    "lineItems": [
+     "Brake fluid exchange \nnow \n $129.95",
+     "Coupon SAVE20 \nnow \n -$20.00"
+    ]
+   }
+  },
+  {
+   "id": "vin-prominent",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 312.12,
+     "got": 312.12,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 30112,
+     "got": 30112,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Northgate Toyota",
+     "got": "Northgate Toyota",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-03-27",
+     "got": "2026-03-27",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "maintenance",
+    "shopName": "Northgate Toyota",
+    "entryDate": "2026-03-27",
+    "cost": 312.12,
+    "odometerReading": 30112,
+    "isDiy": false,
+    "lineItems": [
+     "30,000 mile service — $289.00",
+     "Oil/filter, rotate, inspect brakes and driveline — included"
+    ]
+   }
+  },
+  {
+   "id": "vin-prominent",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "oil_change",
+     "pass": false
+    },
+    {
+     "field": "cost",
+     "expected": 312.12,
+     "got": 312.12,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 30112,
+     "got": 30112,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Northgate Toyota",
+     "got": "Northgate Toyota",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-03-27",
+     "got": "2026-03-27",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "oil_change",
+    "shopName": "Northgate Toyota",
+    "entryDate": "2026-03-27",
+    "cost": 312.12,
+    "odometerReading": 30112,
+    "isDiy": false,
+    "lineItems": [
+     "30,000 mile service \n— $289.00",
+     "Oil/filter, rotate, filter, inspect brakes and driveline"
+    ],
+    "notes": "30,000 mile scheduled maintenance service including oil/filter, rotate, inspect brakes and driveline"
+   }
+  },
+  {
+   "id": "due-date-trap",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 289.44,
+     "got": 289.44,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 88210,
+     "got": 88210,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Meridian Fleet",
+     "got": "Meridian Fleet Services",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-06-10",
+     "got": "2026-06-10",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "maintenance",
+    "shopName": "Meridian Fleet Services",
+    "entryDate": "2026-06-10",
+    "cost": 289.44,
+    "odometerReading": 88210,
+    "isDiy": false,
+    "lineItems": [
+     "Transmission Fluid Service — $249.00",
+     "Drain/fill, new gasket + filter"
+    ]
+   }
+  },
+  {
+   "id": "due-date-trap",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 289.44,
+     "got": 289.44,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 88210,
+     "got": 88210,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Meridian Fleet",
+     "got": "Meridian Fleet Services",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-06-10",
+     "got": "2026-06-10",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "maintenance",
+    "shopName": "Meridian Fleet Services",
+    "entryDate": "2026-06-10",
+    "cost": 289.44,
+    "odometerReading": 88210,
+    "isDiy": false,
+    "lineItems": [
+     "Transmission fluid service — $249.00",
+     "Drain/fill, new gasket + filter"
+    ]
+   }
+  },
+  {
+   "id": "date-free",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 32.5,
+     "got": 32.5,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Corner Car Care",
+     "got": "Corner Car Care",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": null,
+     "got": null,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "maintenance",
+    "shopName": "Corner Car Care",
+    "cost": 32.5,
+    "isDiy": false,
+    "lineItems": [
+     "Wiper blades pair \t$24.99",
+     "Install \t$5.00"
+    ]
+   }
+  },
+  {
+   "id": "date-free",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 32.5,
+     "got": 32.5,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Corner Car Care",
+     "got": "Corner Car Care",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": null,
+     "got": null,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "maintenance",
+    "shopName": "Corner Car Care",
+    "cost": 32.5,
+    "isDiy": false,
+    "lineItems": [
+     "Wiper blades pair \n— $24.99",
+     "Install \n— $5.00"
+    ]
+   }
+  },
+  {
+   "id": "decade-old",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "repair|maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 684.31,
+     "got": 684.31,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 101220,
+     "got": 101220,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Valley Import",
+     "got": "Valley Import Repair",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2016-09-22",
+     "got": "2016-09-22",
+     "pass": true
+    },
+    {
+     "field": "lineItems~timing belt",
+     "expected": "timing belt",
+     "got": "timing belt kit w/ water pump — $312.00 | labor 4.2 hr — $336.00",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "maintenance",
+    "shopName": "Valley Import Repair",
+    "entryDate": "2016-09-22",
+    "cost": 684.31,
+    "odometerReading": 101220,
+    "isDiy": false,
+    "lineItems": [
+     "Timing belt kit w/ water pump — $312.00",
+     "Labor 4.2 hr — $336.00"
+    ]
+   }
+  },
+  {
+   "id": "decade-old",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "repair|maintenance",
+     "got": "maintenance",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 684.31,
+     "got": 684.31,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 101220,
+     "got": 101220,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Valley Import",
+     "got": "Valley Import Repair",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2016-09-22",
+     "got": "2016-09-22",
+     "pass": true
+    },
+    {
+     "field": "lineItems~timing belt",
+     "expected": "timing belt",
+     "got": "timing belt kit w/ water pump \t $312.00 | labor 4.2 hr \t $336.00",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "maintenance",
+    "shopName": "Valley Import Repair",
+    "entryDate": "2016-09-22",
+    "cost": 684.31,
+    "odometerReading": 101220,
+    "isDiy": false,
+    "lineItems": [
+     "Timing Belt Kit w/ Water Pump \t $312.00",
+     "Labor 4.2 hr \t $336.00"
+    ]
+   }
+  },
+  {
+   "id": "pdf-invoice",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "repair|maintenance",
+     "got": "upgrade",
+     "pass": false
+    },
+    {
+     "field": "cost",
+     "expected": 246.13,
+     "got": 246.13,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 59644,
+     "got": 59644,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Cascade Auto Works",
+     "got": "Cascade Auto Works",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-08",
+     "got": "2026-07-08",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "upgrade",
+    "shopName": "Cascade Auto Works",
+    "entryDate": "2026-07-08",
+    "cost": 246.13,
+    "odometerReading": 59644,
+    "isDiy": false,
+    "lineItems": [
+     "AGM Battery Group 48 \nnot — $219.00",
+     "Install + Register Battery \nnot — $39.00",
+     "Core Credit — -$22.00"
+    ],
+    "notes": "Battery warranty: 48 months free replacement"
+   }
+  },
+  {
+   "id": "pdf-invoice",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "repair|maintenance",
+     "got": "upgrade",
+     "pass": false
+    },
+    {
+     "field": "cost",
+     "expected": 246.13,
+     "got": 246.13,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 59644,
+     "got": 59644,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Cascade Auto Works",
+     "got": "Cascade Auto Works",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-08",
+     "got": "2026-07-08",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "upgrade",
+    "shopName": "Cascade Auto Works",
+    "entryDate": "2026-07-08",
+    "cost": 246.13,
+    "odometerReading": 59644,
+    "isDiy": false,
+    "lineItems": [
+     "AGM Battery Group 48 — $219.00",
+     "Install + Register Battery — $39.00",
+     "Core Credit — -$22.00"
+    ],
+    "notes": "Battery warranty: 48 months free replacement"
+   }
+  },
+  {
+   "id": "non-receipt",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": false,
+     "got": false,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": false,
+    "entryType": "maintenance"
+   }
+  },
+  {
+   "id": "non-receipt",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": false,
+     "got": false,
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": false,
+    "entryType": "maintenance"
+   }
+  },
+  {
+   "id": "fewshot-anchor",
+   "run": 1,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "brake",
+     "got": "brake",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 432,
+     "got": 432,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 64388,
+     "got": 64388,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Harbor View",
+     "got": "Harbor View Auto Care",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-20",
+     "got": "2026-07-20",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "brake",
+    "shopName": "Harbor View Auto Care",
+    "entryDate": "2026-07-20",
+    "cost": 432,
+    "odometerReading": 64388,
+    "isDiy": false,
+    "lineItems": [
+     "Front brake pads & rotors — $262.00",
+     "Labor 1.5 hr — $138.00"
+    ]
+   }
+  },
+  {
+   "id": "fewshot-anchor",
+   "run": 2,
+   "fields": [
+    {
+     "field": "documentLooksLikeReceipt",
+     "expected": true,
+     "got": true,
+     "pass": true
+    },
+    {
+     "field": "entryType",
+     "expected": "brake",
+     "got": "brake",
+     "pass": true
+    },
+    {
+     "field": "cost",
+     "expected": 432,
+     "got": 432,
+     "pass": true
+    },
+    {
+     "field": "odometerReading",
+     "expected": 64388,
+     "got": 64388,
+     "pass": true
+    },
+    {
+     "field": "shopName",
+     "expected": "Harbor View",
+     "got": "Harbor View Auto Care",
+     "pass": true
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-20",
+     "got": "2026-07-20",
+     "pass": true
+    }
+   ],
+   "raw": {
+    "documentLooksLikeReceipt": true,
+    "entryType": "brake",
+    "shopName": "Harbor View Auto Care",
+    "entryDate": "2026-07-20",
+    "cost": 432,
+    "odometerReading": 64388,
+    "isDiy": false,
+    "lineItems": [
+     "Front brake pads & rotors — $262.00",
+     "Labor 1.5 hr — $138.00"
+    ]
+   }
+  }
+ ]
+}

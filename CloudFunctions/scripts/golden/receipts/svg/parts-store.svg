@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="640" viewBox="0 0 400 640">
+<defs></defs>
+<rect width="400" height="640" fill="#ffffff"/>
+<g>
+  <text x="200" y="53" font-family="'Courier New', Courier, monospace" font-size="19" font-weight="bold" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">AUTOZONE #4821</text>
+  <text x="200" y="72" font-family="'Courier New', Courier, monospace" font-size="12" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">1180 GATEWAY BLVD</text>
+  <text x="200" y="91" font-family="'Courier New', Courier, monospace" font-size="12" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">06/28/2026 10:22 REG 2</text>
+  <text x="24" y="111" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">--------------------------------------------</text>
+  <text x="24" y="133" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">DURALAST GOLD PADS</text>
+  <text x="24" y="155" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">  DG1234        $54.99</text>
+  <text x="24" y="177" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">BRAKE CLEANER 12OZ</text>
+  <text x="24" y="199" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">                 $4.49</text>
+  <text x="24" y="219" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">--------------------------------------------</text>
+  <text x="24" y="241" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">SUBTOTAL        $59.48</text>
+  <text x="24" y="263" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">TAX              $4.76</text>
+  <text x="24" y="288" font-family="'Courier New', Courier, monospace" font-size="16" font-weight="bold" text-anchor="start" fill="#1a1a1a" style="white-space:pre">TOTAL           $64.24</text>
+  <text x="24" y="310" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">DEBIT           $64.24</text>
+  <text x="24" y="330" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">--------------------------------------------</text>
+  <text x="24" y="349" font-family="'Courier New', Courier, monospace" font-size="12" text-anchor="start" fill="#1a1a1a" style="white-space:pre">ITEMS SOLD: 2</text>
+</g>
+
+</svg>

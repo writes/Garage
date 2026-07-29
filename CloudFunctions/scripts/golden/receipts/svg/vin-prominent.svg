@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="760" viewBox="0 0 640 760">
+<defs></defs>
+<rect width="640" height="760" fill="#ffffff"/>
+<g>
+  <text x="320" y="60" font-family="Helvetica, Arial, sans-serif" font-size="23" font-weight="bold" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">NORTHGATE TOYOTA</text>
+  <text x="320" y="79" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">Service Invoice 62-8871</text>
+  <text x="24" y="99" font-family="Helvetica, Arial, sans-serif" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">-----------------------------------------------------------------------</text>
+  <text x="24" y="122" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" text-anchor="start" fill="#1a1a1a" style="white-space:pre">VIN: 4T1BF1FK5HU301992</text>
+  <text x="24" y="142" font-family="Helvetica, Arial, sans-serif" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Stock: T8871    License: 8ZKD442</text>
+  <text x="24" y="165" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Mileage: 30,112    Date: 03/27/2026</text>
+  <text x="24" y="185" font-family="Helvetica, Arial, sans-serif" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">-----------------------------------------------------------------------</text>
+  <text x="24" y="205" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">30,000 MILE SERVICE                  $289.00</text>
+  <text x="24" y="224" font-family="'Courier New', Courier, monospace" font-size="12" text-anchor="start" fill="#1a1a1a" style="white-space:pre">  Oil/filter, rotate, cabin filter,</text>
+  <text x="24" y="243" font-family="'Courier New', Courier, monospace" font-size="12" text-anchor="start" fill="#1a1a1a" style="white-space:pre">  inspect brakes and driveline</text>
+  <text x="24" y="263" font-family="Helvetica, Arial, sans-serif" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">-----------------------------------------------------------------------</text>
+  <text x="24" y="283" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Subtotal                             $289.00</text>
+  <text x="24" y="303" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Tax                                   $23.12</text>
+  <text x="24" y="328" font-family="'Courier New', Courier, monospace" font-size="16" font-weight="bold" text-anchor="start" fill="#1a1a1a" style="white-space:pre">TOTAL                                $312.12</text>
+</g>
+
+</svg>

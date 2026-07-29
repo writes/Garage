@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="620" height="720" viewBox="0 0 620 720">
+<defs></defs>
+<rect width="620" height="720" fill="#ffffff"/>
+<g>
+  <text x="310" y="58" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="bold" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">LAKESIDE HONDA SERVICE</text>
+  <text x="310" y="77" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">Appt 09:30 — Advisor M. Ito</text>
+  <text x="24" y="99" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Date: 04/02/2026        Mileage: 41,775</text>
+  <text x="24" y="119" font-family="Helvetica, Arial, sans-serif" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">--------------------------------------------------------------------</text>
+  <text x="24" y="139" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">BRAKE FLUID EXCHANGE                 $129.95</text>
+  <text x="24" y="159" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">COUPON SAVE20                        -$20.00</text>
+  <text x="24" y="179" font-family="Helvetica, Arial, sans-serif" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">--------------------------------------------------------------------</text>
+  <text x="24" y="199" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Subtotal                             $109.95</text>
+  <text x="24" y="219" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Tax                                    $8.80</text>
+  <text x="24" y="244" font-family="'Courier New', Courier, monospace" font-size="16" font-weight="bold" text-anchor="start" fill="#1a1a1a" style="white-space:pre">TOTAL                                $118.75</text>
+</g>
+
+</svg>

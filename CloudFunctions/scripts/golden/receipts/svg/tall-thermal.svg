@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="1200" viewBox="0 0 400 1200">
+<defs></defs>
+<rect width="400" height="1200" fill="#ffffff"/>
+<g>
+  <text x="200" y="53" font-family="'Courier New', Courier, monospace" font-size="19" font-weight="bold" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">QUICK LUBE EXPRESS</text>
+  <text x="200" y="73" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">BAY 2  INV 55201</text>
+  <text x="200" y="93" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">07/15/2026 09:12</text>
+  <text x="200" y="116" font-family="'Courier New', Courier, monospace" font-size="15" font-weight="bold" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">ODOMETER: 66,410</text>
+  <text x="24" y="136" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">--------------------------------------------</text>
+  <text x="24" y="158" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">FULL SYNTHETIC 0W-20</text>
+  <text x="24" y="180" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">  6 QTS         $52.99</text>
+  <text x="24" y="202" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">OIL FILTER       $9.99</text>
+  <text x="24" y="224" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">AIR FILTER      $19.99</text>
+  <text x="24" y="246" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">WASHER FLUID     $0.00</text>
+  <text x="24" y="268" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">COOLANT TOP-OFF  $0.00</text>
+  <text x="24" y="290" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">TIRES CHECKED    $0.00</text>
+  <text x="24" y="312" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">CHASSIS LUBE     $0.00</text>
+  <text x="24" y="332" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">--------------------------------------------</text>
+  <text x="24" y="354" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">SUBTOTAL        $82.97</text>
+  <text x="24" y="376" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">DISPOSAL FEE     $2.00</text>
+  <text x="24" y="398" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">TAX              $5.02</text>
+  <text x="24" y="424" font-family="'Courier New', Courier, monospace" font-size="17" font-weight="bold" text-anchor="start" fill="#1a1a1a" style="white-space:pre">TOTAL           $89.99</text>
+  <text x="24" y="444" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">--------------------------------------------</text>
+  <text x="24" y="466" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">VISA            $89.99</text>
+  <text x="24" y="509" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">NEXT SERVICE:</text>
+  <text x="24" y="529" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">71,410 MI OR 6 MO</text>
+  <text x="200" y="575" font-family="'Courier New', Courier, monospace" font-size="15" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">THANK YOU!</text>
+</g>
+
+</svg>

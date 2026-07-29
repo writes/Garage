@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="620" height="800" viewBox="0 0 620 800">
+<defs></defs>
+<rect width="620" height="800" fill="#ffffff"/>
+<g>
+  <text x="310" y="55" font-family="Helvetica, Arial, sans-serif" font-size="20" font-weight="bold" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">BAVARIAN MOTOR WERKS INDEPENDENT</text>
+  <text x="310" y="74" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">Invoice 7719 — Page 2 of 2</text>
+  <text x="24" y="94" font-family="Helvetica, Arial, sans-serif" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">--------------------------------------------------------------------</text>
+  <text x="24" y="114" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Subtotal                               $815.00</text>
+  <text x="24" y="134" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Tax                                     $65.20</text>
+  <text x="24" y="159" font-family="'Courier New', Courier, monospace" font-size="16" font-weight="bold" text-anchor="start" fill="#1a1a1a" style="white-space:pre">TOTAL DUE                              $880.20</text>
+  <text x="24" y="201" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Warranty: 24 months / 24,000 miles on repairs</text>
+  <text x="24" y="220" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Thank you — see you at the next oil service.</text>
+</g>
+
+</svg>
