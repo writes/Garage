@@ -16,37 +16,22 @@ struct DashboardView: View {
                     // dashboard used to render an "empty" but otherwise normal layout (hero card
                     // reading "No vehicle selected", empty wear/reminders sections) with no
                     // actionable next step. Replace the whole body with one explicit CTA instead.
-                    if appState.vehicles.isEmpty {
+                    //
+                    // Audit finding (false empty state): keying that CTA off `vehicles.isEmpty`
+                    // alone made "the first load has not landed yet" render as "you own no
+                    // vehicles", so EVERY returning owner got a flash of "Add Your First Vehicle"
+                    // on cold launch. hasCompletedInitialVehicleLoad is the tri-state that tells
+                    // the two apart — the same guard AppRouter's vehicle gate already uses.
+                    switch DashboardVehicleState.resolve(
+                        hasCompletedInitialVehicleLoad: appState.hasCompletedInitialVehicleLoad,
+                        isVehicleListEmpty: appState.vehicles.isEmpty
+                    ) {
+                    case .awaitingFirstLoad:
+                        LoadingOverlay()
+                    case .noVehicles:
                         zeroVehicleState
-                    } else {
-                        OdometerHeroCard(
-                            vehicle: appState.currentVehicle, hasActiveWarranty: viewModel.hasActiveWarranty
-                        )
-                        RecallAlertBadge(openRecallCount: viewModel.openRecalls)
-
-                        if viewModel.isLoading {
-                            LoadingOverlay()
-                        } else if let error = viewModel.error {
-                            ErrorBanner(error: error, retry: { Task { await reload() } })
-                        } else {
-                            // A vehicle with no entries would otherwise stack FOUR negative panels
-                            // — needs-attention, wear, reminders, recent activity — on the very
-                            // first screen after adding a car. Four "nothing here" cards in a row
-                            // read as a broken app rather than a new one. One next step instead.
-                            if viewModel.hasNoHistory {
-                                firstEntryState
-                            } else {
-                                // Above wear and reminders: the only section that says what the car
-                                // needs rather than replaying what the owner already entered.
-                                MaintenanceDueCard(
-                                    items: viewModel.maintenanceDue,
-                                    historyDepth: DashboardViewModel.historyDepth
-                                )
-                                wearSection
-                                remindersSection
-                                RecentEntryFeed(entries: viewModel.recentEntries)
-                            }
-                        }
+                    case .ready:
+                        loadedVehicleBody
                     }
                 }
                 .padding(Theme.Spacing.md)
@@ -71,6 +56,36 @@ struct DashboardView: View {
                 guard activeSheet == nil else { return }
                 Task { await reload() }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var loadedVehicleBody: some View {
+        OdometerHeroCard(
+            vehicle: appState.currentVehicle, hasActiveWarranty: viewModel.hasActiveWarranty
+        )
+        RecallAlertBadge(openRecallCount: viewModel.openRecalls)
+
+        if viewModel.isLoading {
+            LoadingOverlay()
+        } else if let error = viewModel.error {
+            ErrorBanner(error: error, retry: { Task { await reload() } })
+        } else if viewModel.hasNoHistory {
+            // A vehicle with no entries would otherwise stack FOUR negative panels — needs-
+            // attention, wear, reminders, recent activity — on the very first screen after adding
+            // a car. Four "nothing here" cards in a row read as a broken app rather than a new
+            // one. One next step instead.
+            firstEntryState
+        } else {
+            // Above wear and reminders: the only section that says what the car needs rather than
+            // replaying what the owner already entered.
+            MaintenanceDueCard(
+                items: viewModel.maintenanceDue,
+                historyDepth: DashboardViewModel.historyDepth
+            )
+            wearSection
+            remindersSection
+            RecentEntryFeed(entries: viewModel.recentEntries)
         }
     }
 
@@ -161,5 +176,20 @@ struct DashboardView: View {
     private func reload() async {
         guard let vehicleId = appState.currentVehicle?.id else { return }
         await viewModel.loadDashboard(vehicleId: vehicleId)
+    }
+}
+
+/// Which of the three vehicle-keyed dashboard bodies to render. Extracted from the view so the
+/// distinction that actually matters is unit-testable: an empty `vehicles` array means "you own
+/// no vehicles" ONLY once a load has completed. Before that it means nothing at all, and treating
+/// it as zero is what flashed "Add Your First Vehicle" at owners with a full garage.
+enum DashboardVehicleState: Equatable {
+    case awaitingFirstLoad
+    case noVehicles
+    case ready
+
+    static func resolve(hasCompletedInitialVehicleLoad: Bool, isVehicleListEmpty: Bool) -> Self {
+        guard hasCompletedInitialVehicleLoad else { return .awaitingFirstLoad }
+        return isVehicleListEmpty ? .noVehicles : .ready
     }
 }
