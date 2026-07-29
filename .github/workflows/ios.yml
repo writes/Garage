@@ -35,7 +35,8 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      ios: ${{ steps.filter.outputs.ios }}
+      functions: ${{ steps.filter.outputs.functions }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,6 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           BASE="origin/${{ github.base_ref }}"
+          CHANGED="$(git diff --name-only "$BASE"...HEAD)"
           DOCS_ONLY='(^(docs|reports|results|logs)/|^\.github/ISSUE_TEMPLATE/|\.md$)'
           # Deliberately NOT `grep -qv`: on BSD grep that combination returns 1 even when -v
           # alone correctly selects a line, so a docs+code PR would report docs-only and skip the
@@ -52,18 +54,37 @@ jobs:
           # Collecting the non-doc paths and testing for a non-empty result is unambiguous
           # everywhere. `|| true` because grep exits 1 on no match, which set -e would treat as
           # fatal.
-          CODE_FILES="$(git diff --name-only "$BASE"...HEAD | grep -vE "$DOCS_ONLY" || true)"
-          if [ -n "$CODE_FILES" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "Non-doc files changed; running the full gate:"
-            printf '%s\n' "$CODE_FILES"
+          #
+          # The iOS gate additionally excludes CloudFunctions/: a PR that only touches the
+          # functions tree (Dependabot's npm PRs are exactly this shape) cannot change the iOS
+          # build, so it should cost ~2 ubuntu minutes, not a 31-minute macOS gate at the 10x
+          # multiplier. A workflow-file change is NOT excluded from either job — a change to how
+          # verification runs must itself be fully verified.
+          IOS_FILES="$(printf '%s\n' "$CHANGED" | grep -vE "$DOCS_ONLY" | grep -vE '^CloudFunctions/' || true)"
+          FN_FILES="$(printf '%s\n' "$CHANGED" | grep -E '^(CloudFunctions/|\.github/workflows/)' || true)"
+          if [ -n "$IOS_FILES" ]; then
+            echo "ios=true" >> "$GITHUB_OUTPUT"
+            echo "iOS-relevant files changed; running the macOS gate:"
+            printf '%s\n' "$IOS_FILES"
           else
-            echo "code=false" >> "$GITHUB_OUTPUT"
-            echo "Docs-only change; skipping the macOS gate."
+            echo "ios=false" >> "$GITHUB_OUTPUT"
+            echo "No iOS-relevant changes; skipping the macOS gate."
+          fi
+          if [ -n "$FN_FILES" ]; then
+            echo "functions=true" >> "$GITHUB_OUTPUT"
+            echo "CloudFunctions/workflow files changed; running the functions job:"
+            printf '%s\n' "$FN_FILES"
+          else
+            echo "functions=false" >> "$GITHUB_OUTPUT"
+            echo "No CloudFunctions changes; skipping the functions job."
           fi
 
   functions:
     runs-on: ubuntu-latest
+    needs: changes
+    # Same JOB-level skip rationale as `ios` below: a skipped job still satisfies a required
+    # status check, a trigger-filtered one wedges it at Pending forever.
+    if: needs.changes.outputs.functions == 'true'
     defaults:
       run:
         working-directory: CloudFunctions
@@ -86,7 +107,7 @@ jobs:
     # Replaces the old `[skip ios]` hatch, which tested github.event.head_commit.message — that
     # is populated only on push events, so with the push:main trigger removed it could never fire
     # again. The `changes` job is the PR-event equivalent.
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.ios == 'true'
     steps:
       - uses: actions/checkout@v4
       # The runner's DEFAULT Xcode diverges from the local toolchain in both directions
