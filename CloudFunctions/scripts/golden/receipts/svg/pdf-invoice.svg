@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="620" height="780" viewBox="0 0 620 780">
+<defs></defs>
+<rect width="620" height="780" fill="#ffffff"/>
+<g>
+  <text x="310" y="61" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">CASCADE AUTO WORKS</text>
+  <text x="310" y="81" font-family="Helvetica, Arial, sans-serif" font-size="13" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">INVOICE 2026-1188</text>
+  <text x="24" y="103" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Service Date: 07/08/2026    Mileage: 59,644</text>
+  <text x="24" y="123" font-family="Helvetica, Arial, sans-serif" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">--------------------------------------------------------------------</text>
+  <text x="24" y="143" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">AGM BATTERY GROUP 48                 $219.00</text>
+  <text x="24" y="163" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">INSTALL + REGISTER BATTERY            $39.00</text>
+  <text x="24" y="183" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">CORE CREDIT                          -$22.00</text>
+  <text x="24" y="203" font-family="Helvetica, Arial, sans-serif" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">--------------------------------------------------------------------</text>
+  <text x="24" y="223" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Subtotal                             $236.00</text>
+  <text x="24" y="243" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Tax                                   $10.13</text>
+  <text x="24" y="268" font-family="'Courier New', Courier, monospace" font-size="16" font-weight="bold" text-anchor="start" fill="#1a1a1a" style="white-space:pre">TOTAL                                $246.13</text>
+  <text x="24" y="310" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Battery warranty: 48 months free replacement</text>
+</g>
+
+</svg>

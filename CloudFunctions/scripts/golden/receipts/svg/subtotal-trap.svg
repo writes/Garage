@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="680" viewBox="0 0 440 680">
+<defs><filter id="blur"><feGaussianBlur stdDeviation="0.6"/></filter></defs>
+<rect width="440" height="680" fill="#ffffff"/>
+<g filter="url(#blur)">
+  <text x="220" y="53" font-family="'Courier New', Courier, monospace" font-size="19" font-weight="bold" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">PRECISION MUFFLER</text>
+  <text x="220" y="73" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">TICKET 3308  05/30/2026</text>
+  <text x="24" y="93" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">------------------------------------------------</text>
+  <text x="24" y="115" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">EXHAUST LEAK REPAIR</text>
+  <text x="24" y="137" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">  WELD FLEX JOINT  $389.00</text>
+  <text x="24" y="157" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">------------------------------------------------</text>
+  <text x="24" y="179" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">SUBTOTAL           $389.00</text>
+  <text x="24" y="201" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">SHOP SUPPLIES       $12.00</text>
+  <text x="24" y="223" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">TAX                 $32.08</text>
+  <text x="24" y="248" font-family="'Courier New', Courier, monospace" font-size="16" font-weight="bold" text-anchor="start" fill="#1a1a1a" style="white-space:pre">TOTAL              $433.08</text>
+  <text x="24" y="270" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">AMOUNT TENDERED    $440.00</text>
+  <text x="24" y="292" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">CHANGE               $6.92</text>
+  <text x="24" y="312" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">------------------------------------------------</text>
+  <text x="220" y="332" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">CASH SALE - THANK YOU</text>
+</g>
+
+</svg>

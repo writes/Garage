@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase-admin/app";
 import { parseOilAnalysis } from "./functions/claudeProxy";
 import { voiceQuickAdd } from "./functions/voiceQuickAdd";
+import { receiptQuickAdd } from "./functions/receiptQuickAdd";
 import { handleRevenueCatWebhook } from "./functions/revenueCatWebhook";
 import { lookupRecalls } from "./functions/nhtsaRecalls";
 import { deleteAccount } from "./functions/deleteAccount";
@@ -17,6 +18,7 @@ export {
   handleRevenueCatWebhook,
   lookupRecalls,
   parseOilAnalysis,
+  receiptQuickAdd,
   recomputeVehicleOdometer,
   voiceQuickAdd,
 };

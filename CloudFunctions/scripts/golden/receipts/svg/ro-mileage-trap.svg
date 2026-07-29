@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="620" height="720" viewBox="0 0 620 720">
+<defs></defs>
+<rect width="620" height="720" fill="#ffffff"/>
+<g>
+  <text x="310" y="60" font-family="Helvetica, Arial, sans-serif" font-size="23" font-weight="bold" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">SUMMIT AUTOMOTIVE</text>
+  <text x="310" y="79" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">2905 Frontage Rd, San Diego, CA 92108</text>
+  <text x="310" y="98" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a" style="white-space:pre">(619) 555-0182</text>
+  <text x="24" y="118" font-family="Helvetica, Arial, sans-serif" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">--------------------------------------------------------------------</text>
+  <text x="24" y="141" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" text-anchor="start" fill="#1a1a1a" style="white-space:pre">RO# 118427            Mileage: 52,880</text>
+  <text x="24" y="163" font-family="Helvetica, Arial, sans-serif" font-size="14" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Service Date: 06/02/2026</text>
+  <text x="24" y="183" font-family="Helvetica, Arial, sans-serif" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">--------------------------------------------------------------------</text>
+  <text x="24" y="203" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">COOLANT SYSTEM FLUSH                 $149.99</text>
+  <text x="24" y="222" font-family="'Courier New', Courier, monospace" font-size="12" text-anchor="start" fill="#1a1a1a" style="white-space:pre">  OAT coolant, pressure test incl.</text>
+  <text x="24" y="242" font-family="Helvetica, Arial, sans-serif" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">--------------------------------------------------------------------</text>
+  <text x="24" y="262" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Subtotal                             $149.99</text>
+  <text x="24" y="282" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#1a1a1a" style="white-space:pre">Tax                                   $12.12</text>
+  <text x="24" y="307" font-family="'Courier New', Courier, monospace" font-size="16" font-weight="bold" text-anchor="start" fill="#1a1a1a" style="white-space:pre">TOTAL                                $162.11</text>
+</g>
+
+</svg>

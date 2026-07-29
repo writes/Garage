@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="380" height="560" viewBox="0 0 380 560">
+<defs><filter id="fade"><feGaussianBlur stdDeviation="0.35"/></filter></defs>
+<rect width="380" height="560" fill="#f3efe6"/>
+<g filter="url(#fade)">
+  <text x="190" y="55" font-family="'Courier New', Courier, monospace" font-size="20" font-weight="bold" text-anchor="middle" fill="#a9a49a" style="white-space:pre">GASNGO #77</text>
+  <text x="190" y="75" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="middle" fill="#a9a49a" style="white-space:pre">HWY 12 &amp; MERCER RD</text>
+  <text x="190" y="95" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="middle" fill="#a9a49a" style="white-space:pre">07/03/2026  16:41</text>
+  <text x="24" y="115" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#a9a49a" style="white-space:pre">------------------------------------------</text>
+  <text x="24" y="137" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#a9a49a" style="white-space:pre">PUMP 04   UNL REG</text>
+  <text x="24" y="159" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#a9a49a" style="white-space:pre">12.418 GAL @ $3.899</text>
+  <text x="24" y="184" font-family="'Courier New', Courier, monospace" font-size="16" font-weight="bold" text-anchor="start" fill="#a9a49a" style="white-space:pre">FUEL TOTAL    $48.42</text>
+  <text x="24" y="204" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#a9a49a" style="white-space:pre">------------------------------------------</text>
+  <text x="24" y="226" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="start" fill="#a9a49a" style="white-space:pre">CREDIT        $48.42</text>
+  <text x="24" y="246" font-family="'Courier New', Courier, monospace" font-size="13" text-anchor="start" fill="#a9a49a" style="white-space:pre">AUTH #002214</text>
+  <text x="190" y="291" font-family="'Courier New', Courier, monospace" font-size="14" text-anchor="middle" fill="#a9a49a" style="white-space:pre">THANK YOU</text>
+</g>
+
+</svg>
