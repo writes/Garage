@@ -100,14 +100,19 @@ extension ProfileStore {
 @MainActor
 protocol ProfileDocument {
     func getData() async throws -> [String: Any]?
-    func setData(_ data: [String: Any], merge: Bool) async throws
+    /// Deliberately NOT `async throws`: profile writes are local-first (LocalFirstWrite.swift), and
+    /// an `async` seam is exactly the shape that lets a future editor put `try await` back on the
+    /// server-acknowledged overload. Reads stay async — they are cache-served and cannot hang.
+    func setData(_ data: [String: Any], merge: Bool)
 }
 
 @MainActor
 private final class FirebaseProfileDocument: ProfileDocument {
+    private let firestore: FirestoreService
     private let document: DocumentReference
 
-    init(document: DocumentReference) {
+    init(firestore: FirestoreService, document: DocumentReference) {
+        self.firestore = firestore
         self.document = document
     }
 
@@ -115,8 +120,8 @@ private final class FirebaseProfileDocument: ProfileDocument {
         try await document.getDocument().data()
     }
 
-    func setData(_ data: [String: Any], merge: Bool) async throws {
-        try await document.setData(data, merge: merge)
+    func setData(_ data: [String: Any], merge: Bool) {
+        firestore.writeLocalFirst(data, to: document, merge: merge, context: "profile")
     }
 }
 
@@ -127,6 +132,7 @@ final class FirestoreProfileStore: ProfileStore {
     init(firestore: FirestoreService = .shared) {
         documentForUser = { uid in
             FirebaseProfileDocument(
+                firestore: firestore,
                 document: firestore.db.collection(FirestorePaths.users).document(uid)
             )
         }
@@ -149,12 +155,18 @@ final class FirestoreProfileStore: ProfileStore {
         try await saveProfileFields(fields, uid: uid)
     }
 
+    /// Stays `async throws` for the `ProfileStore` seam (the demo/in-memory stores do throw), but
+    /// the Firestore path never waits on the network: every caller — ProfileViewModel.save,
+    /// setAnalyticsSharingEnabled, setThemeID — only mutates the user's own profile document, and
+    /// none of them needs a server verdict. setThemeID is the reason this matters: it flips
+    /// AccentStore optimistically BEFORE the write, so an ack-gated write left the UI showing an
+    /// accent that was never persisted, with the rollback unreachable behind the hang.
     func saveProfileFields(_ fields: ProfileFields, uid: String) async throws {
         // `setData(merge: true)` deep-merges this map, preserving unknown keys
         // added by a newer app version. Dotted keys would be literal top-level
         // fields here; only Firestore's `updateData` interprets dot paths.
         let values = fields.mapValues(\.firestoreValue)
-        try await documentForUser(uid).setData(["profile": values], merge: true)
+        documentForUser(uid).setData(["profile": values], merge: true)
     }
 }
 

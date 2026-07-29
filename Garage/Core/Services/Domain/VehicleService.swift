@@ -141,7 +141,11 @@ final class VehicleService {
         guard mode == .live else { return }
         let firestore = firestoreProvider()
         let document = firestore.db.collection(FirestorePaths.vehicles).document(vehicle.id)
-        try await document.setData(firestore.encode(vehicle), merge: true)
+        // Same ack-gated hang as the reminder/profile writes (LocalFirstWrite.swift): editing a
+        // vehicle offline never resumed. Unlike commitCountedCreate, an update is count-neutral by
+        // rule (`vehicles` allow-update is owner-only, no counter transition), so there is no
+        // server verdict worth waiting for.
+        firestore.writeLocalFirst(try firestore.encode(vehicle), to: document, context: "vehicle")
     }
     func fetchVehicles() async throws -> [Vehicle] {
         if let testVehicles { return testVehicles.values.sorted { $0.displayOrder < $1.displayOrder } }
