@@ -6,6 +6,15 @@ on:
     branches:
       - main
 
+# One run per ref: a new push supersedes the previous run instead of both burning a full
+# macOS gate to completion. This plus the 75-minute job cap are the two structural answers to
+# the 2026-07-28 billing spike (~3,400 billed minutes in a day once CI started actually
+# compiling: back-to-back pushes ran overlapping 30-minute gates, and one deadlocked test held
+# a runner for 2h14m).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   functions:
     runs-on: ubuntu-latest
@@ -27,6 +36,10 @@ jobs:
     # A single deadlocked test once held a runner for 2h14m (GitHub's default cap is 6h).
     # Known-good full gate is ~53 min; anything past this is a hang, not a slow run.
     timeout-minutes: 75
+    # Docs/reports/templates-only changes never affect the iOS build; skipping them saves a
+    # full macOS gate per docs push (macOS bills at 10x).
+    if: >-
+      ${{ !contains(github.event.head_commit.message, '[skip ios]') }}
     steps:
       - uses: actions/checkout@v4
       # The runner's DEFAULT Xcode diverges from the local toolchain in both directions
