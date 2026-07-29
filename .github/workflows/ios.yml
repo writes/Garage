@@ -52,7 +52,7 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>GOOGLE_APP_ID</key><string>1:000000000000:ios:0000000000000000</string>
-            <key>API_KEY</key><string>AIzaSyA-ci-dummy-never-a-real-key-000000</string>
+            <key>API_KEY</key><string>AIzaSyA-ci-dummy-never-a-real-key-00000</string>
             <key>GCM_SENDER_ID</key><string>000000000000</string>
             <key>PROJECT_ID</key><string>ci-dummy-project</string>
             <key>STORAGE_BUCKET</key><string>ci-dummy-project.appspot.com</string>
