@@ -220,12 +220,13 @@ private final class LiteralKeyFirestoreProfileDocument: ProfileDocument {
         data
     }
 
-    func setData(_ updates: [String: Any], merge: Bool) async throws {
+    // Non-async by design, mirroring the local-first ProfileDocument seam: a dotted top-level key
+    // is recorded and dropped rather than thrown, because a local-first write has no failure to
+    // report back to the caller.
+    func setData(_ updates: [String: Any], merge: Bool) {
         lastSetData = updates
         sawDottedTopLevelKey = updates.keys.contains { $0.contains(".") }
-        guard !sawDottedTopLevelKey else {
-            throw LiteralKeyFirestoreError.dottedTopLevelKey
-        }
+        guard !sawDottedTopLevelKey else { return }
 
         guard merge, let incomingProfile = updates["profile"] as? [String: Any] else {
             data = updates
@@ -236,8 +237,4 @@ private final class LiteralKeyFirestoreProfileDocument: ProfileDocument {
         mergedProfile.merge(incomingProfile) { _, replacement in replacement }
         data["profile"] = mergedProfile
     }
-}
-
-private enum LiteralKeyFirestoreError: Error {
-    case dottedTopLevelKey
 }
