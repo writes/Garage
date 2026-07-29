@@ -110,6 +110,16 @@ jobs:
     if: needs.changes.outputs.ios == 'true'
     steps:
       - uses: actions/checkout@v4
+      # Every doc (CLAUDE.md included) names security-checks.sh as one of the three gate
+      # scripts, but until 2026-07-29 nothing automated ever invoked it — verify-ios.sh
+      # runs only policy-checks + build/tests. It is seconds of plist lint + grep, needs
+      # macOS for plutil, and belongs BEFORE the expensive toolchain steps so a security
+      # regression fails in seconds, not after a 30-minute compile.
+      - name: Security checks
+        run: |
+          set -euo pipefail
+          command -v rg >/dev/null 2>&1 || brew install ripgrep
+          ./scripts/ci/security-checks.sh
       # The runner's DEFAULT Xcode diverges from the local toolchain in both directions
       # (it rejected main's `isolated deinit` as experimental while also being stricter about
       # implicit self). Select the newest installed Xcode so CI tracks the toolchain the code
