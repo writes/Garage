@@ -110,6 +110,19 @@ enum AnalyticsEvent: Equatable, Sendable {
     case entryDeleted(entryType: EntryType)
     /// Tab-level engagement. Sheets are excluded — they already report `form_opened`.
     case screenViewed(screen: ScreenKind)
+
+    // MARK: Receipt-capture funnel (additive, 2026-07-28) — see ANALYTICS_CONTRACT.md §5.2
+
+    /// A receipt scan was started from a given source. Mirrors `voiceCaptureStarted`.
+    case receiptCaptureStarted(source: ReceiptCaptureSource)
+    case receiptProposalSucceeded(entryType: EntryType)
+    case receiptProposalFailed(reason: ReceiptFailureReason)
+    /// Quota denials keep their own event (the oil-analysis convention) rather than folding into
+    /// `receiptProposalFailed`.
+    case receiptQuotaDenied(reason: ReceiptQuotaDeniedReason)
+    /// A receipt-prefilled form was actually SAVED, fired via `wasReceiptSeeded` — mutually
+    /// exclusive with `voiceEntryConfirmed` (a form is seeded by at most one AI source).
+    case receiptEntryConfirmed
 }
 
 /// Thin adapter over `AnalyticsConsentGate`. All gate/buffer decisions live in that value type so

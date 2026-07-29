@@ -13,14 +13,21 @@ extension EntryFormViewModel {
         return object.mapValues(Self.wrap(any:))
     }
 
-    /// Post-acceptance bookkeeping for save(): the per-save usage event, the voice-funnel close
-    /// when the form was voice-seeded, and the deferred first-entry check. `wasEdit` is captured
-    /// by the caller BEFORE the editing state rotates.
+    /// Post-acceptance bookkeeping for save(): the per-save usage event, the voice/receipt-funnel
+    /// close when the form was AI-seeded, and the deferred first-entry check. `wasEdit` is
+    /// captured by the caller BEFORE the editing state rotates. The two seeded flags are mutually
+    /// exclusive in practice (a form is seeded by at most one AI source) but are checked
+    /// independently rather than as an if/else, so a future bug that sets both still closes both
+    /// funnels rather than silently dropping one.
     func finishSaveTracking(vehicleId: String, entryType: EntryType, wasEdit: Bool) {
         analytics.track(.entrySaved(entryType: entryType, isEdit: wasEdit))
         if wasVoiceSeeded {
             analytics.track(.voiceEntryConfirmed(entryType: entryType))
             wasVoiceSeeded = false
+        }
+        if wasReceiptSeeded {
+            analytics.track(.receiptEntryConfirmed)
+            wasReceiptSeeded = false
         }
         scheduleFirstEntryFollowUp(vehicleId: vehicleId, entryType: entryType)
     }

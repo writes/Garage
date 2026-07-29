@@ -27,6 +27,9 @@ enum PaywallSource: String, CaseIterable, Equatable, Sendable {
     /// The free 1-vehicle cap. Highest-intent moment in the product: the user has already decided
     /// they want a second car.
     case vehicleLimit = "vehicle_limit"
+    /// The free-lifetime receipt-scan teaser exhausted (§5 of the receipt-capture plan) — the
+    /// highest-intent moment for that funnel, distinct from every other surface.
+    case receiptScan = "receipt_scan"
 }
 
 enum AnalyticsProductID: String, CaseIterable, Equatable, Sendable {
@@ -49,6 +52,9 @@ enum OilAnalysisQuotaDeniedReason: String, CaseIterable, Equatable, Sendable {
     case freeLifetimeExhausted = "free_lifetime_exhausted"
     case proDailyExhausted = "pro_daily_exhausted"
 }
+
+// Receipt-funnel closed enums (ReceiptCaptureSource/ReceiptFailureReason/ReceiptQuotaDeniedReason)
+// live in AnalyticsTypes+Receipt.swift — split out to keep this file under the file-length cap.
 
 struct AnalyticsEventDefinition: Equatable, Sendable {
     let name: String
@@ -78,6 +84,9 @@ enum AnalyticsParameter: Equatable, Sendable {
     case purchaseFailureReason(PurchaseFailureReason)
     case oilAnalysisFailureReason(OilAnalysisFailureReason)
     case recallFailureReason(RecallLookupFailureReason)
+    case receiptCaptureSource(ReceiptCaptureSource)
+    case receiptFailureReason(ReceiptFailureReason)
+    case receiptQuotaDeniedReason(ReceiptQuotaDeniedReason)
     case recallCount(Int)
     case vehicleCount(Int)
     case screen(ScreenKind)
@@ -95,11 +104,13 @@ enum AnalyticsParameter: Equatable, Sendable {
         case .provider: return "provider"
         case .failureReason: return "failure_reason"
         case .form: return "form"
-        // The four failure-reason parameters share the wire name "reason": each lives on a
+        // The failure/denial-reason parameters share the wire name "reason": each lives on a
         // different event, and one consistent key is what BigQuery queries group on.
         case .voiceFailureReason, .purchaseFailureReason,
-             .oilAnalysisFailureReason, .recallFailureReason:
+             .oilAnalysisFailureReason, .recallFailureReason,
+             .receiptFailureReason, .receiptQuotaDeniedReason:
             return "reason"
+        case .receiptCaptureSource: return "source"
         case .recallCount: return "recall_count"
         case .vehicleCount: return "vehicle_count"
         case .screen: return "screen"
@@ -123,6 +134,9 @@ enum AnalyticsParameter: Equatable, Sendable {
         case .purchaseFailureReason(let value): return value.rawValue
         case .oilAnalysisFailureReason(let value): return value.rawValue
         case .recallFailureReason(let value): return value.rawValue
+        case .receiptCaptureSource(let value): return value.rawValue
+        case .receiptFailureReason(let value): return value.rawValue
+        case .receiptQuotaDeniedReason(let value): return value.rawValue
         case .screen(let value): return value.rawValue
         case .isEdit(let value): return value ? 1 : 0
         }
@@ -196,6 +210,7 @@ enum FormKind: String, CaseIterable, Equatable, Sendable {
     case entry
     case voiceQuickAdd = "voice_quick_add"
     case export
+    case receiptCapture = "receipt_capture"
 }
 
 /// Closed set of sign-in failure causes. Deliberately coarse: it exists to separate "the user

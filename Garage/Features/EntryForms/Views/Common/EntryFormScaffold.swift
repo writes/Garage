@@ -94,6 +94,10 @@ struct EntryFormScaffold<Content: View>: View {
             if let prefill = router.consumeVoicePrefill() {
                 viewModel.applyVoicePrefill(prefill)
             }
+            // Same one-shot pattern, kept as its own slot (never both — see wasReceiptSeeded).
+            if let package = router.consumeReceiptPrefill() {
+                viewModel.applyReceiptPrefill(package, isPro: appState.isPro)
+            }
             // One-shot, same pattern: only the form opened via presentEditForm(for:) sees a
             // pending edit. Sequenced strictly before prepare() below (same task, in order) so
             // editingEntryID is always set before prepare() reads it — no ordering race against a
@@ -106,6 +110,8 @@ struct EntryFormScaffold<Content: View>: View {
             if let vehicleId = appState.currentVehicle?.id {
                 await viewModel.prepare(vehicleId: vehicleId)
             }
+            // odometerFloor is only known once prepare() returns — see reconcileReceiptOdometerFloor.
+            viewModel.reconcileReceiptOdometerFloor()
         }
     }
 
@@ -129,6 +135,12 @@ struct EntryFormScaffold<Content: View>: View {
                     actionIdentifier: "entry.form.attachments.gate"
                 ) {
                     router.present(.subscription(.attachments))
+                }
+                if viewModel.receiptAttachmentNeedsPro {
+                    Text("Garage Pro keeps the original receipt attached to this entry.")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .accessibilityIdentifier("entry.form.attachments.receiptUpsell")
                 }
             }
         }

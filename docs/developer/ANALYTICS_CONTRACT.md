@@ -82,8 +82,9 @@ reverse. They now report `voice_quick_add` and `oil_analysis`. `vehicle_limit` w
 same time for the free 1-vehicle cap, which previously showed no paywall at all.
 
 The current sources are `settings`, `garage`, `export_pdf`, `stats`, `theme_picker`,
-`attachments`, `voice_quick_add`, `oil_analysis`, `vehicle_limit` — one per presentation site
-(`reminders` was removed 2026-07-28: reminders are not Pro-gated and no surface ever fired it), and
+`attachments`, `voice_quick_add`, `oil_analysis`, `vehicle_limit`, `receipt_scan` — one per
+presentation site (`reminders` was removed 2026-07-28: reminders are not Pro-gated and no surface
+ever fired it), and
 `everyPaywallSource_hasAMatchingDismissedEvent` iterates `allCases`, so a new source is covered the
 moment it is declared.
 | `purchase_completed` | `product_id` | Money actually committed. Client signal; server is revenue truth. |
@@ -208,6 +209,35 @@ closed enums or clamped ints, unchanged rules.
 
 The four failure-reason parameters share the wire name `reason` (one key to group on in
 BigQuery); they remain distinct closed enums in code.
+
+---
+
+## 5.2 Receipt-capture funnel (additive, 2026-07-28)
+
+Five events instrumenting the receipt/invoice-scan feature (Wave 2 of
+`docs/research/2026-07-28_RECEIPT_PARSE_PLAN.md`). Names live in `AnalyticsEvent.receiptFunnelNames`,
+kept separate from `depthNames` because it shipped as its own batch. Pattern lineage is the voice
+funnel above — same shape, same rules (closed enums only, shared `reason` wire key).
+
+| Event | Parameters | Choke point |
+|---|---|---|
+| `receipt_capture_started` | `source` (`camera`/`library`/`pdf`) | `ReceiptCaptureViewModel`, on the first page of a scan (a second page never re-fires it) |
+| `receipt_proposal_succeeded` | `entry_type` | `ReceiptCaptureViewModel`, on a successful `receiptQuickAdd` response |
+| `receipt_proposal_failed` | `reason` (`preflight`/`not_a_receipt`/`service_error`) | `ReceiptCaptureViewModel`; user-cancel (backing out of a picker) is never reported as a failure |
+| `receipt_quota_denied` | `reason` (`free_lifetime_exhausted`/`pro_daily_exhausted`) | `ReceiptCaptureViewModel` — quota denials keep their own event rather than folding into `receipt_proposal_failed` (the oil-analysis convention) |
+| `receipt_entry_confirmed` | — | `EntryFormViewModel.finishSaveTracking`, via `wasReceiptSeeded` — fires exactly once, and never alongside `voice_entry_confirmed` (a form is seeded by at most one AI source) |
+
+**Why receipts are not Pro-gated at the entry point, unlike voice.** The quota model is a
+free-lifetime teaser (3 scans) plus a Pro daily cap (20/day), not a hard Pro fence — a receipt is
+the artifact every prospective user is already holding at evaluation time, so the capture row
+stays visible to free users and only quota exhaustion (`receipt_quota_denied`) upsells, via the new
+`PaywallSource.receiptScan`.
+
+**Attachment interplay.** A parsed receipt's original image/PDF is staged as a pending attachment
+only when the user is Pro (`EntryFormViewModel.receiptAttachmentNeedsPro` surfaces the upsell hint
+otherwise) — this reuses the existing attachments Pro gate rather than adding a second one, and
+does not emit a separate event; it is visible in the funnel only indirectly, via
+`paywall_viewed(source: attachments)` if the user acts on the hint.
 
 ---
 

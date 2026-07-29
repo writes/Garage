@@ -53,7 +53,16 @@ extension AnalyticsEvent {
         "screen_viewed"
     ]
 
-    static var allNames: [String] { v1Names + activationFunnelNames + depthNames }
+    /// Receipt-capture funnel (additive, 2026-07-28) — see ANALYTICS_CONTRACT.md §5.2.
+    static let receiptFunnelNames = [
+        "receipt_capture_started",
+        "receipt_proposal_succeeded",
+        "receipt_proposal_failed",
+        "receipt_quota_denied",
+        "receipt_entry_confirmed"
+    ]
+
+    static var allNames: [String] { v1Names + activationFunnelNames + depthNames + receiptFunnelNames }
 
     /// Keeps every v1 event name and parameter definition in one audited mapping.
     var definition: AnalyticsEventDefinition {
@@ -202,6 +211,28 @@ extension AnalyticsEvent {
                 name: "screen_viewed",
                 parameters: [.screen(screen)]
             )
+        case .receiptCaptureStarted(let source):
+            return AnalyticsEventDefinition(
+                name: "receipt_capture_started",
+                parameters: [.receiptCaptureSource(source)]
+            )
+        case .receiptProposalSucceeded(let entryType):
+            return AnalyticsEventDefinition(
+                name: "receipt_proposal_succeeded",
+                parameters: [.entryType(entryType)]
+            )
+        case .receiptProposalFailed(let reason):
+            return AnalyticsEventDefinition(
+                name: "receipt_proposal_failed",
+                parameters: [.receiptFailureReason(reason)]
+            )
+        case .receiptQuotaDenied(let reason):
+            return AnalyticsEventDefinition(
+                name: "receipt_quota_denied",
+                parameters: [.receiptQuotaDeniedReason(reason)]
+            )
+        case .receiptEntryConfirmed:
+            return AnalyticsEventDefinition(name: "receipt_entry_confirmed")
         }
     }
 }

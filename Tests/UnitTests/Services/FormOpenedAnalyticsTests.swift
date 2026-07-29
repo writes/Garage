@@ -53,6 +53,7 @@ struct FormOpenedAnalyticsTests {
             (.entryPicker, .entryPicker),
             (.entryForm(.fuel), .entry),
             (.voiceQuickAdd, .voiceQuickAdd),
+            (.receiptCapture, .receiptCapture),
             (.export, .export)
         ]
         for (sheet, expected) in cases {
@@ -67,7 +68,7 @@ struct FormOpenedAnalyticsTests {
     /// The redirect case. Requesting an entry sheet with no vehicles opens vehicle creation, so
     /// the event must say `vehicle` — reporting `entry` would claim the user saw a form they
     /// never saw.
-    @Test(arguments: [AppRouter.Sheet.entryPicker, .voiceQuickAdd, .entryForm(.fuel)])
+    @Test(arguments: [AppRouter.Sheet.entryPicker, .voiceQuickAdd, .receiptCapture, .entryForm(.fuel)])
     func withoutVehicles_gatedSheetsReportTheRedirectTarget(sheet: AppRouter.Sheet) {
         let (router, spy) = makeRouter(hasVehicles: false)
         router.present(sheet)
@@ -108,6 +109,20 @@ struct FormOpenedAnalyticsTests {
                 isDiy: nil,
                 entryDate: nil,
                 notes: nil
+            )
+        )
+        #expect(spy.events == [.formOpened(form: .entry)])
+    }
+
+    @Test func receiptPrefilledForm_reportsThroughTheSamePath() {
+        let (router, spy) = makeRouter(hasVehicles: true)
+        router.presentReceiptPrefilledForm(
+            ReceiptPrefillPackage(
+                proposal: ReceiptEntryProposal(
+                    entryType: .fuel, odometerReading: nil, cost: nil, shopName: nil,
+                    isDiy: nil, entryDate: nil, notes: nil, lineItems: nil
+                ),
+                attachments: []
             )
         )
         #expect(spy.events == [.formOpened(form: .entry)])

@@ -66,6 +66,8 @@ struct ContentView: View {
             EntryTypePicker()
         case .voiceQuickAdd:
             VoiceQuickAddView()
+        case .receiptCapture:
+            ReceiptCaptureView()
         case .entryForm(let type):
             EntryFormFactoryView(entryType: type)
         case .vehicleForm:

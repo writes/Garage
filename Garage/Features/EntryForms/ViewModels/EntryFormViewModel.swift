@@ -49,13 +49,17 @@ final class EntryFormViewModel {
     /// Set when editing (nil for create). A form's own save() excludes it from lookups it runs
     /// itself (FuelFormView's MPG query) — see excludingEntryID.
     var editingEntryID: String?
-    /// Set by applyVoicePrefill; consumed by the save-success tracking so a voice-originated
-    /// save closes the voice funnel (`voice_entry_confirmed`).
+    // AI-seeding flags: set by applyVoicePrefill/applyReceiptPrefill (+ReceiptPrefill.swift),
+    // consumed by finishSaveTracking to close the matching funnel event. Never both true — a
+    // form is seeded by at most one AI source. receiptAttachmentNeedsPro is true when a receipt
+    // scan had an attachment the user was too-free-to-stage at prefill time (EntryFormScaffold
+    // reads it for the upsell hint line).
     var wasVoiceSeeded = false
+    var wasReceiptSeeded = false
+    var receiptAttachmentNeedsPro = false
     /// Edited entry's odometer at load time — floors validateOdometer (odometerFloor, +EditPrefill).
     var editingEntryOriginalOdometer: Int?
-    /// Edited entry's original vehicleId — save() rejects a different vehicle (would silently
-    /// reparent the entry + write the odometer to the wrong car).
+    /// Edited entry's original vehicleId — save() rejects a different vehicle.
     var editingEntryVehicleId: String?
 
     init(
