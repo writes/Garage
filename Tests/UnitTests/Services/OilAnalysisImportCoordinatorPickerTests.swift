@@ -32,7 +32,12 @@ struct OilAnalysisImportCoordinatorPickerTests {
         #expect(analytics.events.isEmpty)
     }
 
-    @Test func sendClaimWinsWhenDismissalCallbackArrivesFirst_orAfterward() async {
+    // .timeLimit: this test deadlocked CI for 2h14m (run 30410262258) — a single Task.yield()
+    // after cancelActiveImport lost the race to the cancellation-unwind chain on slow runner
+    // hardware, stage() fell back to a throwaway UUID, and waitForCall(count: 2) awaited a
+    // continuation nothing would ever resume. The waitForCompletion below closes the race; the
+    // time limit makes any recurrence fail in a minute instead of hanging the suite.
+    @Test(.timeLimit(.minutes(1))) func sendClaimWinsWhenDismissalCallbackArrivesFirst_orAfterward() async {
         let preflighter = ScriptedPreflighter(steps: [.suspended, .suspended])
         let caller = SuspendedOilAnalysisCaller()
         let analytics = OilAnalysisImportTestSupport.enabledAnalytics()
@@ -51,7 +56,9 @@ struct OilAnalysisImportCoordinatorPickerTests {
         #expect(coordinator.pendingConsent == nil)
         coordinator.cancelActiveImport()
         preflighter.completeSuspended(with: .success("ignored"))
-        await Task.yield()
+        // A single yield is not enough for .cancelling -> .idle on slow hardware; stage() would
+        // then be refused and its fallback UUID stranded the later waitForCall forever.
+        await OilAnalysisImportTestSupport.waitForCompletion(coordinator)
 
         let secondRequest = OilAnalysisImportTestSupport.stage(coordinator)
         OilAnalysisImportTestSupport.confirm(coordinator, requestID: secondRequest)
