@@ -321,6 +321,7 @@ export async function voiceQuickAddRequest(
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
       },
+      signal: AbortSignal.timeout(55_000),
       body: JSON.stringify({
         // Unsuffixed, matching claudeProxy. The pinned-date form was the same model reached by a
         // different name, and two conventions for one model invites them drifting apart.
@@ -340,17 +341,20 @@ export async function voiceQuickAddRequest(
     });
   } catch (error) {
     logger.error("voice-quickadd anthropic request failed", {
-      message: error instanceof Error ? error.message : String(error),
+      reason: error instanceof Error ? error.name : "unknown",
     });
     await refundVoiceQuota(dependencies.db, reservation, now);
+    if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) {
+      throw new HttpsError("deadline-exceeded", "Claude request timed out.");
+    }
     throw new HttpsError("internal", "Claude request failed.");
   }
 
   if (!response.ok) {
     logger.error("voice-quickadd anthropic request rejected", { status: response.status });
-    // Anthropic did not complete billable inference on a 5xx response. Other HTTP failures
+    // Anthropic does not bill 429 or 5xx responses. Other HTTP failures
     // and all HTTP-OK model-output errors keep their quota unit (mirrors claudeProxy).
-    if (response.status >= 500) {
+    if (response.status >= 500 || response.status === 429) {
       await refundVoiceQuota(dependencies.db, reservation, now);
     }
     throw new HttpsError("internal", `Claude request failed with ${response.status}.`);
@@ -387,7 +391,7 @@ export async function voiceQuickAddRequest(
 }
 
 export const voiceQuickAdd = onCall(
-  { region: "us-central1", enforceAppCheck: true, secrets: [anthropicApiKey] },
+  { region: "us-central1", enforceAppCheck: true, timeoutSeconds: 120, secrets: [anthropicApiKey] },
   async (request): Promise<VoiceEntryProposal> => {
     try {
       return await voiceQuickAddRequest(request, {

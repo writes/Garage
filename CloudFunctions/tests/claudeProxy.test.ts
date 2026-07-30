@@ -63,7 +63,11 @@ async function expectHttpsError(promise: Promise<unknown>, code: string): Promis
 }
 
 describe("parseOilAnalysisRequest", () => {
-  it("rejects base64 data larger than 10 MB before consuming quota", async () => {
+  it("pins the oil PDF base64 ceiling at 9 MiB", () => {
+    expect(MAX_PDF_BASE64_BYTES).toBe(9 * 1024 * 1024);
+  });
+
+  it("rejects base64 data larger than the 9 MiB cap before consuming quota", async () => {
     const db = new InMemoryFirestore();
 
     await expectHttpsError(parseOilAnalysisRequest({
@@ -262,6 +266,29 @@ describe("parseOilAnalysisRequest", () => {
 
     expect(db.data("usage_quotas/owner-1_2026-07-10")).toMatchObject({ count: 0 });
     expect(db.data("usage_quotas/owner-1_lifetime")).toBeUndefined();
+  });
+
+  it("refunds a 429 response because Anthropic did not bill it", async () => {
+    const db = new InMemoryFirestore();
+    const requestDependencies = dependencies(db);
+    requestDependencies.fetchImpl = async (): Promise<Response> => new Response("rate limited", { status: 429 });
+
+    await expectHttpsError(parseOilAnalysisRequest(request(), requestDependencies), "internal");
+
+    expect(db.data("usage_quotas/owner-1_lifetime")).toMatchObject({ count: 0 });
+  });
+
+  it("aborts a slow Claude call, refunds its quota, and exposes deadline-exceeded", async () => {
+    const db = new InMemoryFirestore();
+    const requestDependencies = dependencies(db);
+    requestDependencies.fetchImpl = async (_url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      expect(init?.signal).toBeTruthy();
+      throw new DOMException("timed out", "TimeoutError");
+    };
+
+    await expectHttpsError(parseOilAnalysisRequest(request(), requestDependencies), "deadline-exceeded");
+
+    expect(db.data("usage_quotas/owner-1_lifetime")).toMatchObject({ count: 0 });
   });
 
   it("does not refund billed HTTP-OK unrecognized output for either tier", async () => {

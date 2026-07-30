@@ -12,6 +12,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  runTransaction,
   setDoc,
   updateDoc,
   writeBatch,
@@ -86,6 +87,49 @@ describe("Firestore authorization", () => {
     await assertFails(getDoc(doc(anonymousDb, "users", "owner-1")));
     await assertFails(setDoc(doc(anonymousDb, "users", "owner-1"), { profile: { displayName: "Anonymous" } }, { merge: true }));
     await assertFails(getDocs(collection(anonymousDb, "users")));
+  });
+
+  it("[QUOTA-RULES] denies all client reads and writes to server-only quota and scan-token documents", async () => {
+    await testEnvironment?.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "usage_quotas", "owner-1_receipt_lifetime"), { count: 1 });
+      await setDoc(doc(context.firestore(), "receipt_scan_tokens", "token-1"), { uid: "owner-1", consumed: false });
+    });
+    const ownerDb = testEnvironment.authenticatedContext("owner-1").firestore();
+
+    await assertFails(getDoc(doc(ownerDb, "usage_quotas", "owner-1_receipt_lifetime")));
+    await assertFails(setDoc(doc(ownerDb, "usage_quotas", "owner-1_receipt_lifetime"), { count: 0 }));
+    await assertFails(getDocs(collection(ownerDb, "usage_quotas")));
+    await assertFails(getDoc(doc(ownerDb, "receipt_scan_tokens", "token-1")));
+    await assertFails(setDoc(doc(ownerDb, "receipt_scan_tokens", "token-1"), { consumed: true }, { merge: true }));
+    await assertFails(getDocs(collection(ownerDb, "receipt_scan_tokens")));
+  });
+
+  it("[QUOTA-EMULATOR] serializes two parallel confirmation-shaped transactions so exactly one consumes a token", async () => {
+    await testEnvironment?.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      const tokenRef = doc(db, "receipt_scan_tokens", "parallel-confirm-token");
+      const confirmedRef = doc(db, "usage_quotas", "owner-1_receipt_confirmed_lifetime");
+      await setDoc(tokenRef, { uid: "owner-1", consumed: false });
+      await setDoc(confirmedRef, { count: 0, reserved: 1 });
+
+      const confirmShape = () => runTransaction(db, async (transaction) => {
+        const token = await transaction.get(tokenRef);
+        const confirmed = await transaction.get(confirmedRef);
+        if (!token.exists() || token.data().consumed === true) return false;
+        const confirmedData = confirmed.data() ?? {};
+        transaction.update(tokenRef, { consumed: true });
+        transaction.update(confirmedRef, {
+          count: Number(confirmedData.count ?? 0) + 1,
+          reserved: Math.max(0, Number(confirmedData.reserved ?? 0) - 1),
+        });
+        return true;
+      });
+
+      const results = await Promise.all([confirmShape(), confirmShape()]);
+      expect(results.filter(Boolean)).toHaveLength(1);
+      expect((await getDoc(tokenRef)).data()).toMatchObject({ consumed: true });
+      expect((await getDoc(confirmedRef)).data()).toMatchObject({ count: 1, reserved: 0 });
+    });
   });
 
   it("[RULES-ENFORCED] denies an owner client write to subscription while allowing other profile fields", async () => {

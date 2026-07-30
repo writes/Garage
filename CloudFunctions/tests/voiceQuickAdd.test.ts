@@ -131,15 +131,40 @@ describe("voiceQuickAddRequest", () => {
     expect(db.data("usage_quotas/owner-1_voice_2026-07-21")).toMatchObject({ count: 0 });
   });
 
-  it("does not refund a non-5xx HTTP failure", async () => {
+  it("does not refund a billed 400 HTTP failure", async () => {
     const db = new InMemoryFirestore();
     seedActivePro(db);
     const requestDependencies = dependencies(db);
-    requestDependencies.fetchImpl = async (): Promise<Response> => new Response("bad request", { status: 429 });
+    requestDependencies.fetchImpl = async (): Promise<Response> => new Response("bad request", { status: 400 });
 
     await expectHttpsError(voiceQuickAddRequest(request(), requestDependencies), "internal");
 
     expect(db.data("usage_quotas/owner-1_voice_2026-07-21")).toMatchObject({ count: 1 });
+  });
+
+  it("refunds a 429 response because Anthropic did not bill it", async () => {
+    const db = new InMemoryFirestore();
+    seedActivePro(db);
+    const requestDependencies = dependencies(db);
+    requestDependencies.fetchImpl = async (): Promise<Response> => new Response("rate limited", { status: 429 });
+
+    await expectHttpsError(voiceQuickAddRequest(request(), requestDependencies), "internal");
+
+    expect(db.data("usage_quotas/owner-1_voice_2026-07-21")).toMatchObject({ count: 0 });
+  });
+
+  it("aborts a slow Claude call, refunds its quota, and exposes deadline-exceeded", async () => {
+    const db = new InMemoryFirestore();
+    seedActivePro(db);
+    const requestDependencies = dependencies(db);
+    requestDependencies.fetchImpl = async (_url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      expect(init?.signal).toBeTruthy();
+      throw new DOMException("timed out", "TimeoutError");
+    };
+
+    await expectHttpsError(voiceQuickAddRequest(request(), requestDependencies), "deadline-exceeded");
+
+    expect(db.data("usage_quotas/owner-1_voice_2026-07-21")).toMatchObject({ count: 0 });
   });
 
   it("does not refund billed HTTP-OK unparseable model output", async () => {

@@ -133,7 +133,7 @@ export const OIL_ANALYSIS_SYSTEM_PROMPT =
   "values from the SAMPLE column, never from the universal-average column. Omit a field only " +
   "when the report genuinely does not contain it.";
 
-export const MAX_PDF_BASE64_BYTES = 10 * 1024 * 1024;
+export const MAX_PDF_BASE64_BYTES = 9 * 1024 * 1024;
 export const DAILY_OIL_ANALYSIS_QUOTA = 5;
 export const FREE_LIFETIME_OIL_ANALYSIS_QUOTA = 10;
 
@@ -508,7 +508,7 @@ export async function parseOilAnalysisRequest(
   }
 
   if (Buffer.byteLength(pdfBase64, "utf8") > MAX_PDF_BASE64_BYTES) {
-    throw new HttpsError("invalid-argument", "PDF data exceeds the 10 MB base64 limit.");
+    throw new HttpsError("invalid-argument", "PDF data exceeds the 9 MB base64 limit.");
   }
 
   if (!isStandardBase64(pdfBase64)) {
@@ -536,6 +536,7 @@ export async function parseOilAnalysisRequest(
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
       },
+      signal: AbortSignal.timeout(55_000),
       body: JSON.stringify({
         // Haiku 4.5 (operator directive 2026-07-24). Sonnet 4 was deprecated (retires
         // 2026-06-15) and cost 3x for a bounded extraction task.
@@ -574,17 +575,20 @@ export async function parseOilAnalysisRequest(
   } catch (error) {
     // The raw network failure would otherwise be invisible behind the generic client error.
     logger.error("oil-analysis anthropic request failed", {
-      message: error instanceof Error ? error.message : String(error),
+      reason: error instanceof Error ? error.name : "unknown",
     });
     await refundOilAnalysisQuota(dependencies.db, reservation, now);
+    if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) {
+      throw new HttpsError("deadline-exceeded", "Claude request timed out.");
+    }
     throw new HttpsError("internal", "Claude request failed.");
   }
 
   if (!response.ok) {
     logger.error("oil-analysis anthropic request rejected", { status: response.status });
-    // Anthropic did not complete billable inference on a 5xx response. Other
+    // Anthropic does not bill 429 or 5xx responses. Other
     // HTTP failures and all HTTP-OK model-output errors keep their quota unit.
-    if (response.status >= 500) {
+    if (response.status >= 500 || response.status === 429) {
       await refundOilAnalysisQuota(dependencies.db, reservation, now);
     }
     throw new HttpsError("internal", `Claude request failed with ${response.status}.`);
@@ -629,7 +633,7 @@ export async function parseOilAnalysisRequest(
 }
 
 export const parseOilAnalysis = onCall(
-  { region: "us-central1", enforceAppCheck: true, secrets: [anthropicApiKey] },
+  { region: "us-central1", enforceAppCheck: true, timeoutSeconds: 120, secrets: [anthropicApiKey] },
   async (request): Promise<OilAnalysisResponse> => {
     try {
       return await parseOilAnalysisRequest(request, {
