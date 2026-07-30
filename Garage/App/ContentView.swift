@@ -19,6 +19,16 @@ struct ContentView: View {
         // login screen is inside the design test too). Pre-consent it is buffered by the
         // analytics gate, so it lands attributed to whichever identity later consents.
         .onAppear { ExperimentStore.shared.recordExposureIfNeeded(for: .designMegatest) }
+        // Fire-and-forget server registry refresh: the emergency kill switch must not wait
+        // for a TestFlight build. On any effective change the pack is re-applied so a kill
+        // restyles to control mid-session; failures keep the bundled/cached registry
+        // (control-biased, always safe).
+        .task {
+            guard let override = await ExperimentConfigService.shared.fetchOverride() else { return }
+            if ExperimentStore.shared.applyServerOverride(override) {
+                DesignPackStore.shared.apply(arm: ExperimentStore.shared.arm(for: .designMegatest))
+            }
+        }
         .sheet(item: Binding(
             get: { router.activeSheet },
             set: { router.activeSheet = $0 }
