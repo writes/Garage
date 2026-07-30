@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as logger from "firebase-functions/logger";
 import {
-  DAILY_RECEIPT_QUOTA,
-  FREE_LIFETIME_RECEIPT_QUOTA,
+  FREE_LIFETIME_CONFIRMED_QUOTA,
+  FREE_LIFETIME_SCAN_CEILING,
   MAX_IMAGE_BASE64_BYTES,
   MAX_RECEIPT_PDF_BASE64_BYTES,
   MAX_TOTAL_BASE64_BYTES,
+  PRO_MONTHLY_CONFIRMED_QUOTA,
+  PRO_MONTHLY_SCAN_CEILING,
   receiptQuickAddRequest,
   sanitizeReceiptProposal,
 } from "../src/functions/receiptQuickAdd";
@@ -71,6 +73,16 @@ async function expectHttpsError(promise: Promise<unknown>, code: string): Promis
 /** Valid-length base64 filler whose size check fires before the pattern/magic checks would. */
 function base64OfBytes(bytes: number): string {
   return "A".repeat(Math.ceil(bytes / 4) * 4);
+}
+
+function tokenDocs(db: InMemoryFirestore): Array<{ id: string; data: Record<string, unknown> }> {
+  return db.collectionData("receipt_scan_tokens");
+}
+
+function onlyToken(db: InMemoryFirestore): Record<string, unknown> {
+  const tokens = tokenDocs(db);
+  expect(tokens).toHaveLength(1);
+  return tokens[0].data;
 }
 
 beforeEach(() => {
@@ -171,10 +183,11 @@ describe("receiptQuickAddRequest validation", () => {
 });
 
 describe("receiptQuickAddRequest quota", () => {
-  it("admits a free user and returns a sanitized proposal from the lifetime bucket", async () => {
+  it("admits a free user with an additive token and byte-stable proposal fields", async () => {
     const db = new InMemoryFirestore(); // no subscription seeded
-    const proposal = await receiptQuickAddRequest(imageRequest(), dependencies(db));
-    expect(proposal).toEqual({
+    const response = await receiptQuickAddRequest(imageRequest(), dependencies(db));
+    const { token, quota, ...proposal } = response;
+    const expectedProposal = {
       entryType: "brake",
       odometerReading: 87412,
       cost: 462.78,
@@ -183,46 +196,59 @@ describe("receiptQuickAddRequest quota", () => {
       entryDate: "2026-07-25T00:00:00.000Z",
       notes: null,
       lineItems: ["Front brake pads & rotors — $286.00", "Labor 1.5 hr — $142.50"],
+    };
+    expect(JSON.stringify(proposal)).toBe(JSON.stringify(expectedProposal));
+    expect(token).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    expect(quota).toEqual({
+      entitlement: "free",
+      scanRemaining: FREE_LIFETIME_SCAN_CEILING - 1,
+      scanCeiling: FREE_LIFETIME_SCAN_CEILING,
+      confirmedRemaining: FREE_LIFETIME_CONFIRMED_QUOTA - 1,
+      confirmedAllowance: FREE_LIFETIME_CONFIRMED_QUOTA,
+      resetAt: null,
     });
     expect(db.data("usage_quotas/owner-1_receipt_lifetime")).toMatchObject({
       count: 1,
       kind: "receipt_quickadd_lifetime",
     });
+    expect(db.data("usage_quotas/owner-1_receipt_confirmed_lifetime")).toMatchObject({ count: 0, reserved: 1 });
+    expect(onlyToken(db)).toMatchObject({
+      uid: "owner-1",
+      entitlementUsed: "free",
+      confirmedBucketId: "owner-1_receipt_confirmed_lifetime",
+      createdAtMillis: fixedNow.getTime(),
+      expiresAtMillis: fixedNow.getTime() + 24 * 60 * 60 * 1000,
+      resetAtMillis: null,
+      consumed: false,
+    });
   });
 
-  it("gives a free user exactly the lifetime quota, then receipt_free_exhausted forever", async () => {
+  it("admits exactly five unconfirmed free scans, then denies the sixth reservation", async () => {
     const db = new InMemoryFirestore();
-    for (let i = 0; i < FREE_LIFETIME_RECEIPT_QUOTA; i += 1) {
+    for (let i = 0; i < FREE_LIFETIME_CONFIRMED_QUOTA; i += 1) {
       await receiptQuickAddRequest(imageRequest(), dependencies(db));
     }
     await expect(receiptQuickAddRequest(imageRequest(), dependencies(db))).rejects.toMatchObject({
       code: "resource-exhausted",
-      details: { reason: "receipt_free_exhausted" },
+      details: { reason: "receipt_confirmed_exhausted", scope: "free_lifetime" },
     });
-    // Lifetime means lifetime: the next UTC day changes nothing.
-    const nextDay = new Date("2026-07-29T01:00:00.000Z");
-    await expect(receiptQuickAddRequest(imageRequest(), dependencies(db, goodModel, nextDay)))
-      .rejects.toMatchObject({ code: "resource-exhausted", details: { reason: "receipt_free_exhausted" } });
+    expect(db.data("usage_quotas/owner-1_receipt_lifetime")).toMatchObject({ count: 5 });
+    expect(db.data("usage_quotas/owner-1_receipt_confirmed_lifetime")).toMatchObject({ count: 0, reserved: 5 });
   });
 
-  it("gives a Pro user the daily quota, then receipt_daily_exhausted with resetAt, resetting next UTC day", async () => {
+  it("uses monthly Pro buckets and flips at the UTC month boundary", async () => {
     const db = new InMemoryFirestore();
     seedActivePro(db);
-    for (let i = 0; i < DAILY_RECEIPT_QUOTA; i += 1) {
-      await receiptQuickAddRequest(imageRequest(), dependencies(db));
-    }
-    expect(db.data("usage_quotas/owner-1_receipt_2026-07-28")).toMatchObject({
-      count: DAILY_RECEIPT_QUOTA,
-      kind: "receipt_quickadd",
-    });
-    await expect(receiptQuickAddRequest(imageRequest(), dependencies(db))).rejects.toMatchObject({
-      code: "resource-exhausted",
-      details: { reason: "receipt_daily_exhausted", resetAt: "2026-07-29T00:00:00.000Z" },
-    });
-    const nextDay = new Date("2026-07-29T00:30:00.000Z");
-    const proposal = await receiptQuickAddRequest(imageRequest(), dependencies(db, goodModel, nextDay));
-    expect(proposal.entryType).toBe("brake");
-    expect(db.data("usage_quotas/owner-1_receipt_2026-07-29")).toMatchObject({ count: 1 });
+    const july = await receiptQuickAddRequest(imageRequest(), dependencies(db));
+    expect(july.quota).toMatchObject({ entitlement: "pro", resetAt: "2026-08-01T00:00:00.000Z" });
+    expect(db.data("usage_quotas/owner-1_receipt_scan_2026-07")).toMatchObject({ count: 1 });
+    expect(db.data("usage_quotas/owner-1_receipt_confirmed_2026-07")).toMatchObject({ count: 0, reserved: 1 });
+
+    const august = new Date("2026-08-01T00:30:00.000Z");
+    const response = await receiptQuickAddRequest(imageRequest(), dependencies(db, goodModel, august));
+    expect(response.entryType).toBe("brake");
+    expect(db.data("usage_quotas/owner-1_receipt_scan_2026-08")).toMatchObject({ count: 1 });
+    expect(db.data("usage_quotas/owner-1_receipt_confirmed_2026-08")).toMatchObject({ count: 0, reserved: 1 });
   });
 
   it("charges the bucket matching the entitlement at call time when it flips mid-day", async () => {
@@ -233,7 +259,7 @@ describe("receiptQuickAddRequest quota", () => {
 
     seedActivePro(db);
     await receiptQuickAddRequest(imageRequest(), dependencies(db));
-    expect(db.data("usage_quotas/owner-1_receipt_2026-07-28")).toMatchObject({ count: 1 });
+    expect(db.data("usage_quotas/owner-1_receipt_scan_2026-07")).toMatchObject({ count: 1 });
     // The free lifetime bucket is untouched by the Pro charge.
     expect(db.data("usage_quotas/owner-1_receipt_lifetime")).toMatchObject({ count: 2 });
   });
@@ -246,36 +272,105 @@ describe("receiptQuickAddRequest quota", () => {
     };
     await expectHttpsError(receiptQuickAddRequest(imageRequest(), deps), "internal");
     expect(db.data("usage_quotas/owner-1_receipt_lifetime")).toMatchObject({ count: 0 });
+    expect(db.data("usage_quotas/owner-1_receipt_confirmed_lifetime")).toMatchObject({ reserved: 0 });
+    expect(onlyToken(db)).toMatchObject({ consumed: true, released: true });
   });
 
-  it("refunds the Pro daily bucket after an upstream 5xx failure", async () => {
+  it("refunds the Pro monthly bucket after an upstream 5xx failure", async () => {
     const db = new InMemoryFirestore();
     seedActivePro(db);
     const deps = dependencies(db);
     deps.fetchImpl = async (): Promise<Response> => new Response("upstream unavailable", { status: 502 });
     await expectHttpsError(receiptQuickAddRequest(imageRequest(), deps), "internal");
-    expect(db.data("usage_quotas/owner-1_receipt_2026-07-28")).toMatchObject({ count: 0 });
+    expect(db.data("usage_quotas/owner-1_receipt_scan_2026-07")).toMatchObject({ count: 0 });
+    expect(db.data("usage_quotas/owner-1_receipt_confirmed_2026-07")).toMatchObject({ reserved: 0 });
+    expect(onlyToken(db)).toMatchObject({ consumed: true, released: true });
   });
 
-  it("does not refund a 400 or 429 HTTP failure in either bucket", async () => {
+  it("keeps a billed 400 scan but releases its reservation, and refunds a 429", async () => {
     const freeDb = new InMemoryFirestore();
     const freeDeps = dependencies(freeDb);
     freeDeps.fetchImpl = async (): Promise<Response> => new Response("bad request", { status: 400 });
     await expectHttpsError(receiptQuickAddRequest(imageRequest(), freeDeps), "internal");
     expect(freeDb.data("usage_quotas/owner-1_receipt_lifetime")).toMatchObject({ count: 1 });
+    expect(freeDb.data("usage_quotas/owner-1_receipt_confirmed_lifetime")).toMatchObject({ reserved: 0 });
+    expect(onlyToken(freeDb)).toMatchObject({ consumed: true, released: true });
 
     const proDb = new InMemoryFirestore();
     seedActivePro(proDb);
     const proDeps = dependencies(proDb);
     proDeps.fetchImpl = async (): Promise<Response> => new Response("rate limited", { status: 429 });
     await expectHttpsError(receiptQuickAddRequest(imageRequest(), proDeps), "internal");
-    expect(proDb.data("usage_quotas/owner-1_receipt_2026-07-28")).toMatchObject({ count: 1 });
+    expect(proDb.data("usage_quotas/owner-1_receipt_scan_2026-07")).toMatchObject({ count: 0 });
+    expect(proDb.data("usage_quotas/owner-1_receipt_confirmed_2026-07")).toMatchObject({ reserved: 0 });
+    expect(onlyToken(proDb)).toMatchObject({ consumed: true, released: true });
   });
 
   it("does not refund billed HTTP-OK malformed model output", async () => {
     const db = new InMemoryFirestore();
     await expectHttpsError(receiptQuickAddRequest(imageRequest(), dependencies(db, "not json")), "internal");
     expect(db.data("usage_quotas/owner-1_receipt_lifetime")).toMatchObject({ count: 1 });
+    expect(db.data("usage_quotas/owner-1_receipt_confirmed_lifetime")).toMatchObject({ reserved: 0 });
+    expect(onlyToken(db)).toMatchObject({ consumed: true, released: true });
+  });
+
+  it("refunds a fetch timeout and exposes the deadline error", async () => {
+    const db = new InMemoryFirestore();
+    const deps = dependencies(db);
+    deps.fetchImpl = async (_url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      expect(init?.signal).toBeTruthy();
+      throw new DOMException("timed out", "TimeoutError");
+    };
+    await expectHttpsError(receiptQuickAddRequest(imageRequest(), deps), "deadline-exceeded");
+    expect(db.data("usage_quotas/owner-1_receipt_lifetime")).toMatchObject({ count: 0 });
+    expect(db.data("usage_quotas/owner-1_receipt_confirmed_lifetime")).toMatchObject({ reserved: 0 });
+    expect(onlyToken(db)).toMatchObject({ consumed: true, released: true });
+  });
+
+  it("enforces scan ceilings in both scopes and honors the legacy free scan counter", async () => {
+    const freeDb = new InMemoryFirestore();
+    freeDb.seed("usage_quotas/owner-1_receipt_lifetime", { count: FREE_LIFETIME_SCAN_CEILING });
+    await expect(receiptQuickAddRequest(imageRequest(), dependencies(freeDb))).rejects.toMatchObject({
+      code: "resource-exhausted",
+      details: { reason: "receipt_scan_exhausted", scope: "free_lifetime" },
+    });
+
+    const proDb = new InMemoryFirestore();
+    seedActivePro(proDb);
+    proDb.seed("usage_quotas/owner-1_receipt_scan_2026-07", { count: PRO_MONTHLY_SCAN_CEILING });
+    await expect(receiptQuickAddRequest(imageRequest(), dependencies(proDb))).rejects.toMatchObject({
+      code: "resource-exhausted",
+      details: {
+        reason: "receipt_scan_exhausted",
+        scope: "pro_month",
+        resetAt: "2026-08-01T00:00:00.000Z",
+      },
+    });
+  });
+
+  it("lazily releases an expired token before admitting a replacement scan", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("usage_quotas/owner-1_receipt_lifetime", { count: 4 });
+    db.seed("usage_quotas/owner-1_receipt_confirmed_lifetime", { count: 0, reserved: 1 });
+    db.seed("receipt_scan_tokens/expired-token", {
+      uid: "owner-1",
+      entitlementUsed: "free",
+      confirmedBucketId: "owner-1_receipt_confirmed_lifetime",
+      resetAtMillis: null,
+      createdAtMillis: fixedNow.getTime() - 48 * 60 * 60 * 1000,
+      expiresAtMillis: fixedNow.getTime() - 1,
+      consumed: false,
+    });
+
+    await receiptQuickAddRequest(imageRequest(), dependencies(db));
+    expect(db.data("usage_quotas/owner-1_receipt_lifetime")).toMatchObject({ count: 5 });
+    expect(db.data("usage_quotas/owner-1_receipt_confirmed_lifetime")).toMatchObject({ count: 0, reserved: 1 });
+    expect(db.data("receipt_scan_tokens/expired-token")).toMatchObject({
+      consumed: true,
+      consumedAtMillis: fixedNow.getTime(),
+      released: true,
+    });
+    expect(tokenDocs(db)).toHaveLength(2);
   });
 });
 
@@ -290,6 +385,8 @@ describe("receiptQuickAddRequest model-output handling", () => {
       details: { reason: "not_a_receipt" },
     });
     expect(db.data("usage_quotas/owner-1_receipt_lifetime")).toMatchObject({ count: 1 });
+    expect(db.data("usage_quotas/owner-1_receipt_confirmed_lifetime")).toMatchObject({ reserved: 0 });
+    expect(onlyToken(db)).toMatchObject({ consumed: true, released: true });
   });
 
   it("rejects schema-valid output with no core receipt signal (recognizability backstop)", async () => {
@@ -303,6 +400,8 @@ describe("receiptQuickAddRequest model-output handling", () => {
     );
     // Inference was billed: the backstop keeps the quota unit.
     expect(db.data("usage_quotas/owner-1_receipt_lifetime")).toMatchObject({ count: 1 });
+    expect(db.data("usage_quotas/owner-1_receipt_confirmed_lifetime")).toMatchObject({ reserved: 0 });
+    expect(onlyToken(db)).toMatchObject({ consumed: true, released: true });
   });
 
   it("accepts a PDF payload and sends it as a document block", async () => {
@@ -498,8 +597,10 @@ describe("sanitizeReceiptProposal", () => {
     expect(result.lineItems).toEqual(["4x Michelin CrossClimate 2 — $1,004.00"]);
   });
 
-  it("keeps the exported quota constants isolated and positive (pending tri-vote may adjust)", () => {
-    expect(FREE_LIFETIME_RECEIPT_QUOTA).toBeGreaterThan(0);
-    expect(DAILY_RECEIPT_QUOTA).toBeGreaterThan(FREE_LIFETIME_RECEIPT_QUOTA);
+  it("keeps the exported confirmed quotas and scan ceilings positive and distinct", () => {
+    expect(FREE_LIFETIME_CONFIRMED_QUOTA).toBeGreaterThan(0);
+    expect(FREE_LIFETIME_SCAN_CEILING).toBeGreaterThan(FREE_LIFETIME_CONFIRMED_QUOTA);
+    expect(PRO_MONTHLY_CONFIRMED_QUOTA).toBeGreaterThan(FREE_LIFETIME_CONFIRMED_QUOTA);
+    expect(PRO_MONTHLY_SCAN_CEILING).toBeGreaterThan(PRO_MONTHLY_CONFIRMED_QUOTA);
   });
 });

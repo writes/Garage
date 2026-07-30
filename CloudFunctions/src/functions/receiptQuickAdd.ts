@@ -5,10 +5,13 @@ import { anthropicApiKey } from "../params";
 import {
   QuotaFirestore,
   isRecord,
-  nextUtcMidnight,
-  safeQuotaCount,
-  userHasActiveProEntitlement,
 } from "./claudeProxy";
+import {
+  consumeReceiptQuota,
+  refundReceiptQuota,
+  voidReceiptReservation,
+  type ReceiptQuotaSnapshot,
+} from "./receiptQuota";
 import {
   VALID_ENTRY_TYPES,
   EntryTypeValue,
@@ -30,12 +33,13 @@ export { toolInputFromPayload, referenceDateLine };
  * worse than transcripts: names, addresses, card last-4, VINs.
  */
 
-/**
- * Quota model of record (plan §5; tri-vote checkpoint A may adjust the numbers — they are
- * isolated here as the single source of truth for both buckets).
- */
-export const FREE_LIFETIME_RECEIPT_QUOTA = 5;
-export const DAILY_RECEIPT_QUOTA = 20;
+export {
+  FREE_LIFETIME_CONFIRMED_QUOTA,
+  FREE_LIFETIME_SCAN_CEILING,
+  PRO_MONTHLY_CONFIRMED_QUOTA,
+  PRO_MONTHLY_SCAN_CEILING,
+} from "./receiptQuota";
+export type { ReceiptQuotaSnapshot } from "./receiptQuota";
 
 export const MAX_RECEIPT_IMAGES = 2;
 /** Per-image base64 ceiling. The client's 1568px q0.85 parse variant sits far below this. */
@@ -56,6 +60,12 @@ export type ReceiptEntryProposal = {
   lineItems: string[];
 };
 
+/** Additive wire extension: the existing proposal fields remain top-level and unchanged. */
+export type ReceiptQuickAddResponse = ReceiptEntryProposal & {
+  token: string;
+  quota: ReceiptQuotaSnapshot;
+};
+
 export type ReceiptQuickAddRequest = { auth?: { uid: string } | null; data?: unknown };
 
 export type ReceiptQuickAddDependencies = {
@@ -64,96 +74,6 @@ export type ReceiptQuickAddDependencies = {
   fetchImpl: typeof fetch;
   now?: () => Date;
 };
-
-export type ReceiptQuotaReservation =
-  | { bucketId: string; date: string; entitlementUsed: "pro"; uid: string }
-  | { bucketId: string; entitlementUsed: "free"; uid: string };
-
-/**
- * Dual-bucket clone of consumeOilAnalysisQuota (claudeProxy.ts): entitlement selection and
- * charging happen in ONE transaction so a user-profile change can never split them. Free users
- * are admitted for a lifetime teaser of FREE_LIFETIME_RECEIPT_QUOTA scans; Pro users get
- * DAILY_RECEIPT_QUOTA per UTC day. There is deliberately NO pro_required fence in this model
- * (plan §5, fix F4).
- */
-export async function consumeReceiptQuota(
-  db: QuotaFirestore,
-  uid: string,
-  now: Date,
-): Promise<ReceiptQuotaReservation> {
-  const date = now.toISOString().slice(0, 10);
-  const userRef = db.collection("users").doc(uid);
-
-  return db.runTransaction(async (transaction) => {
-    const user = await transaction.get(userRef);
-    const entitlementUsed = userHasActiveProEntitlement(user.data(), now) ? "pro" : "free";
-    const bucketId = entitlementUsed === "pro" ? `${uid}_receipt_${date}` : `${uid}_receipt_lifetime`;
-    const quotaRef = db.collection("usage_quotas").doc(bucketId);
-    const current = await transaction.get(quotaRef);
-    const count = current.exists ? safeQuotaCount(current.data()?.count) : 0;
-
-    if (entitlementUsed === "pro" && count >= DAILY_RECEIPT_QUOTA) {
-      throw new HttpsError("resource-exhausted", "Daily receipt quota exceeded.", {
-        reason: "receipt_daily_exhausted",
-        resetAt: nextUtcMidnight(now),
-      });
-    }
-
-    if (entitlementUsed === "free" && count >= FREE_LIFETIME_RECEIPT_QUOTA) {
-      throw new HttpsError("resource-exhausted", "Free receipt quota exhausted.", {
-        reason: "receipt_free_exhausted",
-      });
-    }
-
-    transaction.set(quotaRef, entitlementUsed === "pro" ? {
-      uid,
-      kind: "receipt_quickadd",
-      date,
-      count: count + 1,
-      updatedAt: now.toISOString(),
-    } : {
-      uid,
-      kind: "receipt_quickadd_lifetime",
-      count: count + 1,
-      updatedAt: now.toISOString(),
-    }, { merge: true });
-
-    return entitlementUsed === "pro"
-      ? { bucketId, date, entitlementUsed, uid }
-      : { bucketId, entitlementUsed, uid };
-  });
-}
-
-/**
- * Returns a previously consumed quota unit only after a genuine upstream infrastructure
- * failure. Mirrors both siblings' policy: a completed model response consumes upstream cost,
- * even when its output is malformed, unrecognized, or not a receipt at all.
- */
-export async function refundReceiptQuota(
-  db: QuotaFirestore,
-  reservation: ReceiptQuotaReservation,
-  now: Date,
-): Promise<void> {
-  const quotaRef = db.collection("usage_quotas").doc(reservation.bucketId);
-
-  await db.runTransaction(async (transaction) => {
-    const current = await transaction.get(quotaRef);
-    const count = current.exists ? safeQuotaCount(current.data()?.count) : 0;
-
-    transaction.set(quotaRef, reservation.entitlementUsed === "pro" ? {
-      uid: reservation.uid,
-      kind: "receipt_quickadd",
-      date: reservation.date,
-      count: Math.max(0, count - 1),
-      updatedAt: now.toISOString(),
-    } : {
-      uid: reservation.uid,
-      kind: "receipt_quickadd_lifetime",
-      count: Math.max(0, count - 1),
-      updatedAt: now.toISOString(),
-    }, { merge: true });
-  });
-}
 
 /**
  * Forced strict tool schema (plan §3). `documentLooksLikeReceipt` is the explicit
@@ -495,7 +415,7 @@ function sourceBlocks(payload: ReceiptPayload): unknown[] {
 export async function receiptQuickAddRequest(
   request: ReceiptQuickAddRequest,
   dependencies: ReceiptQuickAddDependencies,
-): Promise<ReceiptEntryProposal> {
+): Promise<ReceiptQuickAddResponse> {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
 
   const payload = payloadFromData(request.data);
@@ -516,6 +436,7 @@ export async function receiptQuickAddRequest(
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
       },
+      signal: AbortSignal.timeout(55_000),
       body: JSON.stringify({
         // Unsuffixed, matching both siblings. Escalation to claude-sonnet-4-6 is permitted only
         // by the pre-registered golden-eval gate (plan §7) — never by vibes.
@@ -544,18 +465,23 @@ export async function receiptQuickAddRequest(
     });
   } catch (error) {
     logger.error("receipt-quickadd anthropic request failed", {
-      message: error instanceof Error ? error.message : String(error),
+      reason: error instanceof Error ? error.name : "unknown",
     });
     await refundReceiptQuota(dependencies.db, reservation, now);
+    if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) {
+      throw new HttpsError("deadline-exceeded", "Claude request timed out.");
+    }
     throw new HttpsError("internal", "Claude request failed.");
   }
 
   if (!response.ok) {
     logger.error("receipt-quickadd anthropic request rejected", { status: response.status });
-    // Anthropic did not complete billable inference on a 5xx response. Other HTTP failures
-    // and all HTTP-OK model-output errors keep their quota unit (mirrors both siblings).
-    if (response.status >= 500) {
+    // 429 and 5xx responses are not billed. A completed 4xx response keeps its scan unit but
+    // has no proposal to confirm, so its reservation token is released below.
+    if (response.status >= 500 || response.status === 429) {
       await refundReceiptQuota(dependencies.db, reservation, now);
+    } else {
+      await voidReceiptReservation(dependencies.db, reservation, now);
     }
     throw new HttpsError("internal", `Claude request failed with ${response.status}.`);
   }
@@ -568,12 +494,14 @@ export async function receiptQuickAddRequest(
     logger.error("receipt-quickadd anthropic response body unreadable", {
       reason: error instanceof Error ? error.name : "unknown",
     });
+    await voidReceiptReservation(dependencies.db, reservation, now);
     throw new HttpsError("internal", "Claude returned malformed JSON.");
   }
 
   const parsed = toolInputFromPayload(modelPayload);
   if (!parsed) {
     logger.error("receipt-quickadd anthropic response had no tool_use block");
+    await voidReceiptReservation(dependencies.db, reservation, now);
     throw new HttpsError("internal", "Claude returned malformed JSON.");
   }
 
@@ -581,17 +509,20 @@ export async function receiptQuickAddRequest(
   // inference was billed. The client maps this reason to distinct retry copy.
   if (parsed.documentLooksLikeReceipt === false) {
     logger.info("receipt-quickadd document rejected as non-receipt");
+    await voidReceiptReservation(dependencies.db, reservation, now);
     throw new HttpsError("failed-precondition", "Not a service receipt.", { reason: "not_a_receipt" });
   }
 
   if (!isRecognizableReceipt(parsed)) {
     logger.error("receipt-quickadd unrecognized model output");
+    await voidReceiptReservation(dependencies.db, reservation, now);
     throw new HttpsError("internal", "unrecognized receipt response");
   }
 
   try {
-    return sanitizeReceiptProposal(parsed, now);
+    return { ...sanitizeReceiptProposal(parsed, now), token: reservation.tokenId, quota: reservation.quota };
   } catch (error) {
+    await voidReceiptReservation(dependencies.db, reservation, now);
     if (error instanceof HttpsError) throw error;
     // Receipt content and model output are never logged (receipts carry names, addresses,
     // card last-4, VINs) — and that includes JSON.parse messages, which embed a snippet of
@@ -604,8 +535,8 @@ export async function receiptQuickAddRequest(
 }
 
 export const receiptQuickAdd = onCall(
-  { region: "us-central1", enforceAppCheck: true, secrets: [anthropicApiKey] },
-  async (request): Promise<ReceiptEntryProposal> => {
+  { region: "us-central1", enforceAppCheck: true, timeoutSeconds: 120, secrets: [anthropicApiKey] },
+  async (request): Promise<ReceiptQuickAddResponse> => {
     try {
       return await receiptQuickAddRequest(request, {
         apiKey: anthropicApiKey.value(),

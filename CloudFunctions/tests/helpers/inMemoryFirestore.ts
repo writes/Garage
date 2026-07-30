@@ -4,6 +4,12 @@ type Reference = {
   path: string;
 };
 
+type QueryFilter = {
+  fieldPath: string;
+  opStr: string;
+  value: unknown;
+};
+
 export type TransactionTrace = {
   reads: string[];
   writes: string[];
@@ -21,6 +27,66 @@ class Snapshot {
   }
 }
 
+class QueryDocumentSnapshot {
+  public constructor(
+    public readonly ref: Reference,
+    private readonly value: DocumentData,
+  ) {}
+
+  public data(): DocumentData {
+    return structuredClone(this.value);
+  }
+}
+
+class QuerySnapshot {
+  public constructor(public readonly docs: QueryDocumentSnapshot[]) {}
+}
+
+class Query {
+  public constructor(
+    protected readonly documents: Map<string, DocumentData>,
+    private readonly collectionPath: string,
+    private readonly filters: QueryFilter[] = [],
+    private readonly take?: number,
+  ) {}
+
+  public where(fieldPath: string, opStr: string, value: unknown): Query {
+    return new Query(this.documents, this.collectionPath, [...this.filters, { fieldPath, opStr, value }], this.take);
+  }
+
+  public limit(take: number): Query {
+    return new Query(this.documents, this.collectionPath, this.filters, take);
+  }
+
+  public tracePath(): string {
+    return `${this.collectionPath}?${this.filters.map((filter) => `${filter.fieldPath}${filter.opStr}`).join("&")}`;
+  }
+
+  public snapshot(): QuerySnapshot {
+    const prefix = `${this.collectionPath}/`;
+    const docs = [...this.documents.entries()]
+      .filter(([path]) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/"))
+      .filter(([, data]) => this.filters.every((filter) => {
+        const value = data[filter.fieldPath];
+        if (filter.opStr === "==") return value === filter.value;
+        if (filter.opStr === "<") return typeof value === "number" && typeof filter.value === "number" && value < filter.value;
+        throw new Error(`Unsupported in-memory query operator: ${filter.opStr}`);
+      }))
+      .map(([path, data]) => new QueryDocumentSnapshot({ path }, data));
+    return new QuerySnapshot(this.take === undefined ? docs : docs.slice(0, this.take));
+  }
+}
+
+class CollectionReference extends Query {
+  public constructor(documents: Map<string, DocumentData>, private readonly collectionPath: string) {
+    super(documents, collectionPath);
+  }
+
+  public doc(id: string): Reference {
+    return { path: `${this.collectionPath}/${id}` };
+  }
+}
+
 class Transaction {
   private hasWritten = false;
 
@@ -29,9 +95,16 @@ class Transaction {
     private readonly trace: TransactionTrace,
   ) {}
 
-  public async get(reference: Reference): Promise<Snapshot> {
+  public async get(reference: Reference): Promise<Snapshot>;
+  public async get(query: Query): Promise<QuerySnapshot>;
+  public async get(reference: Reference | Query): Promise<Snapshot | QuerySnapshot> {
     if (this.hasWritten) {
       throw new Error("Firestore transactions require all reads to be executed before all writes.");
+    }
+
+    if (reference instanceof Query) {
+      this.trace.reads.push(reference.tracePath());
+      return reference.snapshot();
     }
 
     this.trace.reads.push(reference.path);
@@ -46,6 +119,16 @@ class Transaction {
     this.documents.set(reference.path, nextValue);
     return this;
   }
+
+  public create(reference: Reference, data: DocumentData): this {
+    this.hasWritten = true;
+    this.trace.writes.push(reference.path);
+    if (this.documents.has(reference.path)) {
+      throw new Error(`Document already exists: ${reference.path}`);
+    }
+    this.documents.set(reference.path, structuredClone(data));
+    return this;
+  }
 }
 
 /**
@@ -56,10 +139,8 @@ export class InMemoryFirestore {
   private readonly documents = new Map<string, DocumentData>();
   private readonly traces: TransactionTrace[] = [];
 
-  public collection(collectionPath: string): { doc(id: string): Reference } {
-    return {
-      doc: (id: string): Reference => ({ path: `${collectionPath}/${id}` }),
-    };
+  public collection(collectionPath: string): CollectionReference {
+    return new CollectionReference(this.documents, collectionPath);
   }
 
   public async runTransaction<T>(updateFunction: (transaction: Transaction) => Promise<T>): Promise<T> {
@@ -79,5 +160,12 @@ export class InMemoryFirestore {
 
   public transactionTraces(): TransactionTrace[] {
     return structuredClone(this.traces);
+  }
+
+  public collectionData(collectionPath: string): Array<{ id: string; data: DocumentData }> {
+    const prefix = `${collectionPath}/`;
+    return [...this.documents.entries()]
+      .filter(([path]) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/"))
+      .map(([path, data]) => ({ id: path.slice(prefix.length), data: structuredClone(data) }));
   }
 }

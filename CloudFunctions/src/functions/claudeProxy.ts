@@ -26,20 +26,38 @@ export type OilAnalysisResponse = {
   labRecommendation?: string | null;
 };
 
-type DocumentReferenceLike = object;
+export type DocumentReferenceLike = {
+  readonly path: string;
+};
 
-type DocumentSnapshotLike = {
+export type DocumentSnapshotLike = {
   exists: boolean;
   data(): Record<string, unknown> | undefined;
 };
 
-type TransactionLike = {
+export type QueryDocumentSnapshotLike = {
+  readonly ref: DocumentReferenceLike;
+  data(): Record<string, unknown>;
+};
+
+export type QuerySnapshotLike = {
+  readonly docs: QueryDocumentSnapshotLike[];
+};
+
+export type QueryLike = {
+  where(fieldPath: string, opStr: string, value: unknown): QueryLike;
+  limit(limit: number): QueryLike;
+};
+
+export type TransactionLike = {
   get(reference: DocumentReferenceLike): Promise<DocumentSnapshotLike>;
+  get(query: QueryLike): Promise<QuerySnapshotLike>;
   set(reference: DocumentReferenceLike, data: Record<string, unknown>, options?: { merge?: boolean }): TransactionLike;
+  create(reference: DocumentReferenceLike, data: Record<string, unknown>): TransactionLike;
 };
 
 export type QuotaFirestore = {
-  collection(path: string): {
+  collection(path: string): QueryLike & {
     doc(id: string): DocumentReferenceLike;
   };
   runTransaction<T>(updateFunction: (transaction: TransactionLike) => Promise<T>): Promise<T>;
@@ -232,6 +250,15 @@ export function nextUtcMidnight(now: Date): string {
     now.getUTCFullYear(),
     now.getUTCMonth(),
     now.getUTCDate() + 1,
+  )).toISOString();
+}
+
+/** The receipt-confirmed allowance resets monthly, unlike the daily AI quotas. */
+export function nextUtcMonthStart(now: Date): string {
+  return new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth() + 1,
+    1,
   )).toISOString();
 }
 
