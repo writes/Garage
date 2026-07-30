@@ -51,6 +51,12 @@ struct EntryFormScaffold<Content: View>: View {
                 isEditing: viewModel.editingEntryID != nil
             )
             .disabled(isMutationLocked)
+            if let caption = viewModel.unreadReceiptFieldsCaption {
+                Text(caption)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .accessibilityIdentifier("entry.form.receipt.unreadFields")
+            }
             content
             attachmentsSection
                 .disabled(isMutationLocked)

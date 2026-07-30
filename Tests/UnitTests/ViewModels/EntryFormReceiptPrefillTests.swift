@@ -44,6 +44,23 @@ struct EntryFormReceiptPrefillTests {
         #expect(viewModel.cost.isEmpty)
     }
 
+    @Test func unreadReceiptCaptionUsesRawPresenceRatherThanAppliedFormValues() {
+        let viewModel = EntryFormViewModel()
+        viewModel.applyReceiptPrefill(package(proposal(
+            odometer: 0, cost: 0, shopName: "", isDiy: false, notes: "", lineItems: []
+        )), isPro: false)
+
+        #expect(viewModel.unreadReceiptFieldsCaption == "Not read from the receipt: date")
+    }
+
+    @Test func unreadReceiptCaptionListsOnlyFieldsMissingFromTheModelResponse() {
+        let viewModel = EntryFormViewModel()
+        viewModel.applyReceiptPrefill(package(proposal(odometer: 18_120)), isPro: false)
+
+        #expect(viewModel.unreadReceiptFieldsCaption
+            == "Not read from the receipt: date, cost, shop, DIY, notes")
+    }
+
     // MARK: - lineItems -> notes bullet join
 
     @Test func lineItems_joinIntoNotesWithBulletsAfterFreeTextNotes() {

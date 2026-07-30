@@ -59,7 +59,9 @@ extension AnalyticsEvent {
         "receipt_proposal_succeeded",
         "receipt_proposal_failed",
         "receipt_quota_denied",
-        "receipt_entry_confirmed"
+        "receipt_entry_confirmed",
+        "receipt_field_outcome",
+        "receipt_confirm_sync_failed"
     ]
 
     static var allNames: [String] { v1Names + activationFunnelNames + depthNames + receiptFunnelNames }
@@ -233,6 +235,13 @@ extension AnalyticsEvent {
             )
         case .receiptEntryConfirmed:
             return AnalyticsEventDefinition(name: "receipt_entry_confirmed")
+        case .receiptFieldOutcome(let field, let edited):
+            return AnalyticsEventDefinition(
+                name: "receipt_field_outcome",
+                parameters: [.receiptPrefillField(field), .edited(edited)]
+            )
+        case .receiptConfirmSyncFailed:
+            return AnalyticsEventDefinition(name: "receipt_confirm_sync_failed")
         }
     }
 }

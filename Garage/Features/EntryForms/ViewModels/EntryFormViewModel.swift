@@ -14,6 +14,7 @@ final class EntryFormViewModel {
     let entryService: EntryService
     let vehicleService: VehicleService
     let analytics: any AnalyticsTracking
+    let receiptQuickAddService: any ReceiptQuickAddCalling
     // Defaults to the real store, never a no-op — see ExportViewModel for the reasoning.
     private let recordReviewMoment: @MainActor (ReviewMoment) -> Void
     private let suppressReviewPrompt: @MainActor () -> Void
@@ -57,6 +58,11 @@ final class EntryFormViewModel {
     var wasVoiceSeeded = false
     var wasReceiptSeeded = false
     var receiptAttachmentNeedsPro = false
+    // Receipt extensions own this transient token; it is cleared before the best-effort confirm task starts.
+    var receiptConfirmationToken: String?
+    var receiptPrefillRawFields: Set<ReceiptPrefillField> = []
+    var receiptPrefillSeededFields: Set<ReceiptPrefillField> = []
+    var receiptPrefillEffectiveSeed: ReceiptPrefillEffectiveSeed?
     /// Edited entry's odometer at load time — floors validateOdometer (odometerFloor, +EditPrefill).
     var editingEntryOriginalOdometer: Int?
     /// Edited entry's original vehicleId — save() rejects a different vehicle.
@@ -68,6 +74,7 @@ final class EntryFormViewModel {
         syncService: SyncService = .shared,
         entryAttachmentService: EntryAttachmentService = .shared,
         analytics: any AnalyticsTracking = AnalyticsService.shared,
+        receiptQuickAddService: any ReceiptQuickAddCalling = ReceiptQuickAddService.shared,
         recordReviewMoment: @escaping @MainActor (ReviewMoment) -> Void = {
             ReviewPromptStore.shared.record($0)
         },
@@ -89,6 +96,7 @@ final class EntryFormViewModel {
         self.syncService = syncService
         self.entryAttachmentService = entryAttachmentService
         self.analytics = analytics
+        self.receiptQuickAddService = receiptQuickAddService
         self.recordReviewMoment = recordReviewMoment
         self.suppressReviewPrompt = suppressReviewPrompt
         self.wearService = wearService
@@ -104,28 +112,6 @@ final class EntryFormViewModel {
                 .fetchLatestOdometer(vehicleId: vehicleId, excludingEntryID: editingEntryID)
         } catch {
             self.error = AppError(from: error)
-        }
-    }
-
-    /// Seeds the shared fields from a voice proposal. The user reviews every value before saving,
-    /// so this only prefills — it never commits. Type-specific details are left for the form.
-    func applyVoicePrefill(_ proposal: VoiceEntryProposal) {
-        wasVoiceSeeded = true
-        entryDate = proposal.resolvedDate(default: entryDate)
-        if let odometer = proposal.odometerReading, odometer > 0 {
-            odometerReading = String(odometer)
-        }
-        if let spokenCost = proposal.cost, spokenCost > 0 {
-            cost = Self.costString(spokenCost)
-        }
-        if let shop = proposal.shopName?.trimmed, !shop.isEmpty {
-            shopName = shop
-            isDiy = false
-        } else if let spokenIsDiy = proposal.isDiy {
-            isDiy = spokenIsDiy
-        }
-        if let spokenNotes = proposal.notes?.trimmed, !spokenNotes.isEmpty {
-            notes = spokenNotes
         }
     }
 

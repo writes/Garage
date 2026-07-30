@@ -212,32 +212,42 @@ BigQuery); they remain distinct closed enums in code.
 
 ---
 
-## 5.2 Receipt-capture funnel (additive, 2026-07-28)
+## 5.2 Receipt-capture funnel (additive, 2026-07-30)
 
-Five events instrumenting the receipt/invoice-scan feature (Wave 2 of
-`docs/research/2026-07-28_RECEIPT_PARSE_PLAN.md`). Names live in `AnalyticsEvent.receiptFunnelNames`,
-kept separate from `depthNames` because it shipped as its own batch. Pattern lineage is the voice
-funnel above — same shape, same rules (closed enums only, shared `reason` wire key).
+Seven events instrument the receipt/invoice-scan feature. Names live in
+`AnalyticsEvent.receiptFunnelNames`, separate from `depthNames` because this is one product funnel.
+Pattern lineage is the voice funnel above — same closed-enum/no-PII rules, with `reason` retained
+only for proposal failures and quota denials.
 
 | Event | Parameters | Choke point |
 |---|---|---|
 | `receipt_capture_started` | `source` (`camera`/`library`/`pdf`) | `ReceiptCaptureViewModel`, on the first page of a scan (a second page never re-fires it) |
 | `receipt_proposal_succeeded` | `entry_type` | `ReceiptCaptureViewModel`, on a successful `receiptQuickAdd` response |
 | `receipt_proposal_failed` | `reason` (`preflight`/`not_a_receipt`/`service_error`) | `ReceiptCaptureViewModel`; user-cancel (backing out of a picker) is never reported as a failure |
-| `receipt_quota_denied` | `reason` (`free_lifetime_exhausted`/`pro_daily_exhausted`) | `ReceiptCaptureViewModel` — quota denials keep their own event rather than folding into `receipt_proposal_failed` (the oil-analysis convention) |
+| `receipt_quota_denied` | `reason` (`free_lifetime_exhausted`/`pro_month_exhausted`) | `ReceiptCaptureViewModel` — scan-ceiling and confirmed-reservation denials share the user-facing scope; neither is folded into `receipt_proposal_failed` |
 | `receipt_entry_confirmed` | — | `EntryFormViewModel.finishSaveTracking`, via `wasReceiptSeeded` — fires exactly once, and never alongside `voice_entry_confirmed` (a form is seeded by at most one AI source) |
+| `receipt_field_outcome` | `field` (`date`/`odometer`/`cost`/`shop`/`diy`/`notes`), `edited` (`0`/`1`) | `EntryFormViewModel.finishSaveTracking`, after local entry acceptance; one event for each effectively seeded field, never any parsed or user-entered value |
+| `receipt_confirm_sync_failed` | — | The best-effort `confirmReceiptScan` call after local acceptance threw; this does not turn a saved entry into a failed save |
 
 **Why receipts are not Pro-gated at the entry point, unlike voice.** The quota model is a
-free-lifetime teaser (5 scans) plus a Pro daily cap (20/day), not a hard Pro fence — a receipt is
-the artifact every prospective user is already holding at evaluation time, so the capture row
-stays visible to free users and only quota exhaustion (`receipt_quota_denied`) upsells, via the new
-`PaywallSource.receiptScan`.
+free-lifetime allowance of **5 confirmed saves** plus a Pro allowance of **20 confirmed saves per
+UTC month**, not a hard Pro fence. The capture row stays visible to free users and free-lifetime
+exhaustion upsells through `PaywallSource.receiptScan`. A scan ceiling (20 free lifetime / 80 Pro
+per month) bounds API spend; the server reservation model remains authoritative for both counters.
 
-**Quota-unit redesign agreed 2026-07-29 (designed, not yet implemented).** The unit is planned to
-change from a scan attempt to a confirmed, cleared receipt; Pro's allowance is planned to move
-from a daily cap to a monthly one (pending operator confirmation); and a scan ceiling at 4x the
-confirmed allowance would bound API spend — none of this is built yet, so the numbers above still
-describe the shipped behavior.
+**Raw presence and effective seed are intentionally separate.** `unreadReceiptFieldsCaption` uses
+only the model's raw non-nil proposal fields, including `lineItems` as notes content, to show the
+single “Not read from the receipt: …” caption. `receipt_field_outcome` instead snapshots effective
+form values *after* `applyReceiptPrefill` and `reconcileReceiptOdometerFloor`. Consequently, an
+odometer floor correction and its derived note, or the `shop → isDiy = false` derivation, are part
+of the seed and report `edited = 0` unless the user subsequently changes them. Edit-then-revert is
+also `0`; unseeded fields emit nothing. This is telemetry about field quality, not receipt content.
+
+**Save is acceptance, confirmation is retry-safe accounting.** A response token is carried from
+capture to the prefilled form. Only a successful local entry save attempts `confirmReceiptScan`; an
+abandoned or failed form never does. The token is cleared before the fire-and-forget call starts,
+and server idempotency tolerates an accidental retry. A thrown sync call emits
+`receipt_confirm_sync_failed` without exposing its error detail or weakening the saved entry.
 
 **Attachment interplay.** A parsed receipt's original image/PDF is staged as a pending attachment
 only when the user is Pro (`EntryFormViewModel.receiptAttachmentNeedsPro` surfaces the upsell hint

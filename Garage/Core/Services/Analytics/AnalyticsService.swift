@@ -123,6 +123,10 @@ enum AnalyticsEvent: Equatable, Sendable {
     /// A receipt-prefilled form was actually SAVED, fired via `wasReceiptSeeded` — mutually
     /// exclusive with `voiceEntryConfirmed` (a form is seeded by at most one AI source).
     case receiptEntryConfirmed
+    /// One privacy-safe quality label per effective receipt-prefilled field, emitted on save.
+    case receiptFieldOutcome(field: ReceiptPrefillField, edited: Bool)
+    /// The entry saved locally but its best-effort server confirmation did not complete.
+    case receiptConfirmSyncFailed
 }
 
 /// Thin adapter over `AnalyticsConsentGate`. All gate/buffer decisions live in that value type so

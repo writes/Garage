@@ -27,3 +27,18 @@ enum ReceiptQuotaDeniedReason: String, CaseIterable, Equatable, Sendable {
     case freeLifetimeExhausted = "free_lifetime_exhausted"
     case proMonthExhausted = "pro_month_exhausted"
 }
+
+/// The only field identifiers receipt quality analytics may emit. This deliberately excludes
+/// customer-provided values, parsed text, receipt line items, and every free-form form field.
+enum ReceiptPrefillField: String, CaseIterable, Equatable, Hashable, Sendable {
+    case date
+    case odometer
+    case cost
+    case shop
+    case diy
+    case notes
+
+    var caption: String {
+        self == .diy ? "DIY" : rawValue
+    }
+}

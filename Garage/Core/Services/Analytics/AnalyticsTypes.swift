@@ -87,11 +87,14 @@ enum AnalyticsParameter: Equatable, Sendable {
     case receiptCaptureSource(ReceiptCaptureSource)
     case receiptFailureReason(ReceiptFailureReason)
     case receiptQuotaDeniedReason(ReceiptQuotaDeniedReason)
+    case receiptPrefillField(ReceiptPrefillField)
     case recallCount(Int)
     case vehicleCount(Int)
     case screen(ScreenKind)
     /// Sent as 0/1 — Firebase has no boolean parameter type.
     case isEdit(Bool)
+    /// Sent as 0/1 — receipt-field outcomes never contain a field value.
+    case edited(Bool)
 
     fileprivate var name: String {
         switch self {
@@ -111,10 +114,12 @@ enum AnalyticsParameter: Equatable, Sendable {
              .receiptFailureReason, .receiptQuotaDeniedReason:
             return "reason"
         case .receiptCaptureSource: return "source"
+        case .receiptPrefillField: return "field"
         case .recallCount: return "recall_count"
         case .vehicleCount: return "vehicle_count"
         case .screen: return "screen"
         case .isEdit: return "is_edit"
+        case .edited: return "edited"
         }
     }
 
@@ -137,8 +142,9 @@ enum AnalyticsParameter: Equatable, Sendable {
         case .receiptCaptureSource(let value): return value.rawValue
         case .receiptFailureReason(let value): return value.rawValue
         case .receiptQuotaDeniedReason(let value): return value.rawValue
+        case .receiptPrefillField(let value): return value.rawValue
         case .screen(let value): return value.rawValue
-        case .isEdit(let value): return value ? 1 : 0
+        case .isEdit(let value), .edited(let value): return value ? 1 : 0
         }
     }
 }

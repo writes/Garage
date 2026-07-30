@@ -27,7 +27,10 @@ extension EntryFormViewModel {
         }
         if wasReceiptSeeded {
             analytics.track(.receiptEntryConfirmed)
+            trackReceiptFieldOutcomes()
+            confirmReceiptScanAfterSave()
             wasReceiptSeeded = false
+            clearReceiptPrefillTracking()
         }
         scheduleFirstEntryFollowUp(vehicleId: vehicleId, entryType: entryType)
     }
@@ -37,6 +40,20 @@ extension EntryFormViewModel {
         Task { @MainActor [self, firstEntryFollowUp] in
             await firstEntryFollowUp {
                 await self.trackFirstEntryIfNeeded(vehicleId: vehicleId, entryType: entryType)
+            }
+        }
+    }
+
+    private func confirmReceiptScanAfterSave() {
+        guard let token = receiptConfirmationToken else { return }
+        receiptConfirmationToken = nil
+        let receiptQuickAddService = receiptQuickAddService
+        let analytics = analytics
+        Task { @MainActor in
+            do {
+                _ = try await receiptQuickAddService.confirmScan(token: token)
+            } catch {
+                analytics.track(.receiptConfirmSyncFailed)
             }
         }
     }
