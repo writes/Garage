@@ -1,0 +1,22 @@
+{
+  "displayName": "Cloud Functions ERROR logs (prod)",
+  "combiner": "OR",
+  "enabled": true,
+  "notificationChannels": ["projects/harrys-playhouse-prod/notificationChannels/5398603421267566861"],
+  "documentation": {
+    "content": "A Cloud Function in harrys-playhouse-prod logged at severity ERROR or above. Check: Firebase console -> Functions -> Logs, filter severity>=ERROR. Rollback: docs/DEPLOY_RUNBOOK.md ROLLBACK section.",
+    "mimeType": "text/markdown"
+  },
+  "conditions": [
+    {
+      "displayName": "Any severity>=ERROR log from a function service",
+      "conditionMatchedLog": {
+        "filter": "(resource.type=\"cloud_run_revision\" OR resource.type=\"cloud_function\") AND severity>=ERROR"
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": { "period": "1800s" },
+    "autoClose": "86400s"
+  }
+}

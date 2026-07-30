@@ -50,10 +50,19 @@ fi
 swiftlint lint --strict
 xcodebuild -project Garage.xcodeproj -scheme Garage -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
 
+# Fail CLOSED on CI (operator-approved 2026-07-30): an empty SIMULATOR_NAME here used to fall
+# through to a silent skip — the exact failure class that once silently lost all 278 unit +
+# 21 UI tests. GitHub Actions always sets CI=true; locally the skip remains a convenience.
+# The test-timeout flags bound a wedged XCTest (the UI-journey files) at 120s instead of the
+# 75-minute job cap; Swift Testing files are governed by .timeLimit traits, not these flags.
 if [[ -n "${SIMULATOR_NAME}" ]]; then
-  xcodebuild -project Garage.xcodeproj -scheme Garage -destination "platform=iOS Simulator,name=${SIMULATOR_NAME}" test
+  xcodebuild -project Garage.xcodeproj -scheme Garage -destination "platform=iOS Simulator,name=${SIMULATOR_NAME}" \
+    -test-timeouts-enabled YES -default-test-execution-time-allowance 120 test
+elif [[ "${CI:-}" == "true" ]]; then
+  echo "ERROR: no available iOS simulator on a CI runner — tests would be silently skipped."
+  exit 1
 else
-  echo "No available iOS simulator found; skipping simulator tests"
+  echo "No available iOS simulator found; skipping simulator tests (local run)"
 fi
 
 xcodebuild \

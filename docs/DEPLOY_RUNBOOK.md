@@ -185,3 +185,52 @@ prints "Release checks passed".
 ## 9. Verify the RUNNING image (landmine #9)
 After deploy, hit each function once from a real device build and confirm success — never trust a
 "deployed ✅" log line. Watch Crashlytics + Functions logs for the first hour.
+
+## 10. ROLLBACK (added 2026-07-30 — previously undocumented anywhere)
+
+### Cloud Functions — roll back to the last good code
+There is no one-command revision rollback in Firebase's CLI; the deployable unit is the source
+tree, so rollback = redeploy the previous good source, scoped to the broken function:
+```bash
+git log --oneline -- CloudFunctions            # find the last good SHA
+git checkout <good-sha> -- CloudFunctions
+cd CloudFunctions && npm ci && npm run build
+firebase deploy --only functions:<name> --project harrys-playhouse-prod
+git checkout HEAD -- CloudFunctions            # restore the working tree afterwards
+```
+Then verify the RUNNING revision (§9), not the deploy log:
+```bash
+gcloud functions describe <name> --project harrys-playhouse-prod \
+  --region us-central1 --gen2 --format="value(state,serviceConfig.revision,updateTime)"
+```
+
+### A misbehaving AI endpoint — stop the bleeding without a deploy
+Every AI callable checks its quota documents before spending money, so the fastest kill switch
+while a rollback builds is to let the client-side error path absorb traffic: the functions are
+per-uid quota-gated, and the app surfaces server errors as banners without retry loops. If spend
+must stop NOW and a redeploy is minutes away, `gcloud functions delete` is NOT the tool (it
+breaks the client contract); prefer deploying the previous source, which takes ~2 min scoped to
+one function (§2).
+
+### Firestore / Storage rules
+Rules are versioned in git; rollback = redeploy the previous file:
+```bash
+git checkout <good-sha> -- firebase.firestore.rules firebase.storage.rules
+firebase deploy --only firestore:rules,storage --project harrys-playhouse-prod
+```
+
+### iOS app
+A shipped binary cannot be rolled back — only forward:
+- **Phased release in progress:** App Store Connect → the version → *Pause* the phased release.
+- **Bad build live:** submit a fix with *expedited review* (App Review → contact form; state
+  user-facing breakage). Keep `releaseType: MANUAL` so a fix never auto-publishes.
+- **TestFlight:** expire the bad build (Builds → Expire) so testers stop installing it.
+
+### Alerting (what tells us to roll back)
+Notification channel `Operator email` (objectorientedna@gmail.com) exists in the prod project.
+The severity>=ERROR log-match alert policy is created by (operator-run — the permission
+classifier blocks agents from mutating prod monitoring):
+```bash
+gcloud alpha monitoring policies create \
+  --policy-from-file=docs/operations/alert-policy.json --project=harrys-playhouse-prod
+```
