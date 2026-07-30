@@ -134,7 +134,7 @@ struct ReceiptFunnelAnalyticsTests {
     }
 
     private func package(_ proposal: ReceiptEntryProposal) -> ReceiptPrefillPackage {
-        ReceiptPrefillPackage(proposal: proposal, attachments: [])
+        ReceiptPrefillPackage(proposal: proposal, attachments: [], token: nil, quota: nil)
     }
 
     private func outcomes(in analytics: AnalyticsSpy) -> [AnalyticsEvent] {

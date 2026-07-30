@@ -58,8 +58,8 @@ struct ReceiptPrefillPackage: Equatable, Sendable {
     let proposal: ReceiptEntryProposal
     let attachments: [ReceiptPrefillAttachment]
     /// Nil only when an older server response omitted the additive confirmation fields.
-    let token: String? = nil
-    let quota: ReceiptQuotaSnapshot? = nil
+    let token: String?
+    let quota: ReceiptQuotaSnapshot?
 }
 
 enum ReceiptCallableError: Error, Equatable, Sendable {
@@ -85,7 +85,12 @@ protocol ReceiptQuickAddCalling {
 final class ReceiptQuickAddService: ReceiptQuickAddCalling {
     static let shared = ReceiptQuickAddService()
 
-    private let functions = Functions.functions(region: Secrets.anthroProxyRegion)
+    // MUST stay lazy (@ObservationIgnored because lazy in @Observable): this singleton is a
+    // default argument on EntryFormViewModel's init, which SwiftUI evaluates while building the
+    // form view — in demo/UI-test bootstrap Firebase is never configured, and an eager
+    // Functions.functions() here crashes every entry form. 4th instance of this crash class in
+    // this repo (see the firebase-preconfigure-crash memory).
+    @ObservationIgnored private lazy var functions = Functions.functions(region: Secrets.anthroProxyRegion)
 
     private init() {}
 

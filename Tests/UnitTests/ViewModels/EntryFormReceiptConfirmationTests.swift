@@ -82,7 +82,7 @@ struct EntryFormReceiptConfirmationTests {
                 entryType: .maintenance, odometerReading: 12_100, cost: nil, shopName: nil,
                 isDiy: nil, entryDate: nil, notes: nil, lineItems: nil
             ),
-            attachments: [], token: token
+            attachments: [], token: token, quota: nil
         )
     }
 

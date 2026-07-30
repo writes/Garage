@@ -122,7 +122,7 @@ struct FormOpenedAnalyticsTests {
                     entryType: .fuel, odometerReading: nil, cost: nil, shopName: nil,
                     isDiy: nil, entryDate: nil, notes: nil, lineItems: nil
                 ),
-                attachments: []
+                attachments: [], token: nil, quota: nil
             )
         )
         #expect(spy.events == [.formOpened(form: .entry)])

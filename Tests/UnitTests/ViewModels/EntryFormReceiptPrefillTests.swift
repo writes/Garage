@@ -183,7 +183,7 @@ struct EntryFormReceiptPrefillTests {
     private func package(
         _ proposal: ReceiptEntryProposal, attachments: [ReceiptPrefillAttachment] = []
     ) -> ReceiptPrefillPackage {
-        ReceiptPrefillPackage(proposal: proposal, attachments: attachments)
+        ReceiptPrefillPackage(proposal: proposal, attachments: attachments, token: nil, quota: nil)
     }
 
     private func testVehicle() -> Vehicle {

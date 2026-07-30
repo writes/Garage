@@ -11,7 +11,7 @@ final class ReceiptCaptureViewModel {
     static let maxPages = ReceiptPreflighter.maxPages
 
     private let preflighter: any ReceiptPreflighting
-    private let service: any ReceiptQuickAddCalling
+    let service: any ReceiptQuickAddCalling
     private let securityScope: any OilAnalysisPDFSecurityScopeAccessing
     private let analytics: any AnalyticsTracking
     private let now: () -> Date
@@ -23,7 +23,7 @@ final class ReceiptCaptureViewModel {
     private(set) var proposal: ReceiptEntryProposal?
     private(set) var proposalToken: String?
     private(set) var proposalQuota: ReceiptQuotaSnapshot?
-    private(set) var quotaSnapshot: ReceiptQuotaSnapshot?
+    var quotaSnapshot: ReceiptQuotaSnapshot? // internal for the +QuotaStatus sibling file; views must not write it
 
     private var pdfLease: OilAnalysisPDFSecurityScopeLease?
     private var pdfPreflightTask: Task<Void, Never>?

@@ -83,7 +83,7 @@ struct ReceiptCaptureQuotaStatusTests {
 
     @Test func proMonthDenialMapsToQuotaAnalytics() async {
         let resetAt = Date(timeIntervalSince1970: 100)
-        let service = FakeReceiptService(result: .failure(.proMonthExhausted(resetAt: resetAt)))
+        let service = FakeReceiptService(result: .failure(ReceiptCallableError.proMonthExhausted(resetAt: resetAt)))
         let analytics = AnalyticsSpy()
         let viewModel = makeReceiptCaptureViewModel(service: service, analytics: analytics)
         viewModel.addImage(Data([0x01]), source: .camera)

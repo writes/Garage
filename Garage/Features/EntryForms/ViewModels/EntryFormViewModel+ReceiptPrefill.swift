@@ -150,6 +150,7 @@ struct ReceiptPrefillEffectiveSeed: Equatable {
     let diy: Bool?
     let notes: String?
 
+    @MainActor
     func isEdited(_ field: ReceiptPrefillField, in form: EntryFormViewModel) -> Bool {
         switch field {
         case .date: return date.map { $0 != form.entryDate } ?? false

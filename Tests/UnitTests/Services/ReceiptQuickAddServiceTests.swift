@@ -27,10 +27,18 @@ struct ReceiptQuickAddServiceTests {
         "token":"7d9ba0d8-7cc3-46a3-9a71-9a218dcbef87","quota":{"entitlement":"pro","scanRemaining":79,
         "scanCeiling":80,"confirmedRemaining":19,"confirmedAllowance":20,"resetAt":"2026-08-01T00:00:00.000Z"}}
         """#.utf8)
+        // Mirrors the production decode: proposal fields at the top level, quota nested under
+        // its additive key — decoding the snapshot from the top level was this test's own bug.
+        struct AdditiveMetadata: Decodable {
+            let token: String?
+            let quota: ReceiptQuotaSnapshot?
+        }
         let proposal = try JSONDecoder().decode(ReceiptEntryProposal.self, from: json)
-        let quota = try JSONDecoder().decode(ReceiptQuotaSnapshot.self, from: json)
+        let metadata = try JSONDecoder().decode(AdditiveMetadata.self, from: json)
+        let quota = try #require(metadata.quota)
 
         #expect(proposal.entryType == .oilChange)
+        #expect(metadata.token == "7d9ba0d8-7cc3-46a3-9a71-9a218dcbef87")
         #expect(quota == ReceiptQuotaSnapshot(
             entitlement: .pro, scanRemaining: 79, scanCeiling: 80,
             confirmedRemaining: 19, confirmedAllowance: 20, resetAt: "2026-08-01T00:00:00.000Z"

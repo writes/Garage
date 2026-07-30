@@ -151,7 +151,7 @@ struct AppRouterTests {
                 entryType: .maintenance, odometerReading: 100, cost: nil,
                 shopName: nil, isDiy: nil, entryDate: nil, notes: nil, lineItems: nil
             ),
-            attachments: []
+            attachments: [], token: nil, quota: nil
         )
     }
 
