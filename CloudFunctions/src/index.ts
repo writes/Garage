@@ -4,6 +4,7 @@ import { voiceQuickAdd } from "./functions/voiceQuickAdd";
 import { receiptQuickAdd } from "./functions/receiptQuickAdd";
 import { confirmReceiptScan } from "./functions/confirmReceiptScan";
 import { receiptQuotaStatus } from "./functions/receiptQuotaStatus";
+import { reconcileReceiptCreditPurchase } from "./functions/reconcileReceiptCreditPurchase";
 import { handleRevenueCatWebhook } from "./functions/revenueCatWebhook";
 import { lookupRecalls } from "./functions/nhtsaRecalls";
 import { deleteAccount } from "./functions/deleteAccount";
@@ -25,6 +26,7 @@ export {
   parseOilAnalysis,
   receiptQuickAdd,
   receiptQuotaStatus,
+  reconcileReceiptCreditPurchase,
   recomputeVehicleOdometer,
   voiceQuickAdd,
 };

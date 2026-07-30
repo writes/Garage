@@ -206,6 +206,10 @@ describe("receiptQuickAddRequest quota", () => {
       confirmedRemaining: FREE_LIFETIME_CONFIRMED_QUOTA - 1,
       confirmedAllowance: FREE_LIFETIME_CONFIRMED_QUOTA,
       resetAt: null,
+      creditsRemaining: 0,
+      creditsScanRemaining: 0,
+      creditsGranted: 0,
+      creditsDeficit: 0,
     });
     expect(db.data("usage_quotas/owner-1_receipt_lifetime")).toMatchObject({
       count: 1,

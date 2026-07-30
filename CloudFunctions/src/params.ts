@@ -5,8 +5,10 @@ import { defineSecret } from "firebase-functions/params";
 // per-function is what makes `.value()` return the real secret in prod. Set them with:
 //   firebase functions:secrets:set ANTHROPIC_API_KEY
 //   firebase functions:secrets:set REVENUECAT_WEBHOOK_AUTH
+//   firebase functions:secrets:set REVENUECAT_SECRET_API_KEY
 export const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 export const revenueCatWebhookAuth = defineSecret("REVENUECAT_WEBHOOK_AUTH");
+export const revenueCatSecretApiKey = defineSecret("REVENUECAT_SECRET_API_KEY");
 
 /**
  * Webhook source checks are deliberately ordinary runtime configuration, not secrets. Reading
@@ -23,4 +25,9 @@ export function revenueCatExpectedStore(): string | undefined {
 
 export function revenueCatAllowedEnvironments(): string | undefined {
   return process.env.RC_ALLOWED_ENVIRONMENTS;
+}
+
+/** Required only by the RC v2 reconciliation/erasure callables; webhooks must never depend on it. */
+export function revenueCatProjectId(): string | undefined {
+  return process.env.RC_PROJECT_ID;
 }

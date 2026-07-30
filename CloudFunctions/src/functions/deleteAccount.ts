@@ -1,8 +1,10 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
-import { getFirestore, FieldPath } from "firebase-admin/firestore";
+import { getFirestore, FieldPath, FieldValue } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { getStorage } from "firebase-admin/storage";
+import { revenueCatProjectId, revenueCatSecretApiKey } from "../params";
+import { receiptCreditUidHash } from "./creditLedger";
 
 export interface DeleteAccountRequest {
   auth: { uid: string } | null;
@@ -11,12 +13,15 @@ export interface DeleteAccountRequest {
 /// Each step is injected so the destructive orchestration (order + guards) is unit-tested without
 /// touching real Firestore/Storage/Auth.
 export interface DeleteAccountDeps {
+  writeDeletionTombstone(uid: string): Promise<void>;
   listUserVehicleIds(uid: string): Promise<string[]>;
   deleteVehicleCascade(vehicleId: string): Promise<void>;
   deleteUserDoc(uid: string): Promise<void>;
   deleteUserQuotas(uid: string): Promise<void>;
   deleteReceiptScanTokens(uid: string): Promise<void>;
   deleteRevenueCatEvents(uid: string): Promise<void>;
+  deleteReceiptCreditEvents(uid: string): Promise<void>;
+  anonymizeReceiptCreditTransactions(uid: string): Promise<void>;
   eraseRevenueCatSubscriber(uid: string): Promise<void>;
   deleteUserStorage(uid: string): Promise<void>;
   deleteAuthUser(uid: string): Promise<void>;
@@ -32,14 +37,19 @@ export async function eraseRevenueCatSubscriberImpl(
   uid: string,
   fetchImpl: typeof fetch,
   secretKey: string | undefined,
+  projectId: string | undefined,
 ): Promise<void> {
   const key = (secretKey ?? "").trim();
   if (!key) {
     logger.warn("revenuecat erasure skipped: REVENUECAT_SECRET_API_KEY unset; subscriber record retained", { uid });
     return;
   }
+  const project = (projectId ?? "").trim();
+  if (!project) {
+    throw new HttpsError("unavailable", "RevenueCat project configuration is unavailable.");
+  }
   const response = await fetchImpl(
-    `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(uid)}`,
+    `https://api.revenuecat.com/v2/projects/${encodeURIComponent(project)}/customers/${encodeURIComponent(uid)}`,
     {
       method: "DELETE",
       headers: { Authorization: `Bearer ${key}` },
@@ -56,6 +66,19 @@ export interface DeleteAccountResult {
   vehiclesDeleted: number;
 }
 
+/** Kept as a named helper so the immutable ledger-anonymization shape has a direct unit pin. */
+export function receiptCreditTransactionAnonymizationFields(): {
+  uid: "__deleted__";
+  transactionId: ReturnType<typeof FieldValue.delete>;
+  eventIds: ReturnType<typeof FieldValue.delete>;
+} {
+  return {
+    uid: "__deleted__",
+    transactionId: FieldValue.delete(),
+    eventIds: FieldValue.delete(),
+  };
+}
+
 
 export async function deleteAccountRequest(
   request: DeleteAccountRequest,
@@ -69,8 +92,12 @@ export async function deleteAccountRequest(
   // Data FIRST, auth LAST. If any step fails the user can still sign in and retry, and we never
   // orphan Firestore/Storage data behind a deleted auth user (which nothing could then reach).
   // Per-step logging: on a mid-cascade failure the log shows exactly how far deletion got.
-  let step = "listUserVehicleIds";
+  let step = "writeDeletionTombstone";
   try {
+    // This is intentionally first. Credit-webhook/reconcile ingress checks this one-way uid hash
+    // before it can recreate a quota, ledger, or event record during a retrying cascade.
+    await deps.writeDeletionTombstone(uid);
+    step = "listUserVehicleIds";
     const vehicleIds = await deps.listUserVehicleIds(uid);
     step = "deleteVehicleCascade";
     for (const vehicleId of vehicleIds) {
@@ -84,6 +111,12 @@ export async function deleteAccountRequest(
     await deps.deleteReceiptScanTokens(uid);
     step = "deleteRevenueCatEvents";
     await deps.deleteRevenueCatEvents(uid);
+    step = "deleteReceiptCreditEvents";
+    await deps.deleteReceiptCreditEvents(uid);
+    // Transaction documents are permanent App Store idempotency keys. Strip raw transaction/event
+    // identifiers and sentinel-anonymize the beneficiary; never delete this replay-prevention row.
+    step = "anonymizeReceiptCreditTransactions";
+    await deps.anonymizeReceiptCreditTransactions(uid);
     step = "eraseRevenueCatSubscriber";
     await deps.eraseRevenueCatSubscriber(uid);
     step = "deleteUserStorage";
@@ -103,7 +136,13 @@ export async function deleteAccountRequest(
 }
 
 export const deleteAccount = onCall(
-  { region: "us-central1", enforceAppCheck: true, timeoutSeconds: 300, memory: "512MiB" },
+  {
+    region: "us-central1",
+    enforceAppCheck: true,
+    timeoutSeconds: 300,
+    memory: "512MiB",
+    secrets: [revenueCatSecretApiKey],
+  },
   async (request): Promise<DeleteAccountResult> => {
     const db = getFirestore();
     const auth = getAuth();
@@ -111,6 +150,11 @@ export const deleteAccount = onCall(
     const result = await deleteAccountRequest(
       { auth: request.auth ? { uid: request.auth.uid } : null },
       {
+        async writeDeletionTombstone(uid) {
+          await db.collection("deleted_users").doc(receiptCreditUidHash(uid)).set({
+            deletedAtMillis: Date.now(),
+          }, { merge: true });
+        },
         async listUserVehicleIds(uid) {
           const snapshot = await db.collection("vehicles").where("userId", "==", uid).get();
           return snapshot.docs.map((docRef) => docRef.id);
@@ -148,8 +192,35 @@ export const deleteAccount = onCall(
           const snapshot = await db.collection("revenuecat_events").where("appUserId", "==", uid).get();
           await Promise.all(snapshot.docs.map((eventDoc) => eventDoc.ref.delete()));
         },
+        async deleteReceiptCreditEvents(uid) {
+          const snapshot = await db.collection("revenuecat_events")
+            .where("beneficiaryUidHash", "==", receiptCreditUidHash(uid))
+            .get();
+          for (let index = 0; index < snapshot.docs.length; index += 500) {
+            const batch = db.batch();
+            for (const eventDoc of snapshot.docs.slice(index, index + 500)) batch.delete(eventDoc.ref);
+            await batch.commit();
+          }
+        },
+        async anonymizeReceiptCreditTransactions(uid) {
+          const snapshot = await db.collection("receipt_credit_txns").where("uid", "==", uid).get();
+          for (let index = 0; index < snapshot.docs.length; index += 500) {
+            const batch = db.batch();
+            for (const transactionDoc of snapshot.docs.slice(index, index + 500)) {
+              batch.update(transactionDoc.ref, {
+                ...receiptCreditTransactionAnonymizationFields(),
+              });
+            }
+            await batch.commit();
+          }
+        },
         async eraseRevenueCatSubscriber(uid) {
-          await eraseRevenueCatSubscriberImpl(uid, fetch, process.env.REVENUECAT_SECRET_API_KEY);
+          await eraseRevenueCatSubscriberImpl(
+            uid,
+            fetch,
+            revenueCatSecretApiKey.value() || process.env.REVENUECAT_SECRET_API_KEY,
+            revenueCatProjectId(),
+          );
         },
         async deleteUserStorage(uid) {
           await bucket.deleteFiles({ prefix: `users/${uid}/` });
