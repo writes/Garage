@@ -89,10 +89,11 @@ describe("Firestore authorization", () => {
     await assertFails(getDocs(collection(anonymousDb, "users")));
   });
 
-  it("[QUOTA-RULES] denies all client reads and writes to server-only quota and scan-token documents", async () => {
+  it("[QUOTA-RULES] denies all client reads and writes to server-only quota, scan-token, and recall-cache documents", async () => {
     await testEnvironment?.withSecurityRulesDisabled(async (context) => {
       await setDoc(doc(context.firestore(), "usage_quotas", "owner-1_receipt_lifetime"), { count: 1 });
       await setDoc(doc(context.firestore(), "receipt_scan_tokens", "token-1"), { uid: "owner-1", consumed: false });
+      await setDoc(doc(context.firestore(), "recall_lookups", "1HGCM82633A004352"), { vin: "1HGCM82633A004352" });
     });
     const ownerDb = testEnvironment.authenticatedContext("owner-1").firestore();
 
@@ -102,6 +103,9 @@ describe("Firestore authorization", () => {
     await assertFails(getDoc(doc(ownerDb, "receipt_scan_tokens", "token-1")));
     await assertFails(setDoc(doc(ownerDb, "receipt_scan_tokens", "token-1"), { consumed: true }, { merge: true }));
     await assertFails(getDocs(collection(ownerDb, "receipt_scan_tokens")));
+    await assertFails(getDoc(doc(ownerDb, "recall_lookups", "1HGCM82633A004352")));
+    await assertFails(setDoc(doc(ownerDb, "recall_lookups", "1HGCM82633A004352"), { vin: "forged" }));
+    await assertFails(getDocs(collection(ownerDb, "recall_lookups")));
   });
 
   it("[QUOTA-EMULATOR] serializes two parallel confirmation-shaped transactions so exactly one consumes a token", async () => {
