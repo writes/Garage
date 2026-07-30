@@ -4,19 +4,20 @@ import Testing
 
 @MainActor
 struct LogViewModelTests {
-    @Test func reload_docStringHonesty_fetchesOnlyTheNewestCappedPage() async {
+    /// One page, not the 500-entry cap: this reload re-runs on every revision bump.
+    @Test func reload_fetchesExactlyOnePageOfTheNewestHistory() async {
         let service = EntryService(testEntries: makeEntries(count: 550))
         let viewModel = LogViewModel(entryService: service)
 
         await viewModel.reload(vehicleId: "vehicle")
 
-        #expect(viewModel.allEntries.count == 500)
-        #expect(viewModel.entries.count == 500)
+        #expect(viewModel.allEntries.count == Constants.logPageSize)
+        #expect(viewModel.entries.count == Constants.logPageSize)
         #expect(viewModel.hasMoreEntries)
     }
 
     @Test func loadMore_appendsTheNextPageAndReappliesTheActiveFilter() async {
-        let service = EntryService(testEntries: makeEntries(count: 550))
+        let service = EntryService(testEntries: makeEntries(count: 60))
         let viewModel = LogViewModel(entryService: service)
         await viewModel.reload(vehicleId: "vehicle")
         viewModel.selectedTypes = [.maintenance]
@@ -25,10 +26,30 @@ struct LogViewModelTests {
 
         await viewModel.loadMore()
 
-        #expect(viewModel.allEntries.count == 550)
+        #expect(viewModel.allEntries.count == 60)
         #expect(viewModel.hasMoreEntries == false)
         #expect(viewModel.entries.count > filteredCountBeforeLoadMore)
         #expect(viewModel.entries.allSatisfy { $0.entryType == .maintenance })
+    }
+
+    /// Pins BOTH halves of the paging contract: each request asks for exactly one page, and the
+    /// next request resumes from the cursor the previous page returned — which the fetch anchors on
+    /// the last DOCUMENT it consumed. Deriving a cursor from the loaded entries instead would loop
+    /// forever on an undecodable document (the tolerant-decode invariant this cursor exists for).
+    @Test func paging_requestsOnePageAtATimeAndResumesFromTheReturnedCursor() async {
+        let fetcher = RecordingPageFetcher(entries: makeEntries(count: 120))
+        let viewModel = LogViewModel(pageFetch: fetcher.fetch)
+
+        await viewModel.reload(vehicleId: "vehicle")
+        let firstPageLastID = viewModel.allEntries.last?.id
+        await viewModel.loadMore()
+
+        #expect(fetcher.limits == [Constants.logPageSize, Constants.logPageSize])
+        #expect(fetcher.cursorIDs == [nil, firstPageLastID])
+        #expect(viewModel.allEntries.count == Constants.logPageSize * 2)
+        // No overlap and no gap: page two starts exactly after page one's last document.
+        #expect(Set(viewModel.allEntries.map(\.id)).count == viewModel.allEntries.count)
+        #expect(viewModel.hasMoreEntries)
     }
 
     @Test func loadMore_withNoAdditionalHistoryIsANoOp() async {
@@ -122,6 +143,25 @@ private extension LogViewModelTests {
                 updatedAt: nil
             )
         }
+    }
+}
+
+/// Records what the view model actually ASKED for (page size + resume cursor) while serving real
+/// pages out of the in-memory pager, so the request shape is asserted rather than inferred.
+@MainActor
+private final class RecordingPageFetcher {
+    private let entries: [FirestoreEntry]
+    private(set) var limits: [Int] = []
+    private(set) var cursorIDs: [String?] = []
+
+    init(entries: [FirestoreEntry]) {
+        self.entries = entries
+    }
+
+    func fetch(query: EntryQuery, limit: Int, cursor: EntryCursor?) async throws -> EntryPage {
+        limits.append(limit)
+        cursorIDs.append(cursor?.documentID)
+        return EntryService.page(entries, matching: query, limit: limit, after: cursor)
     }
 }
 

@@ -4,6 +4,12 @@ enum Constants {
     static let maxFreeVehicles = 1
     static let maxProVehicles = 5
     static let pageSize = 20
+    /// One Log page. The tab used to fetch `maxLogEntries` (500) documents on EVERY revision bump
+    /// and again per Load More, so a returning owner paid a 500-document read to look at the dozen
+    /// rows that fit on screen. Load More pages older history in progressively — the cursor
+    /// semantics that make that safe live in EntryService.fetchEntries.
+    static let logPageSize = 50
+    /// Not a fetch bound any more — only the Log footer's "showing the most recent N" caption.
     static let maxLogEntries = 500
     static let dashboardRecentLimit = 10
     /// STORE product identifiers, and they must match App Store Connect **exactly**.
