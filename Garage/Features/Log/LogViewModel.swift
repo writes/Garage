@@ -46,10 +46,13 @@ final class LogViewModel {
         }
     }
 
-    /// Fetches the vehicle's newest `Constants.maxLogEntries` entries, then filters client-side.
+    /// Fetches the vehicle's newest `Constants.logPageSize` entries, then filters client-side.
     /// Search and type changes re-filter the cached page without re-fetching, so a keystroke never
     /// triggers a Firestore round-trip — but search only covers the entries currently loaded, not
     /// the vehicle's full history. Call loadMore() to pull older entries into the loaded set.
+    ///
+    /// One page, not the whole 500-entry cap: a revision bump (any write, any screen) re-runs this,
+    /// and the tab renders a dozen rows. Deeper history is paged in on demand.
     func reload(vehicleId: String) async {
         let currentKey = LoadKey(vehicleId: vehicleId, revision: revisionStore.revision(for: vehicleId))
         // Demo/UI-test runtimes never skip: demo writes bump a different counter, and UI-test
@@ -62,7 +65,7 @@ final class LogViewModel {
 
         do {
             let query = EntryQuery(vehicleId: vehicleId, entryTypes: [], searchText: "")
-            let page = try await pageFetch(query, Constants.maxLogEntries, nil)
+            let page = try await pageFetch(query, Constants.logPageSize, nil)
             guard token == reloadToken else { return }
             loadedVehicleId = vehicleId
             allEntries = page.entries
@@ -77,7 +80,11 @@ final class LogViewModel {
         }
     }
 
-    /// Appends the next page of older history. Not revision-gated (it's additive, not a reload).
+    /// Appends the next page of older history, resuming from `nextCursor` — which the fetch anchored
+    /// on the last DOCUMENT of the previous page, not its last decoded entry, so a skipped corrupt
+    /// document is paged PAST rather than looped on. Passing that cursor straight back through
+    /// unmodified is the whole contract; this method must never derive its own from `allEntries`.
+    /// Not revision-gated (it's additive, not a reload).
     /// Three guards: concurrent taps (isLoadingMore); an in-flight reload() (isLoading) — reload()
     /// only replaces nextCursor/loadedVehicleId on success, so without this a loadMore() racing a
     /// vehicle-switching reload() could fire using the PREVIOUS vehicle's still-stale cursor; and
@@ -89,7 +96,7 @@ final class LogViewModel {
         let token = reloadToken
         do {
             let query = EntryQuery(vehicleId: vehicleId, entryTypes: [], searchText: "")
-            let page = try await pageFetch(query, Constants.maxLogEntries, cursor)
+            let page = try await pageFetch(query, Constants.logPageSize, cursor)
             guard token == reloadToken else { return }
             allEntries += page.entries
             nextCursor = page.nextCursor
