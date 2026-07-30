@@ -80,6 +80,24 @@ describe("confirmReceiptScanRequest", () => {
     expect(db.data("usage_quotas/owner-1_receipt_confirmed_lifetime")).toMatchObject({ count: 1, reserved: 0 });
   });
 
+  it("rejects a released token instead of reporting a confirmation that never happened", async () => {
+    // A token voided by the expiry sweep or a refund path is consumed+released with its
+    // reservation already returned. Only a real confirmation may be idempotent-success —
+    // success here would hide the miss from the client's confirm-failure telemetry.
+    const db = new InMemoryFirestore();
+    seedFreeReservation(db, { consumed: true });
+    db.seed(`receipt_scan_tokens/${freeToken}`, {
+      ...db.data(`receipt_scan_tokens/${freeToken}`),
+      released: true,
+    });
+
+    await expect(confirmReceiptScanRequest(request(freeToken), dependencies(db))).rejects.toMatchObject({
+      code: "failed-precondition",
+      details: { reason: "receipt_token_expired" },
+    });
+    expect(db.data("usage_quotas/owner-1_receipt_confirmed_lifetime")).toMatchObject({ count: 0, reserved: 1 });
+  });
+
   it("rejects an expired unconsumed token and releases its reservation in the same transaction", async () => {
     const db = new InMemoryFirestore();
     seedFreeReservation(db, { expiresAtMillis: now.getTime() - 1 });

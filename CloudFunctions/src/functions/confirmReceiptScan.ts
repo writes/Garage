@@ -68,8 +68,12 @@ export async function confirmReceiptScanRequest(
     const reserved = confirmedSnapshot.exists ? safeQuotaCount(confirmedSnapshot.data()?.reserved) : 0;
 
     // A consumed token wins over expiry so a retry remains a successful idempotent confirmation,
-    // including when the client retries after the 24-hour timestamp has passed.
+    // including when the client retries after the 24-hour timestamp has passed. But only a token
+    // consumed by a real confirmation is idempotent-success: `released` marks tokens voided by the
+    // expiry sweep or a refund path, whose reservation was returned without any confirmed unit —
+    // reporting success for those would tell the client a confirmation happened that never did.
     if (token.consumed) {
+      if (token.released) return { kind: "expired" };
       return { kind: "idempotent", snapshot: receiptQuotaSnapshot(configuration, scanCount, confirmedCount, reserved) };
     }
 
