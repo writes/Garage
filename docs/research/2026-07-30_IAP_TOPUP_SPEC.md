@@ -1,16 +1,19 @@
-# Receipt-credit IAP top-ups — implementation spec (2026-07-30, rev 3)
+# Receipt-credit IAP top-ups — implementation spec (2026-07-30, rev 4)
 
 > Extends `2026-07-30_RECEIPT_QUOTA_REFACTOR_SPEC.md` (shipped; reservation model live).
 > Product: `com.writes.harrysplayhouse.credits.receipts10` ($0.99, +10 credits), created by
 > `scripts/release/create_receipt_credits_iap.py` (operator).
 > Tri-votes (DECISION_LEDGER 2026-07-30): Q1 scan-coupling **A unanimous**; Q2 clawback
 > **A unanimous**; Q3 audience **C majority** (details rev 1 header, unchanged).
-> Review chain: rev 1 NO-GO ×3 (Sol 15 / Gemini 6 / Grok 19 findings); rev 2 NO-GO ×3 —
-> all rev-1 remediations held EXCEPT the reviewers converged on: (a) the two-state txn
-> ledger was not order-independent, (b) the txn poll could not address the ledger, (c) the
-> hardcoded PRODUCTION filter contradicted the sandbox launch gate; plus Sol-r2 #2/#4–#14
-> and Grok-r2 #4–#7 detail findings. Rev 3 incorporates all of them. Reviews in session
-> scratchpad `{sol,gemini,grok}-iap-review*.txt`.
+> Review chain: rev 1 NO-GO ×3; rev 2 NO-GO ×3 (order-dependent ledger, unaddressable
+> poll, hardcoded env filter); rev 3 NO-GO ×3 — the monetary fold was VALIDATED by all
+> three reviewers (six permutations + refund cycle walked independently), remaining
+> findings: beneficiary arrival-order pinning, reconcile provenance (v1 merged-customer
+> history), txn-purge replay hole, App-Review sandbox conflict (resolved by tri-vote Q4:
+> **A unanimous** — prod accepts PRODUCTION+SANDBOX, flagged + warn-logged), packDelta
+> freezing, rejected-event replay poisoning, tombstone PII, sweep drain ceiling, secret
+> binding, checked arithmetic. Rev 4 incorporates all. Reviews in session scratchpad
+> `{sol,gemini,grok}-iap-review*.txt`.
 
 ## Model (unchanged from rev 2)
 
@@ -28,6 +31,9 @@ reserved, updatedAt}`; scan pool on `usage_quotas/${uid}_receipt_credit_scans`
   ≤ 40 × per-scan API cost (~$0.20 at the current DERIVED ~$0.005/scan estimate) — the
   dump path, not just in-flight TTL. Accepted and documented.
 - Balance `= max(0, eff − count − reserved)`; deficit `= max(0, count + reserved − eff)`.
+- Accepted residual (documented — Grok-r3-5): a confirm revoked post-clawback keeps its
+  credit-scan unit spent (the scan happened; consistent with non-refund-failure
+  semantics). One scan slot of the rebuy pool; not repaired.
 - Confirm-time integrity: credit-funded confirm re-checks `count < eff` in-transaction;
   failure releases the reservation, voids the token, errors `failed-precondition
   {reason: "receipt_credits_revoked"}` — **returned from the transaction as a result kind
@@ -40,16 +46,23 @@ reserved, updatedAt}`; scan pool on `usage_quotas/${uid}_receipt_credit_scans`
 `receipt_credit_txns/{docId}`, docId = **sha256 hex of
 `${appId}|${store}|${environment}|${transactionId}`** (collision-resistant; no
 sanitization aliasing). Raw `appId`, `store`, `environment`, `transactionId` retained as
-fields (lookup + invariant checks). Server-only; explicit rules deny pin; purged in
-deleteAccount by `uid ==` batched query.
+fields (lookup + invariant checks). Server-only; explicit rules deny pin. **NEVER purged**
+— these docs are global idempotency keys for App Store transactions and must OUTLIVE the
+account (Gemini-r3 CRIT: purge + reconcile = cross-account replay of the same Apple
+transaction); deleteAccount ANONYMIZES them instead (see 15).
 
-Fields: `uid` (beneficiary — pinned from the FIRST event that creates the doc; every
-fold for this txn targets that uid forever), `productId`, `packDelta` (0 until the
-purchase fact arrives; then `10 × clamp(quantity ?? 1, 1, 10)`), fact timestamps
-`purchaseAtMillis?`, `refundAtMillis?`, `reversalAtMillis?` (from `event_timestamp_ms`;
-refund/reversal keep the MAX seen — supports refund→reverse→refund cycles), applied
-markers `grantApplied`, `clawApplied`, `eventIds[]` (cap 20), `createdAtMillis`,
-`updatedAtMillis`.
+Fields: `uid` (beneficiary — **set ONLY by the purchase fact's `app_user_id`**, never by
+refund/reversal-only events; a refund-first doc keeps `uid` unset and the fold applies
+nothing until the purchase fact arrives and pins it — Sol-r3 CRIT-1: first-arrival
+pinning made attribution arrival-order-dependent under alias churn), `productId`,
+`packDelta` (**frozen once set** by the first purchase fact: `10 × clamp(quantity ?? 1,
+1, 10)`; a later purchase fact with a different quantity is a logged error and a no-op —
+multi-quantity purchases are documented UNSUPPORTED, the in-app UI always buys 1), fact
+timestamps `purchaseAtMillis?`, `refundAtMillis?`, `reversalAtMillis?` (from
+`event_timestamp_ms`, validated by `isTimestampMillis` — NOT `safeQuotaCount`, which is
+count-shaped; refund/reversal keep the MAX seen — supports refund→reverse→refund
+cycles), applied markers `grantApplied`, `clawApplied`, `eventIds[]` (cap 20),
+`createdAtMillis`, `updatedAtMillis`.
 
 **Fold algorithm** — run inside every credits-event transaction after recording the
 event's fact; deterministic in the FACTS (event timestamps), independent of arrival
@@ -66,15 +79,27 @@ if targetClaw && !clawApplied:  credits.clawed += packDelta;              clawAp
 if !targetClaw && clawApplied:  credits.clawed  = max(0, clawed − packDelta); clawApplied = false
 ```
 
-Event → fact mapping (credits product only): `NON_RENEWING_PURCHASE` → purchase fact
-(+packDelta, min timestamp wins if duplicated); `CANCELLATION` (ANY cancel_reason — a
-consumable cancellation is always a refund) → refund fact; `REFUND_REVERSED` → reversal
-fact; any other type → event recorded on `revenuecat_events`, `logger.error`, NO fact.
+Event → fact mapping (**exact product-id allowlist predicate, pinned**:
+`CREDITS_PRODUCT_IDS = {com.writes.harrysplayhouse.credits.receipts10}`; the branch runs
+BEFORE the subscription path on exact `product_id` membership only — Grok-r3-2):
+`NON_RENEWING_PURCHASE` → purchase fact (+packDelta, min timestamp wins if duplicated);
+`CANCELLATION` (ANY cancel_reason — a consumable cancellation is always a refund) →
+refund fact; `REFUND_REVERSED` → reversal fact; any other type → event recorded on
+`revenuecat_events`, `logger.error`, NO fact.
+Tie semantics, documented intentional: `reversalAtMillis == refundAtMillis` →
+`refundEffective == false` (equal timestamps favor the customer). Fold arithmetic is
+CHECKED with a domain max (`QUOTA_DOMAIN_MAX = 1_000_000`): any add/ceiling computation
+that would exceed it fails closed (logged error, no write) — `safeQuotaCount` alone
+admits values up to MAX_SAFE_INTEGER (Sol-r3-10).
 This resolves every rev-2 hole: refund-before-purchase nets zero but leaves the ledger
 whole (late purchase applies grant AND claw together), a later reversal restores +10;
 purchase→reversal→late-cancellation compares TIMESTAMPS so the stale refund never claws.
 **Tests: all 6 arrival permutations of {purchase, cancellation, reversal} + duplicates
-+ refund→reverse→refund, asserting final aggregates per the fold.**
++ refund→reverse→refund, asserting final aggregates per the fold; the SAME 6
+permutations with purchase uid A and refund/reversal alias B asserting the per-UID
+quota docs (not just global totals — beneficiary must be A in every ordering);
+conflicting-quantity duplicate purchase facts in both orders (no-op + error log);
+boundary tests at QUOTA_DOMAIN_MAX.**
 
 ## revenueCatWebhook.ts
 
@@ -82,19 +107,33 @@ purchase→reversal→late-cancellation compares TIMESTAMPS so the stale refund 
    `null` tests). Parse optional `product_id`, `transaction_id`, `environment`, `store`,
    `app_id`, `quantity`. Subscription payload regression suite passes byte-identical.
 2. **Source filter — config-driven, fail-closed** (env/params, not hardcoded):
-   `RC_EXPECTED_APP_ID`, `RC_EXPECTED_STORE` (=`APP_STORE`), `RC_EXPECTED_ENVIRONMENT`
-   (`PRODUCTION` in the prod project; `SANDBOX` in the staging project — the sandbox
-   launch gate runs against staging with its own RC webhook). Credits events where any
-   of the three mismatches OR `app_id`/`transaction_id` is missing/empty (RC documents
-   both as present — missing = malformed, fail closed): 200-acknowledged, recorded,
-   `logger.warn` for environment mismatch / `logger.error` otherwise, ZERO ledger
-   mutation. All rejection cases pinned.
+   `RC_EXPECTED_APP_ID`, `RC_EXPECTED_STORE` (=`APP_STORE`),
+   `RC_ALLOWED_ENVIRONMENTS` (comma list). **Tri-vote Q4, unanimous A**: prod =
+   `PRODUCTION,SANDBOX` — App Store reviewers purchase with sandbox Apple IDs against
+   the production backend, and Apple's receipt guidance requires production servers to
+   tolerate sandbox during review; a strict filter breaks the review flow (Gemini-r3
+   CRIT-2). SANDBOX grants are accepted, ledger-flagged (`environment` field),
+   `logger.warn`ed, and bounded by the 4x ratio (TestFlight-tester minting accepted:
+   2 trusted testers). Staging (if used) = `SANDBOX`. Credits events where app_id/
+   store mismatch, environment ∉ allowed set, or `app_id`/`transaction_id` is
+   missing/empty (RC documents both as present — missing = malformed, fail closed):
+   200-acknowledged, `logger.warn` (environment) / `logger.error` (otherwise), ZERO
+   ledger mutation — and the event record carries a **retryable disposition**
+   `rejected_source_config` (Sol-r3-5): a later re-send of the SAME event id may
+   transition it atomically to applied once the current config accepts it, so a
+   temporary config error is not a permanent grant/claw loss. **If any RC_* expected
+   config is unset/empty, ALL credits mutations are rejected** (reject-all, not
+   match-all — Grok-r3-4). All rejection + retry cases pinned.
 3. **Credits branch = separate handler + transaction** (never threaded through the
    subscription branch). Reads, ALL before any write: `revenuecat_events/{event.id}`
-   (duplicate → no-op), `deleted_users/{uid}` tombstone (see 12 — present → record event
-   inert, no ledger/quota writes), `receipt_credit_txns/{docId}`, beneficiary's
-   `${uid}_receipt_credits`. Then fact update + fold + event record. Emulator test: two
-   CONCURRENT identical deliveries → exactly one grant.
+   (duplicate → no-op unless `rejected_source_config`, which is retryable per 2),
+   `deleted_users/{sha256(uid)}` tombstone (see 15 — present → **log non-identifying
+   metadata only (event id + type), write NOTHING**, not even the event record: a
+   user-linked `revenuecat_events` doc after the purge would resurrect deleted-user
+   data — Sol-r3-6), `receipt_credit_txns/{docId}`, beneficiary's
+   `${uid}_receipt_credits`. Then fact update + fold + event record. Emulator tests:
+   two CONCURRENT identical deliveries → exactly one grant; webhook delivered AFTER a
+   completed deletion purge → no user-linked document reappears.
 4. Never a subscription write from the credits branch, even with
    `entitlement_ids ∋ "pro"` (grant credits, skip entitlement, `logger.error`; pinned).
 5. Lifetime-grant hardening: `lifetimeGrantEventTypes` → explicit EMPTY allowlist (no
@@ -102,8 +141,9 @@ purchase→reversal→late-cancellation compares TIMESTAMPS so the stale refund 
    `skipped_no_expiration` + error log. Deliberate behavior change, pinned.
 6. `revenuecat_events` records gain `productId`, `transactionId`, `environment`,
    `store`, `packDelta` when present (no PII).
-7. `granted`/`clawed`/`packDelta`/fact-timestamps all through `safeQuotaCount`-class
-   numeric hardening.
+7. Numeric hardening split by shape: `granted`/`clawed`/`packDelta`/counts through
+   `safeQuotaCount` + the checked `QUOTA_DOMAIN_MAX` arithmetic; fact timestamps
+   through `isTimestampMillis` (Grok-r3-8).
 8. TRANSFER: no credits movement; txn-pinned beneficiary keeps refund/reversal
    attribution stable across alias churn. Support-docs note: account merge ≠ credits.
 
@@ -114,11 +154,14 @@ purchase→reversal→late-cancellation compares TIMESTAMPS so the stale refund 
    (even with zero expired tokens) so admission/status read credit state exclusively
    from the post-release map (Grok-r2-4; Sol-r1-8 pin: expired credit token + fallback
    admission in one transaction ends `reserved == 1`). When the expired-token query
-   returns a full `limit(10)` page, the transaction result carries
-   `sweepIncomplete: true` → status echoes it and the client immediately re-fetches
-   (cap 5 rounds) so a paid account with >10 expired reservations converges instead of
-   staying latched (Sol-r2-10). Regression: 12 expired credit tokens → two status
-   calls fully reconcile.
+   returns a full `limit(10)` page, STATUS drains SERVER-SIDE: it runs further bounded
+   sweep transactions (max 10 rounds per call, i.e. 100 tokens) until a page comes back
+   non-full or the budget is hit, and only then responds — `sweepIncomplete: true` only
+   when the budget was exhausted with a still-full page (Sol-r3-7: a five-round CLIENT
+   cap had a hard 50-token correctness ceiling and a full-final-page false positive).
+   Client re-fetches on `sweepIncomplete` (cap 5 — now 500+ tokens/interaction, far
+   beyond any real balance). Admission keeps its single sweep page (denial heals via
+   status refresh). Regressions at 10, 12, 50, 51, and 120 expired reservations.
 10. **Admission fallback** (reads add: credits + credit-scans + tombstone-free... no —
     admission needs no tombstone; reads add the two credit docs only, all before
     writes): base route exactly as today; else credits route iff
@@ -164,27 +207,46 @@ purchase→reversal→late-cancellation compares TIMESTAMPS so the stale refund 
 
 ## reconcileReceiptCreditPurchase.ts (NEW export — Sol-r2-2: repair is in scope)
 
-14. `onCall({enforceAppCheck, timeoutSeconds: 30})`, auth required. Input
-    `{transactionId}` (validated shape first). Requires `REVENUECAT_SECRET_API_KEY`;
-    unset → `unavailable` (fail-soft precedent: RC subscriber erasure). Flow: GET RC
-    REST `subscribers/{uid}` (15s AbortSignal) → `non_subscriptions[productId]` →
-    find the transaction; found → fold the purchase fact into the ledger through the
-    SAME transaction machinery (idempotent — a webhook that later arrives is a
-    no-op), recording `eventIds += ["reconcile:" + txnId]`. Not found → `not-found`
-    (client shows grant_missing). Per-uid rate limit 10/day via `usage_quotas`
-    bucket. Operator queue item (d) — creating the RC secret key — becomes a
-    launch-gate prerequisite for flipping the capability flag.
+14. `onCall({enforceAppCheck, timeoutSeconds: 30, secrets: [revenueCatSecretApiKey]})`,
+    auth required. **The secret is a defined param bound to this function AND to
+    `deleteAccount`** (Sol-r3-8: v2 functions receive Secret Manager values only when
+    the secret is defined and bound per function — a bare `process.env` read can pass
+    the operator checklist yet stay permanently `unavailable`; read via the param API
+    with `process.env` fallback for `.env` deployments; deploy verification asserts
+    the binding on the running revisions). Input `{transactionId}` (shape-validated
+    first). Key unset → `unavailable` (fail-soft precedent: RC erasure).
+    **Provenance — transaction-addressed, never merged-customer history** (Sol-r3
+    CRIT-2/3, Gemini-r3-3, Grok-r3-3): look the transaction up via the RC **v2 API**
+    (purchase lookup by store transaction id; 15s AbortSignal) and require ALL of:
+    original customer id == caller's uid (transferred ownership → reject),
+    product ∈ `CREDITS_PRODUCT_IDS`, store == `RC_EXPECTED_STORE`, environment ∈
+    `RC_ALLOWED_ENVIRONMENTS`, app matches, and the purchase is NOT refunded/removed
+    (a lost CANCELLATION must not be resurrect-granted — claw stays webhook-primary).
+    Any failure → `not-found` (uniform, no oracle). Success → fold the purchase fact
+    (quantity from the v2 response) through the SAME transaction machinery
+    (idempotent with any later webhook), `eventIds += ["reconcile:" + txnId]`.
+    Returns typed `{transactionState, quota: snapshot}` and the client routes it
+    through the SAME terminal transition as polling (`granted` / `refunded` /
+    `unknown` — Sol-r3-9). Rejection tests: sandbox-not-allowed, wrong app/store,
+    transferred, refunded, foreign-uid. Per-uid rate limit 10/day via `usage_quotas`.
+    Operator queue item (d) — the RC secret key — is a launch-gate prerequisite for
+    flipping the capability flag.
 
 ## deleteAccount.ts
 
-15. **Tombstone first** (Sol-r2-7): write `deleted_users/{uid}
-    {deletedAtMillis}` as the new FIRST cascade step; the credits webhook and
-    reconcile callable read it and go inert for deleted uids (late/queued webhooks
-    cannot resurrect ledger or quota docs). Add `receipt_credit_txns` `uid ==`
-    batched purge (500/batch). The two quota docs are covered by the `${uid}_`
-    prefix purge; test pins all four surfaces + the deletion-races-grant case.
-    (The subscription webhook's own late-event resurrection of `users/{uid}` is
-    PRE-EXISTING and out of scope; documented.)
+15. **Tombstone first** (Sol-r2-7): write `deleted_users/{sha256(uid)}
+    {deletedAtMillis}` — **keyed by one-way UID hash, no raw uid field** (Sol-r3-6)
+    — as the new FIRST cascade step; the credits webhook and reconcile callable hash
+    the incoming uid and go inert on a hit (late/queued webhooks cannot resurrect
+    ledger, quota, or event docs). Tombstone-first + mid-cascade failure is benign:
+    deletion retry is idempotent against an existing tombstone (pinned — Grok-r3-7);
+    the user's credits path being inert during a failed-deletion window is accepted
+    (they asked for deletion). `receipt_credit_txns` are **NOT purged** — batched
+    UPDATE sets `uid: "__deleted__"` (anonymized, state/facts retained as the global
+    replay guard; Gemini-r3 CRIT-1). The two quota docs are covered by the `${uid}_`
+    prefix purge; tests pin tombstone + anonymization + quota purge + the
+    deletion-races-grant case. (The subscription webhook's own late-event
+    resurrection of `users/{uid}` is PRE-EXISTING and out of scope; documented.)
 
 ## Rules
 
@@ -232,10 +294,14 @@ parallel path with the same identity discipline:
     `receiptQuotaStatus{transactionId}`. On `"granted"` → refresh snapshot, clear
     the quota-denial latch: recompute per-route usability, restore `.ready` iff any
     route admissible (retained pages kept). On timeout → analytics
-    `receipt_credits_grant_delayed`, then call `reconcileReceiptCreditPurchase`;
-    reconcile not-found → `receipt_credits_grant_missing` + "Purchase received —
-    credits will appear shortly" + persisted-txn resume on next sheet open (which
-    re-polls then re-reconciles). Manual refresh runs the same transition.
+    `receipt_credits_grant_delayed`, then call `reconcileReceiptCreditPurchase` and
+    route its typed `{transactionState, quota}` through the SAME terminal transition
+    as polling: `granted` → clear marker, refresh, celebrate; `refunded` → terminal
+    refund handling; `unknown`/not-found → `receipt_credits_grant_missing` +
+    "Purchase received — credits will appear shortly" + persisted-txn resume on next
+    sheet open (which re-polls then re-reconciles). Manual refresh runs the same
+    transition. Ask-to-Buy `pending` purchases that are approved later surface via
+    the next status refresh (no push channel; documented — Grok-r3-10).
 21. Footer per-route: usable = `min(confirmedRemaining, scanRemaining) +
     min(creditsRemaining, creditsScanRemaining)`; exhausted iff both terms 0 (nil →
     0). `sweepIncomplete` → immediate refetch (cap 5).
@@ -262,11 +328,15 @@ analytics pins. UI journey: demo-mode sheet with inert purchaser.
    uploaded + App Store Platform Server Notifications → RevenueCat** (consumable
    refund detection requires both); **"track new purchases from server-to-server
    notifications" OFF** (Sol-r2-8: non-UUID app user ids can grant to an anonymous
-   alias); prod webhook production-events-only; staging project webhook for SANDBOX.
-3. Staging/sandbox evidence: purchase → grant with **SDK transactionIdentifier ==
-   webhook transaction_id** asserted, `receiptQuotaStatus{transactionId}` =
-   `granted` for the buyer and `unknown` for another uid; refund → clawback
-   observed. Record alongside revisions.
+   alias); prod webhook receives both environments (tri-vote Q4-A) — no separate
+   staging RC project required.
+3. Sandbox E2E evidence against the PROD backend (SANDBOX allowed per Q4-A), inside a
+   short-lived capability window (flag enabled with a short `expiresAtMillis` for the
+   session): TestFlight purchase → grant with **SDK transactionIdentifier == webhook
+   transaction_id** asserted AND the **actual RC event type recorded**
+   (allowlist only what RC really sends — Grok-r3-6), `receiptQuotaStatus
+   {transactionId}` = `granted` for the buyer and `unknown` for another uid;
+   refund → clawback observed. Record alongside revisions.
 4. Provision `REVENUECAT_SECRET_API_KEY` (queue item (d)) — reconcile prerequisite.
 5. Deploy all changed functions together; verify running revisions (landmine #9).
 6. Only then set `app_config/receipt_credits {purchasingEnabled: true,
