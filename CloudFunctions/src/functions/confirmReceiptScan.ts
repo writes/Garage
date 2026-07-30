@@ -1,13 +1,14 @@
 import { getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import {
-  QuotaFirestore,
-  safeQuotaCount,
-} from "./claudeProxy";
+import { QuotaFirestore, userHasActiveProEntitlement } from "./claudeProxy";
 import {
   ReceiptQuotaSnapshot,
+  compositeReceiptQuotaSnapshot,
+  isReceiptCreditConfiguration,
+  quotaBucketState,
+  receiptCreditQuotaConfiguration,
+  receiptQuotaConfiguration,
   receiptQuotaConfigurationForToken,
-  receiptQuotaSnapshot,
   receiptScanTokenFromData,
 } from "./receiptQuota";
 
@@ -31,10 +32,30 @@ function tokenFromData(data: unknown): string {
   return token;
 }
 
+type ReleaseReason = "expired" | "refund" | "revoked";
+
 type ConfirmationResult =
   | { kind: "confirmed" | "idempotent"; snapshot: ReceiptQuotaSnapshot }
   | { kind: "not-found" }
-  | { kind: "expired" };
+  | { kind: "released"; releaseReason: ReleaseReason };
+
+function releaseError(releaseReason: ReleaseReason): HttpsError {
+  if (releaseReason === "revoked") {
+    return new HttpsError(
+      "failed-precondition",
+      "Receipt credits were revoked before this scan could be confirmed.",
+      { reason: "receipt_credits_revoked" },
+    );
+  }
+  if (releaseReason === "refund") {
+    return new HttpsError(
+      "failed-precondition",
+      "Receipt scan token was released after the request failed.",
+      { reason: "receipt_token_refunded" },
+    );
+  }
+  return new HttpsError("failed-precondition", "Receipt scan token expired.", { reason: "receipt_token_expired" });
+}
 
 export async function confirmReceiptScanRequest(
   request: ConfirmReceiptScanRequest,
@@ -46,70 +67,117 @@ export async function confirmReceiptScanRequest(
   const now = (dependencies.now ?? (() => new Date()))();
 
   const result = await dependencies.db.runTransaction<ConfirmationResult>(async (transaction) => {
+    // Read order is intentional: token -> persisted route -> user/current base -> both credit docs.
     const tokenRef = dependencies.db.collection("receipt_scan_tokens").doc(tokenId);
     const tokenSnapshot = await transaction.get(tokenRef);
     const token = receiptScanTokenFromData(tokenSnapshot.data());
     if (!token || token.uid !== request.auth?.uid) return { kind: "not-found" };
 
-    const configuration = receiptQuotaConfigurationForToken(
+    const route = receiptQuotaConfigurationForToken(
       token.uid,
       token.entitlementUsed,
       token.confirmedBucketId,
       token.resetAtMillis,
     );
-    if (!configuration) return { kind: "not-found" };
+    if (!route) return { kind: "not-found" };
 
-    const scanRef = dependencies.db.collection("usage_quotas").doc(configuration.scanBucketId);
-    const confirmedRef = dependencies.db.collection("usage_quotas").doc(configuration.confirmedBucketId);
-    const scanSnapshot = await transaction.get(scanRef);
-    const confirmedSnapshot = await transaction.get(confirmedRef);
-    const scanCount = scanSnapshot.exists ? safeQuotaCount(scanSnapshot.data()?.count) : 0;
-    const confirmedCount = confirmedSnapshot.exists ? safeQuotaCount(confirmedSnapshot.data()?.count) : 0;
-    const reserved = confirmedSnapshot.exists ? safeQuotaCount(confirmedSnapshot.data()?.reserved) : 0;
+    const userSnapshot = await transaction.get(dependencies.db.collection("users").doc(token.uid));
+    const currentEntitlement = userHasActiveProEntitlement(userSnapshot.data(), now) ? "pro" : "free";
+    const base = receiptQuotaConfiguration(token.uid, currentEntitlement, now);
+    const creditsConfiguration = receiptCreditQuotaConfiguration(token.uid, currentEntitlement);
+    const baseScanRef = dependencies.db.collection("usage_quotas").doc(base.scanBucketId);
+    const baseConfirmedRef = dependencies.db.collection("usage_quotas").doc(base.confirmedBucketId);
+    const creditsRef = dependencies.db.collection("usage_quotas").doc(creditsConfiguration.confirmedBucketId);
+    const creditScansRef = dependencies.db.collection("usage_quotas").doc(creditsConfiguration.scanBucketId);
+    const baseScan = quotaBucketState(baseScanRef, await transaction.get(baseScanRef));
+    const baseConfirmed = quotaBucketState(baseConfirmedRef, await transaction.get(baseConfirmedRef));
+    const routeConfirmedRef = dependencies.db.collection("usage_quotas").doc(route.confirmedBucketId);
+    const routeConfirmed = route.confirmedBucketId === base.confirmedBucketId
+      ? baseConfirmed
+      : quotaBucketState(routeConfirmedRef, await transaction.get(routeConfirmedRef));
+    const credits = quotaBucketState(creditsRef, await transaction.get(creditsRef));
+    const creditScans = quotaBucketState(creditScansRef, await transaction.get(creditScansRef));
 
-    // A consumed token wins over expiry so a retry remains a successful idempotent confirmation,
-    // including when the client retries after the 24-hour timestamp has passed. But only a token
-    // consumed by a real confirmation is idempotent-success: `released` marks tokens voided by the
-    // expiry sweep or a refund path, whose reservation was returned without any confirmed unit —
-    // reporting success for those would tell the client a confirmation happened that never did.
+    const snapshot = (nextBaseConfirmed = baseConfirmed, nextCredits = credits): ReceiptQuotaSnapshot =>
+      compositeReceiptQuotaSnapshot(base, baseScan, nextBaseConfirmed, nextCredits, creditScans);
+
+    // A confirmed token wins over expiry. A released token is never an idempotent success; its
+    // persisted reason turns every retry into the same post-commit response.
     if (token.consumed) {
-      if (token.released) return { kind: "expired" };
-      return { kind: "idempotent", snapshot: receiptQuotaSnapshot(configuration, scanCount, confirmedCount, reserved) };
+      if (token.released) return { kind: "released", releaseReason: token.releaseReason ?? "expired" };
+      return { kind: "idempotent", snapshot: snapshot() };
     }
 
     if (token.expiresAtMillis < now.getTime()) {
-      transaction.set(confirmedRef, {
-        reserved: Math.max(0, reserved - 1),
-        updatedAt: now.toISOString(),
-      }, { merge: true });
+      const releasedRoute = { ...routeConfirmed, reserved: Math.max(0, routeConfirmed.reserved - 1) };
+      transaction.set(routeConfirmedRef, { reserved: releasedRoute.reserved, updatedAt: now.toISOString() }, { merge: true });
       transaction.set(tokenRef, {
         consumed: true,
         consumedAtMillis: now.getTime(),
         released: true,
+        releaseReason: "expired",
       }, { merge: true });
-      return { kind: "expired" };
+      return { kind: "released", releaseReason: "expired" };
     }
 
-    const nextCount = confirmedCount + 1;
-    const nextReserved = Math.max(0, reserved - 1);
-    transaction.set(confirmedRef, {
+    if (isReceiptCreditConfiguration(route)) {
+      const effectiveCredits = Math.max(0, credits.granted - credits.clawed);
+      if (credits.count >= effectiveCredits) {
+        // Return the typed result from the transaction and throw only afterwards: throwing in the
+        // callback would roll back this reservation release and preserve the exploit.
+        transaction.set(creditsRef, {
+          reserved: Math.max(0, credits.reserved - 1),
+          updatedAt: now.toISOString(),
+        }, { merge: true });
+        transaction.set(tokenRef, {
+          consumed: true,
+          consumedAtMillis: now.getTime(),
+          released: true,
+          releaseReason: "revoked",
+        }, { merge: true });
+        return { kind: "released", releaseReason: "revoked" };
+      }
+
+      const nextCredits = {
+        ...credits,
+        count: credits.count + 1,
+        reserved: Math.max(0, credits.reserved - 1),
+      };
+      transaction.set(creditsRef, {
+        uid: token.uid,
+        kind: "receipt_credits",
+        granted: nextCredits.granted,
+        clawed: nextCredits.clawed,
+        count: nextCredits.count,
+        reserved: nextCredits.reserved,
+        updatedAt: now.toISOString(),
+      }, { merge: true });
+      transaction.set(tokenRef, { consumed: true, consumedAtMillis: now.getTime() }, { merge: true });
+      return { kind: "confirmed", snapshot: snapshot(baseConfirmed, nextCredits) };
+    }
+
+    const nextRouteConfirmed = {
+      ...routeConfirmed,
+      count: routeConfirmed.count + 1,
+      reserved: Math.max(0, routeConfirmed.reserved - 1),
+    };
+    transaction.set(routeConfirmedRef, {
       uid: token.uid,
-      kind: configuration.confirmedKind,
-      count: nextCount,
-      reserved: nextReserved,
+      kind: route.confirmedKind,
+      ...(route.period ? { month: route.period } : {}),
+      count: nextRouteConfirmed.count,
+      reserved: nextRouteConfirmed.reserved,
       updatedAt: now.toISOString(),
     }, { merge: true });
     transaction.set(tokenRef, { consumed: true, consumedAtMillis: now.getTime() }, { merge: true });
-    return {
-      kind: "confirmed",
-      snapshot: receiptQuotaSnapshot(configuration, scanCount, nextCount, nextReserved),
-    };
+    const nextBaseConfirmed = route.confirmedBucketId === base.confirmedBucketId
+      ? nextRouteConfirmed
+      : baseConfirmed;
+    return { kind: "confirmed", snapshot: snapshot(nextBaseConfirmed) };
   });
 
   if (result.kind === "not-found") throw new HttpsError("not-found", tokenNotFoundMessage);
-  if (result.kind === "expired") {
-    throw new HttpsError("failed-precondition", "Receipt scan token expired.", { reason: "receipt_token_expired" });
-  }
+  if (result.kind === "released") throw releaseError(result.releaseReason);
   return result.snapshot;
 }
 

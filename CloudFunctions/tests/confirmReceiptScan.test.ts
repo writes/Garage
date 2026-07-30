@@ -63,6 +63,10 @@ describe("confirmReceiptScanRequest", () => {
       confirmedRemaining: 4,
       confirmedAllowance: 5,
       resetAt: null,
+      creditsRemaining: 0,
+      creditsScanRemaining: 0,
+      creditsGranted: 0,
+      creditsDeficit: 0,
     });
     expect(db.data("usage_quotas/owner-1_receipt_confirmed_lifetime")).toMatchObject({ count: 1, reserved: 0 });
     expect(db.data(`receipt_scan_tokens/${freeToken}`)).toMatchObject({ consumed: true, consumedAtMillis: now.getTime() });
@@ -154,8 +158,103 @@ describe("confirmReceiptScanRequest", () => {
       request(proToken),
       dependencies(db, new Date("2026-08-01T00:30:00.000Z")),
     );
-    expect(snapshot).toMatchObject({ entitlement: "pro", resetAt: "2026-08-01T00:00:00.000Z" });
+    // The token remains bound to its admitting Pro bucket, while legacy snapshot fields always
+    // describe the caller's CURRENT entitlement (still free in this fixture).
+    expect(snapshot).toMatchObject({ entitlement: "free", resetAt: null });
     expect(db.data("usage_quotas/owner-1_receipt_confirmed_2026-07")).toMatchObject({ count: 1, reserved: 0 });
     expect(db.data("usage_quotas/owner-1_receipt_confirmed_2026-08")).toBeUndefined();
+  });
+
+  it("voids a credit token when a refund claws it after admission, then returns the same revoked error on retry", async () => {
+    const db = new InMemoryFirestore();
+    db.seed("usage_quotas/owner-1_receipt_lifetime", { count: 5 });
+    db.seed("usage_quotas/owner-1_receipt_confirmed_lifetime", { count: 5, reserved: 0 });
+    db.seed("usage_quotas/owner-1_receipt_credits", {
+      uid: "owner-1",
+      kind: "receipt_credits",
+      granted: 10,
+      clawed: 10,
+      count: 0,
+      reserved: 1,
+    });
+    db.seed("usage_quotas/owner-1_receipt_credit_scans", { uid: "owner-1", kind: "receipt_credit_scans", count: 1 });
+    db.seed(`receipt_scan_tokens/${freeToken}`, {
+      uid: "owner-1",
+      entitlementUsed: "free",
+      confirmedBucketId: "owner-1_receipt_credits",
+      resetAtMillis: null,
+      createdAtMillis: now.getTime() - 1_000,
+      expiresAtMillis: now.getTime() + 86_400_000,
+      consumed: false,
+    });
+
+    const first = await confirmReceiptScanRequest(request(freeToken), dependencies(db)).catch((error) => error);
+    const retry = await confirmReceiptScanRequest(request(freeToken), dependencies(db)).catch((error) => error);
+
+    expect(first).toMatchObject({ code: "failed-precondition", details: { reason: "receipt_credits_revoked" } });
+    expect(retry).toMatchObject({ code: "failed-precondition", details: { reason: "receipt_credits_revoked" } });
+    expect(JSON.stringify((first as { details: unknown }).details)).toBe(JSON.stringify((retry as { details: unknown }).details));
+    expect(db.data("usage_quotas/owner-1_receipt_credits")).toMatchObject({ count: 0, reserved: 0 });
+    expect(db.data(`receipt_scan_tokens/${freeToken}`)).toMatchObject({
+      consumed: true,
+      released: true,
+      releaseReason: "revoked",
+    });
+  });
+
+  it("keeps composite legacy fields on current base buckets while a credit token debits credits", async () => {
+    const db = new InMemoryFirestore();
+    seedFreeReservation(db, { token: freeToken });
+    // Replace the original free reservation with an independently admitted credit route.
+    db.seed("usage_quotas/owner-1_receipt_confirmed_lifetime", { count: 3, reserved: 0 });
+    db.seed("usage_quotas/owner-1_receipt_lifetime", { count: 7 });
+    db.seed("usage_quotas/owner-1_receipt_credits", {
+      uid: "owner-1",
+      kind: "receipt_credits",
+      granted: 10,
+      clawed: 0,
+      count: 2,
+      reserved: 1,
+    });
+    db.seed("usage_quotas/owner-1_receipt_credit_scans", { uid: "owner-1", kind: "receipt_credit_scans", count: 3 });
+    db.seed(`receipt_scan_tokens/${freeToken}`, {
+      uid: "owner-1",
+      entitlementUsed: "free",
+      confirmedBucketId: "owner-1_receipt_credits",
+      resetAtMillis: null,
+      createdAtMillis: now.getTime() - 1_000,
+      expiresAtMillis: now.getTime() + 86_400_000,
+      consumed: false,
+    });
+
+    const snapshot = await confirmReceiptScanRequest(request(freeToken), dependencies(db));
+
+    expect(snapshot).toMatchObject({
+      entitlement: "free",
+      scanRemaining: 13,
+      confirmedRemaining: 2,
+      creditsRemaining: 7,
+      creditsScanRemaining: 37,
+      creditsGranted: 10,
+      creditsDeficit: 0,
+    });
+    expect(snapshot).not.toHaveProperty("creditsPurchasingEnabled");
+    expect(snapshot).not.toHaveProperty("transactionState");
+    expect(db.data("usage_quotas/owner-1_receipt_confirmed_lifetime")).toMatchObject({ count: 3, reserved: 0 });
+    expect(db.data("usage_quotas/owner-1_receipt_credits")).toMatchObject({ count: 3, reserved: 0 });
+  });
+
+  it("does not reroute an admitted free token after a mid-flight upgrade, but snapshots current Pro base fields", async () => {
+    const db = new InMemoryFirestore();
+    seedFreeReservation(db);
+    db.seed("users/owner-1", {
+      subscription: { entitlement: "pro", isActive: true, expiresAt: "2026-09-01T00:00:00.000Z" },
+    });
+
+    const snapshot = await confirmReceiptScanRequest(request(freeToken), dependencies(db));
+
+    expect(snapshot).toMatchObject({ entitlement: "pro", scanRemaining: 80, confirmedRemaining: 20 });
+    expect(db.data("usage_quotas/owner-1_receipt_confirmed_lifetime")).toMatchObject({ count: 1, reserved: 0 });
+    expect(db.data("usage_quotas/owner-1_receipt_confirmed_2026-07")).toBeUndefined();
   });
 });

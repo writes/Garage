@@ -92,7 +92,12 @@ describe("Firestore authorization", () => {
   it("[QUOTA-RULES] denies all client reads and writes to server-only quota, scan-token, and recall-cache documents", async () => {
     await testEnvironment?.withSecurityRulesDisabled(async (context) => {
       await setDoc(doc(context.firestore(), "usage_quotas", "owner-1_receipt_lifetime"), { count: 1 });
+      await setDoc(doc(context.firestore(), "usage_quotas", "owner-1_receipt_credits"), { granted: 10, clawed: 0, count: 0, reserved: 0 });
+      await setDoc(doc(context.firestore(), "usage_quotas", "owner-1_receipt_credit_scans"), { count: 0 });
       await setDoc(doc(context.firestore(), "receipt_scan_tokens", "token-1"), { uid: "owner-1", consumed: false });
+      await setDoc(doc(context.firestore(), "receipt_credit_txns", "credit-txn-1"), { uid: "owner-1", transactionId: "raw" });
+      await setDoc(doc(context.firestore(), "app_config", "receipt_credits"), { purchasingEnabled: true });
+      await setDoc(doc(context.firestore(), "deleted_users", "uid-hash-1"), { deletedAtMillis: 1 });
       await setDoc(doc(context.firestore(), "recall_lookups", "1HGCM82633A004352"), { vin: "1HGCM82633A004352" });
     });
     const ownerDb = testEnvironment.authenticatedContext("owner-1").firestore();
@@ -100,9 +105,19 @@ describe("Firestore authorization", () => {
     await assertFails(getDoc(doc(ownerDb, "usage_quotas", "owner-1_receipt_lifetime")));
     await assertFails(setDoc(doc(ownerDb, "usage_quotas", "owner-1_receipt_lifetime"), { count: 0 }));
     await assertFails(getDocs(collection(ownerDb, "usage_quotas")));
+    await assertFails(getDoc(doc(ownerDb, "usage_quotas", "owner-1_receipt_credits")));
+    await assertFails(setDoc(doc(ownerDb, "usage_quotas", "owner-1_receipt_credits"), { granted: 1 }));
+    await assertFails(getDoc(doc(ownerDb, "usage_quotas", "owner-1_receipt_credit_scans")));
+    await assertFails(setDoc(doc(ownerDb, "usage_quotas", "owner-1_receipt_credit_scans"), { count: 1 }));
     await assertFails(getDoc(doc(ownerDb, "receipt_scan_tokens", "token-1")));
     await assertFails(setDoc(doc(ownerDb, "receipt_scan_tokens", "token-1"), { consumed: true }, { merge: true }));
     await assertFails(getDocs(collection(ownerDb, "receipt_scan_tokens")));
+    await assertFails(getDoc(doc(ownerDb, "receipt_credit_txns", "credit-txn-1")));
+    await assertFails(setDoc(doc(ownerDb, "receipt_credit_txns", "credit-txn-1"), { uid: "owner-1" }));
+    await assertFails(getDoc(doc(ownerDb, "app_config", "receipt_credits")));
+    await assertFails(setDoc(doc(ownerDb, "app_config", "receipt_credits"), { purchasingEnabled: true }));
+    await assertFails(getDoc(doc(ownerDb, "deleted_users", "uid-hash-1")));
+    await assertFails(setDoc(doc(ownerDb, "deleted_users", "uid-hash-1"), { deletedAtMillis: 2 }));
     await assertFails(getDoc(doc(ownerDb, "recall_lookups", "1HGCM82633A004352")));
     await assertFails(setDoc(doc(ownerDb, "recall_lookups", "1HGCM82633A004352"), { vin: "forged" }));
     await assertFails(getDocs(collection(ownerDb, "recall_lookups")));
