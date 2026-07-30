@@ -1,4 +1,4 @@
-# Receipt-credit IAP top-ups — implementation spec (2026-07-30, rev 5)
+# Receipt-credit IAP top-ups — implementation spec (2026-07-30, rev 6 — panel converged)
 
 > Extends `2026-07-30_RECEIPT_QUOTA_REFACTOR_SPEC.md` (shipped; reservation model live).
 > Product: `com.writes.harrysplayhouse.credits.receipts10` ($0.99, +10 credits), created by
@@ -168,8 +168,14 @@ boundary tests at QUOTA_DOMAIN_MAX.**
 5. Lifetime-grant hardening: `lifetimeGrantEventTypes` → explicit EMPTY allowlist (no
    lifetime SKU exists); `NON_RENEWING_PURCHASE` + pro + no expiry now
    `skipped_no_expiration` + error log. Deliberate behavior change, pinned.
-6. `revenuecat_events` records gain `productId`, `transactionId`, `environment`,
-   `store`, `packDelta` when present (no PII).
+6. CREDITS event records on `revenuecat_events` gain `productId`, `environment`,
+   `store`, `packDelta`, and — instead of the raw store transaction id —
+   `creditTxnDocId` (the sha256 ledger key) plus `beneficiaryUidHash` (Sol-final-2:
+   a refund recorded under alias B survives beneficiary A's `appUserId ==` deletion
+   purge while carrying A's re-identifiable transaction id; the hash key supports
+   forensics without that). deleteAccount's event purge additionally deletes
+   credits event records whose `beneficiaryUidHash == sha256(uid)` BEFORE
+   anonymizing the ledger. Subscription event records unchanged.
 7. Numeric hardening split by shape: `granted`/`clawed`/`packDelta`/counts through
    `safeQuotaCount` + the checked `QUOTA_DOMAIN_MAX` arithmetic; fact timestamps
    through `isTimestampMillis` (Grok-r3-8).
@@ -185,13 +191,15 @@ boundary tests at QUOTA_DOMAIN_MAX.**
    admission in one transaction ends `reserved == 1`). When the expired-token query
    returns a full page, STATUS drains SERVER-SIDE: the sweep queries `limit(11)`,
    processes 10, and uses the 11th row purely as a `hasMore` probe (Sol-r4-5: a full
-   final page is otherwise indistinguishable from done); it runs further bounded sweep
-   transactions (10 rounds/call) and responds with `sweepIncomplete = hasMore` — and
-   the client keeps re-fetching until `sweepIncomplete == false` with NO fixed round
-   cap (each round is cheap; convergence is guaranteed because every round strictly
-   consumes expired tokens). Admission keeps its single sweep page (denial heals via
-   status refresh). Regressions at 10, 12, 50, 51, 100 (exact boundary), and 520
-   expired reservations.
+   final page is otherwise indistinguishable from done). Status's ONE consistent
+   contract (Sol-final-1): up to 10 bounded sweep transactions, then ONE FINAL
+   SNAPSHOT TRANSACTION performing the composite reads (§13's read order applies to
+   that final transaction); the response carries `sweepIncomplete = hasMore` from
+   the last sweep round, and the CLIENT re-fetches until `sweepIncomplete == false`
+   with NO fixed cap anywhere (convergence guaranteed — every round strictly
+   consumes expired tokens; §21 must not cap it). Admission keeps its single sweep
+   page (denial heals via status refresh). Regressions at 10, 12, 50, 51, 100
+   (exact boundary), and 520 expired reservations.
 10. **Admission fallback** (reads add: credits + credit-scans + tombstone-free... no —
     admission needs no tombstone; reads add the two credit docs only, all before
     writes): base route exactly as today; else credits route iff
@@ -229,7 +237,10 @@ boundary tests at QUOTA_DOMAIN_MAX.**
     optional txn docs — **one candidate docId PER allowed environment**, each
     `sha256(canonicalize(RC_EXPECTED_APP_ID | RC_EXPECTED_STORE | env |
     transactionId))` (the client supplies ONLY transactionId; app and store come
-    from server config; batch-read; the doc that exists wins —
+    from server config; batch-read ALL candidates, filter to `uid == caller`, and
+    return a state only for EXACTLY ONE caller-owned match — zero or multiple
+    caller-owned matches → uniform `"unknown"` + `logger.error` (Sol-final-3:
+    "existing doc wins" let a foreign candidate mask the caller's own) —
     Gemini-r4-1: a single-environment default makes sandbox review purchases poll
     `"unknown"` for the full 60s schedule; the client never supplies the tuple) →
     expiry query → referenced expired-token buckets → sweep writes → composite
@@ -375,7 +386,7 @@ parallel path with the same identity discipline:
     status refresh (no push channel; documented — Grok-r3-10).
 21. Footer per-route: usable = `min(confirmedRemaining, scanRemaining) +
     min(creditsRemaining, creditsScanRemaining)`; exhausted iff both terms 0 (nil →
-    0). `sweepIncomplete` → immediate refetch (cap 5).
+    0). `sweepIncomplete` → immediate refetch until false (no cap — Sol-final-1).
 22. Constants `receiptCreditsPackIdentifier`; `AnalyticsProductID.receiptCredits10`
     (PlanIdentifierTests). Inert fake purchaser for demo/UI-test (lazy handles only).
 23. Analytics (4-step; contract doc same PR): `receipt_credits_offer_shown{scope}`,
@@ -390,7 +401,7 @@ Identity-mismatch refusal (before+after); cancelled/pending/failed never poll; t
 persistence, terminal granted AND refunded handling, resume+reconcile path; offer
 matrix (flag off/expired, nil fields, pro direct, free pre/post-dismissal, fetch
 failed); grant→latch clear→`.ready` with retained pages; poll schedule (fake
-clock); deficit copy; per-route footer matrix; sweepIncomplete refetch cap;
+clock); deficit copy; per-route footer matrix; sweepIncomplete refetch-until-false;
 analytics pins. UI journey: demo-mode sheet with inert purchaser.
 
 ## Operator gates (launch checklist)
