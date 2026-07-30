@@ -13,7 +13,8 @@ struct StatsView: View {
                         ProGateView(
                             title: "Stats are a Pro feature",
                             message: "Unlock MPG trends, cost breakdowns, and wear history charts for every vehicle.",
-                            actionIdentifier: "stats.gate.cta"
+                            actionIdentifier: "stats.gate.cta",
+                            source: .stats
                         ) {
                             router.present(.subscription(.stats))
                         }

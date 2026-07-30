@@ -21,7 +21,8 @@ struct ThemePickerView: View {
                     ProGateView(
                         title: "Themes are part of Pro",
                         message: "Personalize Garage with curated accent colors that apply everywhere instantly.",
-                        actionIdentifier: "theme.gate.cta"
+                        actionIdentifier: "theme.gate.cta",
+                        source: .themePicker
                     ) {
                         router.present(.subscription(.themePicker))
                     }

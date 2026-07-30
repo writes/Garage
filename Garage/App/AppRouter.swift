@@ -12,6 +12,7 @@ final class AppRouter {
         case vehicleForm
         case export
         case subscription(PaywallSource)
+        case designSurvey
 
         var id: String {
             switch self {
@@ -22,6 +23,7 @@ final class AppRouter {
             case .vehicleForm: return "vehicleForm"
             case .export: return "export"
             case .subscription(let source): return "subscription-\(source.rawValue)"
+            case .designSurvey: return "designSurvey"
             }
         }
     }
@@ -74,7 +76,7 @@ final class AppRouter {
         switch sheet {
         case .entryPicker, .voiceQuickAdd, .receiptCapture, .entryForm:
             isGatedSheet = true
-        case .vehicleForm, .export, .subscription:
+        case .vehicleForm, .export, .subscription, .designSurvey:
             isGatedSheet = false
         }
 
@@ -93,7 +95,8 @@ final class AppRouter {
     }
 
     /// The paywall is excluded because it already reports `paywall_viewed` from its own
-    /// `onAppear`; emitting `form_opened` for it too would double-count one impression.
+    /// `onAppear`; the survey likewise fires its own `survey_submitted`/`survey_dismissed`
+    /// pair — emitting `form_opened` for either would double-count one impression.
     private func reportOpened(_ sheet: Sheet) {
         let form: FormKind
         switch sheet {
@@ -103,7 +106,7 @@ final class AppRouter {
         case .voiceQuickAdd: form = .voiceQuickAdd
         case .receiptCapture: form = .receiptCapture
         case .export: form = .export
-        case .subscription: return
+        case .subscription, .designSurvey: return
         }
         analytics.track(.formOpened(form: form))
     }

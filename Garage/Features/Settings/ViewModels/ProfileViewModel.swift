@@ -227,6 +227,9 @@ extension ProfileViewModel {
                 profile.themeID = id
                 userProfile = profile
             }
+            // Only a PERSISTED theme change counts as theming usage — an optimistic apply that
+            // rolled back never happened from the user's point of view.
+            analytics.track(.featureUsed(feature: .theming))
             error = nil
             return true
         } catch {

@@ -33,6 +33,10 @@ final class ReminderNotificationScheduler: NotificationScheduling {
         content.title = request.title
         content.body = request.body
         content.sound = .default
+        // Category tag for funnel attribution in the notification-center delegate.
+        content.userInfo = [
+            NotificationFunnelService.categoryUserInfoKey: NotificationCategory.reminderDue.rawValue
+        ]
 
         let calendar = Calendar.current
         let components = calendar.dateComponents(

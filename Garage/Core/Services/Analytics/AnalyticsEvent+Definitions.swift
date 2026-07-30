@@ -4,68 +4,6 @@ import Foundation
 // the 300-line policy cap. Cases stay in the enum declaration (Swift requires it); everything
 // derived lives here.
 extension AnalyticsEvent {
-    static let v1Names = [
-        "first_vehicle_added",
-        "first_entry_added",
-        "paywall_viewed",
-        "purchase_completed",
-        "purchase_restored",
-        "export_csv",
-        "export_pdf",
-        "oil_analysis_requested",
-        "oil_analysis_succeeded",
-        "oil_analysis_quota_denied"
-    ]
-
-    /// Added in schema v1 (same version — these are additive events, not a breaking change to any
-    /// existing event's shape). Kept as a separate list so the v1 contract stays auditable.
-    static let activationFunnelNames = [
-        "paywall_dismissed",
-        "sign_in_started",
-        "sign_in_completed",
-        "sign_in_failed",
-        "trial_started",
-        "form_opened"
-    ]
-
-    /// Depth batch (additive, 2026-07-28): voice/purchase funnels, reminders, recalls, vehicle
-    /// lifecycle, per-save entry usage, tab engagement.
-    static let depthNames = [
-        "voice_capture_started",
-        "voice_proposal_succeeded",
-        "voice_proposal_failed",
-        "voice_entry_confirmed",
-        "purchase_attempted",
-        "purchase_failed",
-        "oil_analysis_failed",
-        "reminder_created",
-        "reminder_completed",
-        "reminder_deleted",
-        "notification_permission_denied",
-        "recall_lookup_succeeded",
-        "recall_lookup_failed",
-        "recall_park_alert_shown",
-        "vehicle_added",
-        "vehicle_switched",
-        "vehicle_deleted",
-        "entry_saved",
-        "entry_deleted",
-        "screen_viewed"
-    ]
-
-    /// Receipt-capture funnel (additive, 2026-07-28) — see ANALYTICS_CONTRACT.md §5.2.
-    static let receiptFunnelNames = [
-        "receipt_capture_started",
-        "receipt_proposal_succeeded",
-        "receipt_proposal_failed",
-        "receipt_quota_denied",
-        "receipt_entry_confirmed",
-        "receipt_field_outcome",
-        "receipt_confirm_sync_failed"
-    ]
-
-    static var allNames: [String] { v1Names + activationFunnelNames + depthNames + receiptFunnelNames }
-
     /// Keeps every v1 event name and parameter definition in one audited mapping.
     var definition: AnalyticsEventDefinition {
         switch self {
@@ -242,6 +180,51 @@ extension AnalyticsEvent {
             )
         case .receiptConfirmSyncFailed:
             return AnalyticsEventDefinition(name: "receipt_confirm_sync_failed")
+        case .experimentExposure(let experiment, let arm, let epoch):
+            return AnalyticsEventDefinition(
+                name: "experiment_exposure",
+                parameters: [.experiment(experiment), .arm(arm), .epoch(epoch)]
+            )
+        case .upsellExposure(let source):
+            return AnalyticsEventDefinition(
+                name: "upsell_exposure",
+                parameters: [.source(source)]
+            )
+        case .featureUsed(let feature):
+            return AnalyticsEventDefinition(
+                name: "feature_used",
+                parameters: [.feature(feature)]
+            )
+        case .notifScheduled(let category):
+            return AnalyticsEventDefinition(
+                name: "notif_scheduled",
+                parameters: [.notifCategory(category)]
+            )
+        case .notifOpened(let category):
+            return AnalyticsEventDefinition(
+                name: "notif_opened",
+                parameters: [.notifCategory(category)]
+            )
+        case .notifTaskCompleted(let category):
+            return AnalyticsEventDefinition(
+                name: "notif_task_completed",
+                parameters: [.notifCategory(category)]
+            )
+        case .surveySubmitted(let survey, let easeScore, let visualScore, let wouldSwitch):
+            return AnalyticsEventDefinition(
+                name: "survey_submitted",
+                parameters: [
+                    .survey(survey),
+                    .easeScore(easeScore),
+                    .visualScore(visualScore),
+                    .wouldSwitch(wouldSwitch)
+                ]
+            )
+        case .surveyDismissed(let survey):
+            return AnalyticsEventDefinition(
+                name: "survey_dismissed",
+                parameters: [.survey(survey)]
+            )
         }
     }
 }

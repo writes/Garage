@@ -257,6 +257,37 @@ does not emit a separate event; it is visible in the funnel only indirectly, via
 
 ---
 
+## 5.3 Experimentation batch (additive, 2026-07-30)
+
+Ships with the Option A experimentation stack (`docs/research/2026-07-30_AB_TESTING_AND_METRICS_PLAN.md`).
+Names live in `AnalyticsEvent.experimentationNames`; closed enums in `AnalyticsTypes+Experiment.swift`.
+
+| Event | Parameters | Purpose |
+|---|---|---|
+| `experiment_exposure` | `experiment`, `arm`, `epoch` | Fired once per user per experiment EPOCH at first eligible render (`ExperimentStore.recordExposureIfNeeded`). Exposure, not assignment, defines the analysis population. |
+| `upsell_exposure` | `source` | An upsell AFFORDANCE rendered — the impressions denominator `paywall_viewed` never had. Emitted by `ProGateView` (stats, garage, export_pdf, theme_picker, attachments) and the Settings upsell row. Sources whose paywall opens directly from a gated action (`vehicle_limit`, `voice_quick_add`, `oil_analysis`, `receipt_scan`) are documented as exposure == view. |
+| `feature_used` | `feature` | ONLY features with no existing event: `gallery`, `warranty`, `theming` (fired on persisted theme change, not the optimistic apply). `dossier`/`wear` were considered and EXCLUDED — already covered by `export_pdf` / `entry_saved`+`screen_viewed`; double-emitting corrupts the matrix. |
+| `notif_scheduled` | `category` | A notification actually handed to the OS (post-authorization). Deliberately NOT "delivered" — a client cannot honestly observe background delivery of a local notification. |
+| `notif_opened` | `category` | User tapped the notification (`NotificationFunnelService`, the app's first `UNUserNotificationCenterDelegate` — which also fixes foreground banners being suppressed entirely). |
+| `notif_task_completed` | `category` | The assisted task happened within 7 days of an open; at most one completion per open. Opens are vanity — this is the metric the notification exists for. |
+| `survey_submitted` | `survey`, `ease_score`, `visual_score`, `would_switch` | The 3-question design survey. Scores clamp 1–5 at definition time; no free text can exist structurally. |
+| `survey_dismissed` | `survey` | Closed without submitting — survey fatigue vs engagement. |
+
+**User properties** (new surface — `AnalyticsTracking.setUserProperty`, closed `UserProperty`
+enum): `design_arm`, `experiment_epoch`, `notif_holdout`. Consent-gated EXACTLY like events:
+`AnalyticsConsentGate` holds pre-consent property sets (latest value per property wins,
+bounded by the closed name set) and releases them on enable BEFORE the held events, so flushed
+events carry the properties. Identity discard and session suppression drop held properties too.
+
+**Assignment is not an event.** The deterministic hash recipe
+(`ExperimentAssigner` — SHA-256 `"v1:<experiment>:<epoch>:<unit>"`, first 8 bytes big-endian
+/ nextUp(2^64)) is pinned by independently computed test vectors; changing it reshuffles every
+arm and is a breaking change to every running experiment.
+
+**Notification holdout** (`notif_holdout`, 10%) gates PROACTIVE notifications only. No
+proactive category exists yet; user-created reminders are NEVER suppressed — the property
+ships now so the split exists in the data from day one.
+
 ## 6. Why funnel instrumentation was prioritised
 
 The launch research (`docs/research/2026-07-27_BRANDING_AND_LAUNCH_PLAN.md`) found that **90% of
