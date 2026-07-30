@@ -117,6 +117,10 @@ final class ReminderConfigViewModel {
                 reminders[index].completedAt = .now
             }
             analytics.track(.reminderCompleted)
+            // Attributes this completion to a recent notification open (7-day window), closing
+            // the notif_scheduled → opened → task_completed funnel. No-op when the open didn't
+            // come from a notification.
+            NotificationFunnelService.shared.recordTaskCompletionIfAttributed(.reminderDue)
             error = nil
         } catch {
             self.error = AppError(from: error)

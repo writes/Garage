@@ -30,6 +30,18 @@ struct SettingsView: View {
                     manageSubscriptionTapped()
                 }
                     .accessibilityIdentifier("settings.subscription")
+                    // The persistent Settings upsell affordance is the impressions denominator
+                    // for the `settings` conversion source; Pro users see "Manage", not an
+                    // upsell, so no exposure fires for them.
+                    .onAppear {
+                        if !appState.isPro {
+                            AnalyticsService.shared.track(.upsellExposure(source: .settings))
+                        }
+                    }
+                if ExperimentStore.shared.isSurveyAvailable(for: .designMegatest) {
+                    Button("Design Feedback") { router.present(.designSurvey) }
+                        .accessibilityIdentifier("settings.designSurvey")
+                }
                 Button("Sign Out") { appState.signOut() }
                     .accessibilityIdentifier("settings.signout")
                 Button(isDeleting ? "Deleting..." : "Delete Account", role: .destructive) {

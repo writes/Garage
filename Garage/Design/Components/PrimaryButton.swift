@@ -6,10 +6,11 @@ struct PrimaryButton: View {
     var action: () -> Void
 
     var body: some View {
+        let pack = DesignPackStore.shared.pack
         Button(action: action) {
             Label {
                 Text(title)
-                    .font(Theme.Typography.headline)
+                    .font(Theme.Typography.headline.weight(pack.primaryButtonWeight))
             } icon: {
                 if let systemImage {
                     Image(systemName: systemImage)
@@ -21,6 +22,6 @@ struct PrimaryButton: View {
         .buttonStyle(.plain)
         .foregroundStyle(Theme.Colors.onPrimary)
         .background(Theme.Colors.primary)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
+        .clipShape(RoundedRectangle(cornerRadius: pack.controlRadius))
     }
 }

@@ -14,7 +14,8 @@ struct GarageView: View {
                         Spare parts, detailing, warranty, and recalls
                         are unlocked with Pro.
                         """,
-                        actionIdentifier: "garage.gate.cta"
+                        actionIdentifier: "garage.gate.cta",
+                        source: .garage
                     ) {
                         router.present(.subscription(.garage))
                     }

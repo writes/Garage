@@ -4,6 +4,11 @@ import Foundation
 @MainActor
 protocol AnalyticsTracking: AnyObject {
     func track(_ event: AnalyticsEvent)
+    /// Sets a Firebase user property from the closed `UserProperty` set. Consent-gated exactly
+    /// like events: pre-consent sets are HELD (latest value per property wins) and applied only
+    /// when consent enables collection — a property set at launch must not reach Firebase for a
+    /// user who later declines.
+    func setUserProperty(_ property: UserProperty)
     func setEnabled(_ enabled: Bool)
     /// Fails closed after a user tries to revoke consent but persistence cannot confirm it.
     /// The suppression deliberately lasts for the current app session.
@@ -18,6 +23,8 @@ protocol AnalyticsTracking: AnyObject {
 }
 
 extension AnalyticsTracking {
+    func setUserProperty(_: UserProperty) {}
+
     func suppressCollectionForCurrentSession() {
         setEnabled(false)
     }
@@ -127,6 +134,32 @@ enum AnalyticsEvent: Equatable, Sendable {
     case receiptFieldOutcome(field: ReceiptPrefillField, edited: Bool)
     /// The entry saved locally but its best-effort server confirmation did not complete.
     case receiptConfirmSyncFailed
+
+    // MARK: Experimentation batch (additive, 2026-07-30) — see ANALYTICS_CONTRACT.md §5.3
+
+    /// Fired once per user per experiment EPOCH on the first eligible render. Exposure, not
+    /// assignment, defines the analysis population — an assigned-but-never-launched user must
+    /// not dilute an arm.
+    case experimentExposure(experiment: ExperimentID, arm: ExperimentArm, epoch: Int)
+    /// An upsell AFFORDANCE rendered (locked row/button). `paywall_viewed` alone has no
+    /// impressions denominator, so a rarely-seen-but-potent surface is indistinguishable from a
+    /// spammy weak one. Only surfaces with a persistent locked affordance emit this; sources
+    /// whose paywall opens directly from a gated action are documented as exposure == view.
+    case upsellExposure(source: PaywallSource)
+    /// Weekly-usage signal for the features that have NO existing event; everything already
+    /// instrumented is derived in SQL instead (double-emitting would double-count).
+    case featureUsed(feature: UninstrumentedFeature)
+    /// `notif_scheduled`, deliberately not "delivered": a client cannot honestly observe
+    /// background delivery of a local notification, and claiming delivery would corrupt the
+    /// funnel's denominator.
+    case notifScheduled(category: NotificationCategory)
+    case notifOpened(category: NotificationCategory)
+    /// The assisted task actually happened within the attribution window after an open —
+    /// opens are vanity; this is the metric the notification exists for.
+    case notifTaskCompleted(category: NotificationCategory)
+    /// In-app design survey. Scores are 1–5, clamped at definition time; no free text ever.
+    case surveySubmitted(survey: SurveyKind, easeScore: Int, visualScore: Int, wouldSwitch: Bool)
+    case surveyDismissed(survey: SurveyKind)
 }
 
 /// Thin adapter over `AnalyticsConsentGate`. All gate/buffer decisions live in that value type so
@@ -140,12 +173,18 @@ final class FirebaseAnalyticsService: AnalyticsTracking {
         send(gate.track(event))
     }
 
+    func setUserProperty(_ property: UserProperty) {
+        apply(gate.setUserProperty(property))
+    }
+
     func setEnabled(_ enabled: Bool) {
-        let released = gate.setEnabled(enabled)
+        let (releasedEvents, releasedProperties) = gate.setEnabledReleasingHeld(enabled)
         Analytics.setAnalyticsCollectionEnabled(gate.isEnabled)
-        // Order matters: collection must be enabled with Firebase before the held events are
-        // logged, or the flush is dropped by the SDK exactly as it was by our own gate.
-        send(released)
+        // Order matters twice over: collection must be enabled with Firebase before anything
+        // held is flushed, and properties must land before events so the released events carry
+        // the released properties.
+        apply(releasedProperties)
+        send(releasedEvents)
     }
 
     func suppressCollectionForCurrentSession() {
@@ -161,6 +200,12 @@ final class FirebaseAnalyticsService: AnalyticsTracking {
         for event in events {
             let definition = event.definition
             Analytics.logEvent(definition.name, parameters: definition.firebaseParameters)
+        }
+    }
+
+    private func apply(_ properties: [UserProperty]) {
+        for property in properties {
+            Analytics.setUserProperty(property.value, forName: property.name)
         }
     }
 }

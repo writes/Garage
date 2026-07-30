@@ -27,6 +27,10 @@ struct AnalyticsConsentGate {
     private(set) var isEnabled = false
     private var isSuppressedForSession = false
     private var pending: [AnalyticsEvent] = []
+    /// Held user-property sets, keyed by property name — LATEST value per property wins, unlike
+    /// events, because a property is state, not an occurrence. Unbounded growth is impossible:
+    /// the key space is the closed `UserProperty` name set.
+    private var pendingProperties: [String: UserProperty] = [:]
     private let limit: Int
 
     init(limit: Int = defaultLimit) {
@@ -35,6 +39,9 @@ struct AnalyticsConsentGate {
 
     /// Events currently held awaiting a consent decision. Exposed for tests and diagnostics.
     var pendingCount: Int { pending.count }
+
+    /// Property sets currently held awaiting a consent decision. Exposed for tests.
+    var pendingPropertyCount: Int { pendingProperties.count }
 
     /// Returns the events to send right now — empty when the event was held instead.
     mutating func track(_ event: AnalyticsEvent) -> [AnalyticsEvent] {
@@ -46,24 +53,45 @@ struct AnalyticsConsentGate {
         return []
     }
 
+    /// Returns the property sets to apply right now — empty when held. Same consent semantics
+    /// as `track`: user properties attach to every future event, so a pre-consent set reaching
+    /// Firebase would be exactly the leak the event gate exists to prevent.
+    mutating func setUserProperty(_ property: UserProperty) -> [UserProperty] {
+        if isEnabled { return [property] }
+        guard !isSuppressedForSession else { return [] }
+        pendingProperties[property.name] = property
+        return []
+    }
+
     /// Returns any held events released by this transition.
     ///
     /// Enabling is the ONLY affirmative consent signal, so it is the only thing that releases the
     /// buffer. Disabling deliberately keeps it: at that point consent is merely unknown, and the
     /// events are still unsent and still on-device.
     mutating func setEnabled(_ enabled: Bool) -> [AnalyticsEvent] {
+        setEnabledReleasingHeld(enabled).events
+    }
+
+    /// `setEnabled` variant that also releases held user properties. The caller must apply the
+    /// properties BEFORE logging the events so the flushed events carry them.
+    mutating func setEnabledReleasingHeld(_ enabled: Bool) -> (events: [AnalyticsEvent], properties: [UserProperty]) {
         let effective = enabled && !isSuppressedForSession
         isEnabled = effective
-        guard effective else { return [] }
-        let released = pending
+        guard effective else { return ([], []) }
+        let releasedEvents = pending
         pending.removeAll()
-        return released
+        // Sorted for deterministic application order (and testability); latest-per-name already
+        // collapsed at hold time.
+        let releasedProperties = pendingProperties.keys.sorted().compactMap { pendingProperties[$0] }
+        pendingProperties.removeAll()
+        return (releasedEvents, releasedProperties)
     }
 
     /// Drop everything held. Call when the identity these events belong to is gone — sign-out, or
     /// a profile that does not match the signed-in uid.
     mutating func discardPending() {
         pending.removeAll()
+        pendingProperties.removeAll()
     }
 
     /// Fail-closed revocation for the rest of the session. Drops held events and stops collecting
@@ -72,5 +100,6 @@ struct AnalyticsConsentGate {
         isSuppressedForSession = true
         isEnabled = false
         pending.removeAll()
+        pendingProperties.removeAll()
     }
 }

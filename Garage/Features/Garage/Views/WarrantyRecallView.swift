@@ -69,6 +69,8 @@ struct WarrantyRecallView: View {
         }
         .navigationTitle("Warranty & Recalls")
         .task(id: appState.currentVehicle?.id) { await load() }
+        // Weekly feature-usage matrix; warranty viewing has no other event.
+        .onAppear { AnalyticsService.shared.track(.featureUsed(feature: .warranty)) }
         // Until now this screen had no way to create anything: WarrantyService's two save methods
         // had zero callers, so an advertised Pro feature could only ever be empty.
         .toolbar {

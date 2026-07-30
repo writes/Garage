@@ -15,6 +15,10 @@ struct ContentView: View {
         .task(id: appState.authenticationStateID) {
             await appState.bootstrap()
         }
+        // Exposure fires at the first render of the experiment surface (this whole view — the
+        // login screen is inside the design test too). Pre-consent it is buffered by the
+        // analytics gate, so it lands attributed to whichever identity later consents.
+        .onAppear { ExperimentStore.shared.recordExposureIfNeeded(for: .designMegatest) }
         .sheet(item: Binding(
             get: { router.activeSheet },
             set: { router.activeSheet = $0 }
@@ -76,6 +80,8 @@ struct ContentView: View {
             ExportView()
         case .subscription(let source):
             SubscriptionView(source: source)
+        case .designSurvey:
+            DesignSurveyView()
         }
     }
 }

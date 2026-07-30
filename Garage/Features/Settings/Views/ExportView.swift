@@ -115,7 +115,8 @@ struct ExportView: View {
                         title: "Record PDF is part of Pro",
                         message: "Upgrade to generate a record PDF. Photo, receipt, and invoice files " +
                             "are not included.",
-                        actionIdentifier: "export.gate.cta"
+                        actionIdentifier: "export.gate.cta",
+                        source: .exportPDF
                     ) {
                         router.present(.subscription(.exportPDF))
                     }

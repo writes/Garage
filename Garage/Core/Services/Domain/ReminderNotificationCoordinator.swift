@@ -15,13 +15,18 @@ final class ReminderNotificationCoordinator {
     static let shared = ReminderNotificationCoordinator(scheduler: NotificationSchedulerFactory.shared)
 
     private let scheduler: any NotificationScheduling
+    private let analytics: any AnalyticsTracking
     /// Set after a date-based save couldn't schedule because notification permission is denied.
     /// The reminder itself still saved — this only drives the one-line hint in
     /// ReminderConfigView. Cleared the next time a date-based save succeeds in scheduling.
     private(set) var isAuthorizationDenied = false
 
-    init(scheduler: any NotificationScheduling) {
+    init(
+        scheduler: any NotificationScheduling,
+        analytics: any AnalyticsTracking = AnalyticsService.shared
+    ) {
         self.scheduler = scheduler
+        self.analytics = analytics
     }
 
     /// Called after a reminder is created or updated. Schedules (replacing any prior
@@ -42,6 +47,9 @@ final class ReminderNotificationCoordinator {
         }
         isAuthorizationDenied = false
         await scheduler.schedule(plan)
+        // Funnel entry: fires only when a notification was actually handed to the OS —
+        // authorization denials and cancel paths above never reach here.
+        analytics.track(.notifScheduled(category: .reminderDue))
     }
 
     /// Called on delete and on markCompleted — cancellation never needs authorization.

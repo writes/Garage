@@ -51,6 +51,15 @@ struct GarageApp: App {
         }
 
         Purchases.configure(withAPIKey: Secrets.revenueCatAPIKey)
+        // Resolve-and-lock the design arm before the first frame so LoginView (part of the
+        // experiment) already renders the assigned pack. Pure local work: UserDefaults +
+        // CryptoKit, no Firebase dependency, no analytics emission (exposure fires from
+        // ContentView through the consent gate).
+        DesignPackStore.shared.apply(arm: ExperimentStore.shared.arm(for: .designMegatest))
+        // First delegate this app has had: notification-funnel instrumentation (foreground
+        // presentation + tap-through opens). Must be set before any notification can be
+        // interacted with.
+        NotificationFunnelService.shared.activate()
         let appState = AppState()
         _appState = State(initialValue: appState)
         // See the matching comment in the non-production branch above: the gate must not treat

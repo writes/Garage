@@ -41,6 +41,8 @@ struct PhotoGalleryView: View {
         }
         .navigationTitle("Gallery Records")
         .task(id: appState.currentVehicle?.id) { await load() }
+        // Weekly feature-usage matrix; gallery has no other event (see UninstrumentedFeature).
+        .onAppear { AnalyticsService.shared.track(.featureUsed(feature: .gallery)) }
     }
 
     private var mainPhotos: [GalleryPhoto] {

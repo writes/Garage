@@ -138,7 +138,8 @@ struct EntryFormScaffold<Content: View>: View {
                 ProGateView(
                     title: "Attachments are part of Pro",
                     message: "Attach receipts, invoices, and photos to your entries with Garage Pro.",
-                    actionIdentifier: "entry.form.attachments.gate"
+                    actionIdentifier: "entry.form.attachments.gate",
+                    source: .attachments
                 ) {
                     router.present(.subscription(.attachments))
                 }
