@@ -87,6 +87,25 @@ struct AttachmentImageProcessorTests {
         #expect(decodedFromData.size == decodedFromImage.size)
     }
 
+    // MARK: - Row thumbnails (ImageIO, bounded decode)
+
+    @Test func thumbnail_decodesNoLargerThanTheRequestedPixelBound() throws {
+        // The row asks for 44pt x 3 = 132px. The source is a stored attachment's worth of pixels;
+        // decoding it in full for that row is what this path exists to avoid.
+        let data = try Self.solidImagePNGData(width: 2_048, height: 1_536)
+        let thumbnail = try #require(AttachmentImageProcessor.thumbnail(from: data, maxPixelSize: 132))
+        #expect(max(thumbnail.width, thumbnail.height) <= 132)
+        // Not a degenerate 1px result, and the aspect ratio survives.
+        #expect(min(thumbnail.width, thumbnail.height) > 1)
+        #expect(abs(Double(thumbnail.width) / Double(thumbnail.height) - 2_048.0 / 1_536.0) < 0.05)
+    }
+
+    @Test func thumbnail_returnsNilRatherThanADegenerateImage() throws {
+        #expect(AttachmentImageProcessor.thumbnail(from: Data([0x00, 0x01]), maxPixelSize: 132) == nil)
+        let data = try Self.solidImagePNGData(width: 100, height: 100)
+        #expect(AttachmentImageProcessor.thumbnail(from: data, maxPixelSize: 0) == nil)
+    }
+
     private static func solidImagePNGData(width: Int, height: Int) throws -> Data {
         try #require(solidImage(width: width, height: height).pngData())
     }
