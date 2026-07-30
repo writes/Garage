@@ -18,6 +18,31 @@ struct ReceiptEntryProposal: Codable, Equatable, Sendable {
     let lineItems: [String]?
 }
 
+/// The server-authoritative receipt quota state. `resetAt` deliberately stays an ISO-8601 string
+/// to mirror the callable wire contract exactly; UI-only date formatting happens at the boundary
+/// that renders a specific outcome.
+struct ReceiptQuotaSnapshot: Codable, Equatable, Sendable {
+    enum Entitlement: String, Codable, Equatable, Sendable {
+        case free
+        case pro
+    }
+
+    let entitlement: Entitlement
+    let scanRemaining: Int
+    let scanCeiling: Int
+    let confirmedRemaining: Int
+    let confirmedAllowance: Int
+    let resetAt: String?
+}
+
+/// The additive receipt proposal response. This preserves the server's existing top-level proposal
+/// fields while carrying the optional confirmation token and quota snapshot for current clients.
+struct ReceiptProposalResult: Equatable, Sendable {
+    let proposal: ReceiptEntryProposal
+    let token: String?
+    let quota: ReceiptQuotaSnapshot?
+}
+
 /// The parsed proposal plus the raw bytes for every kept page, carried from the capture sheet to
 /// the entry form it opens (mirrors `pendingVoicePrefill`'s one-shot handoff, kept separate).
 /// Attachment staging/Pro-gating decisions are made later, in EntryFormViewModel+ReceiptPrefill —
@@ -39,15 +64,17 @@ enum ReceiptCallableError: Error, Equatable, Sendable {
     case notAReceipt
     /// The free-lifetime receipt-scan teaser is used up; the UI upsells to Pro.
     case freeLifetimeExhausted
-    /// The Pro daily receipt quota is exhausted; resets at `resetAt`.
-    case dailyExhausted(resetAt: Date)
+    /// The Pro monthly receipt quota is exhausted; a missing/invalid optional reset stays nil.
+    case proMonthExhausted(resetAt: Date?)
 }
 
 @MainActor
 protocol ReceiptQuickAddCalling {
     func proposeEntry(
         images: [String]?, pdfBase64: String?, vehicle: Vehicle?, now: Date
-    ) async throws -> ReceiptEntryProposal
+    ) async throws -> ReceiptProposalResult
+    func confirmScan(token: String) async throws -> ReceiptQuotaSnapshot
+    func quotaStatus() async throws -> ReceiptQuotaSnapshot
 }
 
 @MainActor
@@ -61,7 +88,7 @@ final class ReceiptQuickAddService: ReceiptQuickAddCalling {
 
     func proposeEntry(
         images: [String]?, pdfBase64: String?, vehicle: Vehicle?, now: Date
-    ) async throws -> ReceiptEntryProposal {
+    ) async throws -> ReceiptProposalResult {
         let callable = functions.httpsCallable("receiptQuickAdd")
         var payload: [String: Any] = [:]
         if let images { payload["images"] = images }
@@ -85,14 +112,23 @@ final class ReceiptQuickAddService: ReceiptQuickAddCalling {
             throw error
         }
 
-        guard let data = result.data as? [String: Any] else {
-            throw AppError.unknown("Receipt response was not a dictionary.")
-        }
-        let json = try JSONSerialization.data(withJSONObject: data)
-        return try JSONDecoder().decode(ReceiptEntryProposal.self, from: json)
+        let json = try Self.callableJSON(from: result)
+        let proposal = try JSONDecoder().decode(ReceiptEntryProposal.self, from: json)
+        let metadata = try JSONDecoder().decode(ReceiptQuickAddMetadata.self, from: json)
+        return ReceiptProposalResult(proposal: proposal, token: metadata.token, quota: metadata.quota)
     }
 
-    /// Deliberately narrow (mirrors VoiceQuickAddService/ClaudeService): maps exactly the three
+    func confirmScan(token: String) async throws -> ReceiptQuotaSnapshot {
+        let result = try await functions.httpsCallable("confirmReceiptScan").call(["token": token])
+        return try Self.decodeQuotaSnapshot(from: result)
+    }
+
+    func quotaStatus() async throws -> ReceiptQuotaSnapshot {
+        let result = try await functions.httpsCallable("receiptQuotaStatus").call()
+        return try Self.decodeQuotaSnapshot(from: result)
+    }
+
+    /// Deliberately narrow (mirrors VoiceQuickAddService/ClaudeService): maps exactly the current
     /// documented callable-error shapes to product routing. Anything else falls through to
     /// generic handling — an unrecognized `permission-denied pro_required` (this model has none)
     /// or a malformed details payload never masquerades as a known outcome.
@@ -107,18 +143,44 @@ final class ReceiptQuickAddService: ReceiptQuickAddCalling {
         switch (nsError.code, reason) {
         case (FunctionsErrorCode.failedPrecondition.rawValue, "not_a_receipt"):
             return .notAReceipt
-        case (FunctionsErrorCode.resourceExhausted.rawValue, "receipt_free_exhausted"):
-            return .freeLifetimeExhausted
-        case (FunctionsErrorCode.resourceExhausted.rawValue, "receipt_daily_exhausted"):
-            guard let resetAtString = details["resetAt"] as? String,
-                  let resetAt = ClaudeService.parseQuotaResetAt(resetAtString, now: now) else {
-                return nil
-            }
-            return .dailyExhausted(resetAt: resetAt)
+        case (FunctionsErrorCode.resourceExhausted.rawValue, "receipt_scan_exhausted"),
+             (FunctionsErrorCode.resourceExhausted.rawValue, "receipt_confirmed_exhausted"):
+            return receiptQuotaError(scope: details["scope"] as? String, details: details, now: now)
         default:
             return nil
         }
     }
+
+    private static func callableJSON(from result: HTTPSCallableResult) throws -> Data {
+        guard let data = result.data as? [String: Any] else {
+            throw AppError.unknown("Receipt response was not a dictionary.")
+        }
+        return try JSONSerialization.data(withJSONObject: data)
+    }
+
+    private static func decodeQuotaSnapshot(from result: HTTPSCallableResult) throws -> ReceiptQuotaSnapshot {
+        try JSONDecoder().decode(ReceiptQuotaSnapshot.self, from: callableJSON(from: result))
+    }
+
+    nonisolated private static func receiptQuotaError(
+        scope: String?, details: [String: Any], now: Date
+    ) -> ReceiptCallableError? {
+        switch scope {
+        case "free_lifetime":
+            return .freeLifetimeExhausted
+        case "pro_month":
+            let resetAt = (details["resetAt"] as? String)
+                .flatMap { ClaudeService.parseQuotaResetAt($0, now: now) }
+            return .proMonthExhausted(resetAt: resetAt)
+        default:
+            return nil
+        }
+    }
+}
+
+private struct ReceiptQuickAddMetadata: Codable {
+    let token: String?
+    let quota: ReceiptQuotaSnapshot?
 }
 
 extension ReceiptEntryProposal {

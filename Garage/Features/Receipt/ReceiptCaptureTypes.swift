@@ -15,7 +15,7 @@ enum ReceiptCaptureFailure: Equatable {
     case preflight(AppError)
     case notAReceipt
     case freeLifetimeExhausted
-    case dailyExhausted(resetAt: Date)
+    case proMonthExhausted(resetAt: Date?)
     case generic(String)
 }
 
@@ -38,14 +38,14 @@ extension ReceiptCaptureFailure {
         case .preflight: return .preflight
         case .notAReceipt: return .notAReceipt
         case .generic: return .serviceError
-        case .freeLifetimeExhausted, .dailyExhausted: return nil
+        case .freeLifetimeExhausted, .proMonthExhausted: return nil
         }
     }
 
     var quotaDeniedReason: ReceiptQuotaDeniedReason? {
         switch self {
         case .freeLifetimeExhausted: return .freeLifetimeExhausted
-        case .dailyExhausted: return .proDailyExhausted
+        case .proMonthExhausted: return .proMonthExhausted
         case .preflight, .notAReceipt, .generic: return nil
         }
     }
@@ -54,14 +54,14 @@ extension ReceiptCaptureFailure {
     /// request meaningful; `notAReceipt` needs a changed document before another model verdict.
     var blocksResubmission: Bool {
         switch self {
-        case .notAReceipt, .freeLifetimeExhausted, .dailyExhausted: return true
+        case .notAReceipt, .freeLifetimeExhausted, .proMonthExhausted: return true
         case .preflight, .generic: return false
         }
     }
 
     var isQuotaDenial: Bool {
         switch self {
-        case .freeLifetimeExhausted, .dailyExhausted: return true
+        case .freeLifetimeExhausted, .proMonthExhausted: return true
         case .preflight, .notAReceipt, .generic: return false
         }
     }
@@ -72,7 +72,7 @@ extension ReceiptCaptureFailure {
         switch error {
         case .notAReceipt: return .notAReceipt
         case .freeLifetimeExhausted: return .freeLifetimeExhausted
-        case .dailyExhausted(let resetAt): return .dailyExhausted(resetAt: resetAt)
+        case .proMonthExhausted(let resetAt): return .proMonthExhausted(resetAt: resetAt)
         }
     }
 }
@@ -82,7 +82,7 @@ enum ReceiptCaptureTaskRunner {
     static func parse(
         service: any ReceiptQuickAddCalling, images: [String]?, pdfBase64: String?,
         vehicle: Vehicle?, now: Date
-    ) async -> Result<ReceiptEntryProposal, Error> {
+    ) async -> Result<ReceiptProposalResult, Error> {
         do {
             return .success(
                 try await service.proposeEntry(images: images, pdfBase64: pdfBase64, vehicle: vehicle, now: now)

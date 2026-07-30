@@ -158,9 +158,8 @@ struct ReceiptCaptureView: View {
             failureText("That doesn't look like a service receipt or invoice. Try another photo or file.")
         case .freeLifetimeExhausted:
             upsell
-        case .dailyExhausted(let resetAt):
-            ErrorBanner(error: .unknown("You've used today's receipt scans. Resets "
-                + Self.resetText(resetAt) + "."))
+        case .proMonthExhausted(let resetAt):
+            ErrorBanner(error: .unknown(Self.proMonthExhaustedMessage(resetAt)))
                 .accessibilityIdentifier("receipt.capture.error")
         case .generic(let message):
             ErrorBanner(error: .unknown(message), retry: { viewModel.retryAfterFailure() })
@@ -212,5 +211,10 @@ struct ReceiptCaptureView: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+
+    private static func proMonthExhaustedMessage(_ resetAt: Date?) -> String {
+        guard let resetAt else { return "You've used this month's receipt saves. Try again next month." }
+        return "You've used this month's receipt saves. Resets " + resetText(resetAt) + "."
     }
 }

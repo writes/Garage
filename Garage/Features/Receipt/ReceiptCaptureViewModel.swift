@@ -181,13 +181,13 @@ final class ReceiptCaptureViewModel {
     /// not guaranteed to observe Swift's cooperative cancellation while genuinely in flight. A
     /// cancelled call's result — success OR failure — must never be applied: `abandon()` has
     /// already reset every piece of state this would otherwise touch.
-    private func finishParse(result: Result<ReceiptEntryProposal, Error>) {
+    private func finishParse(result: Result<ReceiptProposalResult, Error>) {
         guard !Task.isCancelled else { return }
         switch result {
         case .success(let ready):
-            proposal = ready
+            proposal = ready.proposal
             phase = .ready
-            analytics.track(.receiptProposalSucceeded(entryType: ready.entryType))
+            analytics.track(.receiptProposalSucceeded(entryType: ready.proposal.entryType))
         case .failure(let error as ReceiptCallableError):
             fail(ReceiptCaptureFailure.map(error))
         case .failure(is CancellationError):

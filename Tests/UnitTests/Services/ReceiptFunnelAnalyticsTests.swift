@@ -36,10 +36,10 @@ struct ReceiptFunnelAnalyticsTests {
     @Test func failureAndQuotaReasons_shareTheReasonWireKey() {
         let events: [AnalyticsEvent] = [
             .receiptProposalFailed(reason: .notAReceipt),
-            .receiptQuotaDenied(reason: .proDailyExhausted)
+            .receiptQuotaDenied(reason: .proMonthExhausted)
         ]
         let values = events.map { $0.definition.firebaseParameters["reason"] as? String }
-        #expect(values == ["not_a_receipt", "pro_daily_exhausted"])
+        #expect(values == ["not_a_receipt", "pro_month_exhausted"])
     }
 
     @Test func receiptCaptureStarted_usesTheSourceWireKey() {

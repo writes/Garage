@@ -63,7 +63,9 @@ struct ReceiptCaptureViewModelTests {
 
     @Test func confirmAndParse_happyPathProducesAProposalAndReportsSuccess() async {
         let analytics = AnalyticsSpy()
-        let service = FakeReceiptService(result: .success(sampleReceiptProposal))
+        let service = FakeReceiptService(result: .success(.init(
+            proposal: sampleReceiptProposal, token: nil, quota: nil
+        )))
         let viewModel = makeReceiptCaptureViewModel(service: service, analytics: analytics)
         viewModel.addImage(Data([0x01]), source: .camera)
 
@@ -115,7 +117,7 @@ struct ReceiptCaptureViewModelTests {
         await Task.yield()
         #expect(service.callCount == 1)
 
-        service.complete(with: .success(sampleReceiptProposal))
+        service.complete(with: .success(.init(proposal: sampleReceiptProposal, token: nil, quota: nil)))
         _ = await (first, second)
         #expect(service.callCount == 1)
         #expect(viewModel.phase == .ready)
@@ -145,7 +147,9 @@ struct ReceiptCaptureViewModelTests {
     /// remain submittable after the user retries.
     @Test func addImage_secondPageFailureKeepsFirstPageIntactAndStillSubmittable() async {
         let preflighter = FakeReceiptPreflighter()
-        let service = FakeReceiptService(result: .success(sampleReceiptProposal))
+        let service = FakeReceiptService(result: .success(.init(
+            proposal: sampleReceiptProposal, token: nil, quota: nil
+        )))
         let viewModel = makeReceiptCaptureViewModel(preflighter: preflighter, service: service)
 
         viewModel.addImage(Data([0x01]), source: .camera)
@@ -181,7 +185,9 @@ struct ReceiptCaptureViewModelTests {
         #expect(viewModel.phase == .idle)
         #expect(viewModel.imagePages.isEmpty)
 
-        service.complete(with: .success(sampleReceiptProposal)) // a late, now-stale result
+        service.complete(with: .success(.init(
+            proposal: sampleReceiptProposal, token: nil, quota: nil
+        ))) // a late result
         _ = await parse
 
         #expect(viewModel.proposal == nil)
@@ -194,7 +200,7 @@ struct ReceiptCaptureViewModelTests {
     @Test func everyFailureCaseMapsToExactlyOneReasonFamily() {
         let failures: [ReceiptCaptureFailure] = [
             .preflight(.unknown("x")), .notAReceipt, .generic("x"),
-            .freeLifetimeExhausted, .dailyExhausted(resetAt: .distantFuture)
+            .freeLifetimeExhausted, .proMonthExhausted(resetAt: .distantFuture)
         ]
         for failure in failures {
             let hasProposalReason = failure.proposalFailureReason != nil

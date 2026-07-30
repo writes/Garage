@@ -20,6 +20,23 @@ struct ReceiptQuickAddServiceTests {
         #expect(proposal.lineItems == ["Oil filter — $12.00"])
     }
 
+    @Test func decodesAdditiveQuotaSnapshotWithoutChangingProposalFields() throws {
+        let json = Data(#"""
+        {"entryType":"oil_change","odometerReading":18120,"cost":165,"shopName":"Joe's Garage",
+        "isDiy":false,"entryDate":null,"notes":"Synthetic blend","lineItems":[],
+        "token":"7d9ba0d8-7cc3-46a3-9a71-9a218dcbef87","quota":{"entitlement":"pro","scanRemaining":79,
+        "scanCeiling":80,"confirmedRemaining":19,"confirmedAllowance":20,"resetAt":"2026-08-01T00:00:00.000Z"}}
+        """#.utf8)
+        let proposal = try JSONDecoder().decode(ReceiptEntryProposal.self, from: json)
+        let quota = try JSONDecoder().decode(ReceiptQuotaSnapshot.self, from: json)
+
+        #expect(proposal.entryType == .oilChange)
+        #expect(quota == ReceiptQuotaSnapshot(
+            entitlement: .pro, scanRemaining: 79, scanCeiling: 80,
+            confirmedRemaining: 19, confirmedAllowance: 20, resetAt: "2026-08-01T00:00:00.000Z"
+        ))
+    }
+
     @Test func classifiesNotAReceipt() {
         let error = NSError(
             domain: FunctionsErrorDomain,
@@ -29,27 +46,36 @@ struct ReceiptQuickAddServiceTests {
         #expect(ReceiptQuickAddService.classifyReceiptError(error, now: .now) == .notAReceipt)
     }
 
-    @Test func classifiesFreeLifetimeExhausted() {
-        let error = NSError(
-            domain: FunctionsErrorDomain,
-            code: FunctionsErrorCode.resourceExhausted.rawValue,
-            info: ["reason": "receipt_free_exhausted"]
-        )
-        #expect(ReceiptQuickAddService.classifyReceiptError(error, now: .now) == .freeLifetimeExhausted)
+    @Test func classifiesBothFreeLifetimeQuotaDenials() {
+        for reason in ["receipt_scan_exhausted", "receipt_confirmed_exhausted"] {
+            let error = NSError(
+                domain: FunctionsErrorDomain,
+                code: FunctionsErrorCode.resourceExhausted.rawValue,
+                info: ["reason": reason, "scope": "free_lifetime"]
+            )
+            #expect(ReceiptQuickAddService.classifyReceiptError(error, now: .now) == .freeLifetimeExhausted)
+        }
     }
 
-    @Test func classifiesDailyExhaustedWithFutureReset() throws {
+    @Test func classifiesBothProMonthQuotaDenialsWithFutureReset() throws {
         let now = try #require(ISO8601DateFormatter().date(from: "2026-07-28T20:00:00Z"))
-        let error = NSError(
-            domain: FunctionsErrorDomain,
-            code: FunctionsErrorCode.resourceExhausted.rawValue,
-            info: ["reason": "receipt_daily_exhausted", "resetAt": "2026-07-29T00:00:00.000Z"]
-        )
-        guard case .dailyExhausted(let resetAt)? = ReceiptQuickAddService.classifyReceiptError(error, now: now) else {
-            Issue.record("expected dailyExhausted")
-            return
+        for reason in ["receipt_scan_exhausted", "receipt_confirmed_exhausted"] {
+            let error = NSError(
+                domain: FunctionsErrorDomain,
+                code: FunctionsErrorCode.resourceExhausted.rawValue,
+                info: ["reason": reason, "scope": "pro_month", "resetAt": "2026-08-01T00:00:00.000Z"]
+            )
+            let classified = ReceiptQuickAddService.classifyReceiptError(error, now: now)
+            guard case .proMonthExhausted(let resetAt)? = classified else {
+                Issue.record("expected proMonthExhausted")
+                return
+            }
+            guard let resetAt else {
+                Issue.record("expected a parsed reset date")
+                return
+            }
+            #expect(resetAt > now)
         }
-        #expect(resetAt > now)
     }
 
     /// Only the three documented shapes may affect product routing — this model has no
@@ -62,6 +88,12 @@ struct ReceiptQuickAddServiceTests {
             info: ["reason": "pro_required"]
         )
         #expect(ReceiptQuickAddService.classifyReceiptError(proRequired, now: .now) == nil)
+        let legacyDaily = NSError(
+            domain: FunctionsErrorDomain,
+            code: FunctionsErrorCode.resourceExhausted.rawValue,
+            info: ["reason": "receipt_daily_exhausted", "scope": "pro_month"]
+        )
+        #expect(ReceiptQuickAddService.classifyReceiptError(legacyDaily, now: .now) == nil)
     }
 
     @Test func resolvedDateParsesISOOrFallsBackToDefault() {

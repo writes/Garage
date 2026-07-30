@@ -37,21 +37,21 @@ struct ReceiptCaptureViewModelRegressionTests {
         viewModel.removeImagePage(viewModel.imagePages[1].id)
         #expect(viewModel.phase == .ready)
         #expect(viewModel.canSubmit)
-        service.result = .success(sampleReceiptProposal)
+        service.result = .success(.init(proposal: sampleReceiptProposal, token: nil, quota: nil))
         await viewModel.confirmAndParse(vehicle: nil)
         #expect(service.callCount == 2)
         #expect(viewModel.phase == .ready)
         #expect(viewModel.consumeProposalPackage()?.proposal == sampleReceiptProposal)
     }
 
-    @Test func confirmAndParse_dailyExhaustedBlocksASecondMeteredCall() async {
+    @Test func confirmAndParse_proMonthExhaustedBlocksASecondMeteredCall() async {
         let resetAt = Date(timeIntervalSince1970: 10_000)
-        let service = FakeReceiptService(result: .failure(ReceiptCallableError.dailyExhausted(resetAt: resetAt)))
+        let service = FakeReceiptService(result: .failure(ReceiptCallableError.proMonthExhausted(resetAt: resetAt)))
         let viewModel = makeReceiptCaptureViewModel(service: service)
         viewModel.addImage(Data([0x01]), source: .camera)
         await viewModel.confirmAndParse(vehicle: nil)
         await viewModel.confirmAndParse(vehicle: nil)
-        #expect(viewModel.phase == .failed(.dailyExhausted(resetAt: resetAt)))
+        #expect(viewModel.phase == .failed(.proMonthExhausted(resetAt: resetAt)))
         #expect(service.callCount == 1)
     }
 
@@ -67,13 +67,13 @@ struct ReceiptCaptureViewModelRegressionTests {
 
     @Test func quotaDenialStaysBlockedAfterAPageMutation() async {
         let resetAt = Date(timeIntervalSince1970: 10_000)
-        let service = FakeReceiptService(result: .failure(ReceiptCallableError.dailyExhausted(resetAt: resetAt)))
+        let service = FakeReceiptService(result: .failure(ReceiptCallableError.proMonthExhausted(resetAt: resetAt)))
         let viewModel = makeReceiptCaptureViewModel(service: service)
         viewModel.addImage(Data([0x01]), source: .camera)
         await viewModel.confirmAndParse(vehicle: nil)
         viewModel.addImage(Data([0x02]), source: .library)
         #expect(viewModel.imagePages.count == 2)
-        #expect(viewModel.phase == .failed(.dailyExhausted(resetAt: resetAt)))
+        #expect(viewModel.phase == .failed(.proMonthExhausted(resetAt: resetAt)))
         #expect(!viewModel.canSubmit)
     }
 

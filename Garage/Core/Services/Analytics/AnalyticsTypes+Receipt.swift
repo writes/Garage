@@ -22,8 +22,8 @@ enum ReceiptFailureReason: String, CaseIterable, Equatable, Sendable {
 }
 
 /// Why a receipt-scan quota request was denied — the dual-bucket model (free-lifetime teaser +
-/// Pro daily cap) from the receipt-capture plan §5.
+/// Pro monthly cap) from the receipt quota refactor.
 enum ReceiptQuotaDeniedReason: String, CaseIterable, Equatable, Sendable {
     case freeLifetimeExhausted = "free_lifetime_exhausted"
-    case proDailyExhausted = "pro_daily_exhausted"
+    case proMonthExhausted = "pro_month_exhausted"
 }

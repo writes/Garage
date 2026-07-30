@@ -47,31 +47,45 @@ final class SuspendedReceiptPreflighter: ReceiptPreflighting {
 
 @MainActor
 final class FakeReceiptService: ReceiptQuickAddCalling {
-    var result: Result<ReceiptEntryProposal, Error>
+    var result: Result<ReceiptProposalResult, Error>
+    var quotaStatusResult: Result<ReceiptQuotaSnapshot, Error> = .success(.fixture)
+    var confirmResult: Result<ReceiptQuotaSnapshot, Error> = .success(.fixture)
     private(set) var lastImages: [String]?
     private(set) var lastPDFBase64: String?
     private(set) var callCount = 0
+    private(set) var quotaStatusCallCount = 0
+    private(set) var confirmTokens: [String] = []
 
-    init(result: Result<ReceiptEntryProposal, Error>) { self.result = result }
+    init(result: Result<ReceiptProposalResult, Error>) { self.result = result }
 
     func proposeEntry(
         images: [String]?, pdfBase64: String?, vehicle: Vehicle?, now: Date
-    ) async throws -> ReceiptEntryProposal {
+    ) async throws -> ReceiptProposalResult {
         callCount += 1
         lastImages = images
         lastPDFBase64 = pdfBase64
         return try result.get()
     }
+
+    func confirmScan(token: String) async throws -> ReceiptQuotaSnapshot {
+        confirmTokens.append(token)
+        return try confirmResult.get()
+    }
+
+    func quotaStatus() async throws -> ReceiptQuotaSnapshot {
+        quotaStatusCallCount += 1
+        return try quotaStatusResult.get()
+    }
 }
 
 @MainActor
 final class SuspendedReceiptService: ReceiptQuickAddCalling {
-    private var continuation: CheckedContinuation<Result<ReceiptEntryProposal, Error>, Never>?
+    private var continuation: CheckedContinuation<Result<ReceiptProposalResult, Error>, Never>?
     private(set) var callCount = 0
 
     func proposeEntry(
         images: [String]?, pdfBase64: String?, vehicle: Vehicle?, now: Date
-    ) async throws -> ReceiptEntryProposal {
+    ) async throws -> ReceiptProposalResult {
         callCount += 1
         let result = await withCheckedContinuation { continuation in
             self.continuation = continuation
@@ -79,9 +93,17 @@ final class SuspendedReceiptService: ReceiptQuickAddCalling {
         return try result.get()
     }
 
-    func complete(with result: Result<ReceiptEntryProposal, Error>) {
+    func complete(with result: Result<ReceiptProposalResult, Error>) {
         continuation?.resume(returning: result)
         continuation = nil
+    }
+
+    func confirmScan(token: String) async throws -> ReceiptQuotaSnapshot {
+        throw AppError.unknown("Confirmation is unavailable in this suspended fake.")
+    }
+
+    func quotaStatus() async throws -> ReceiptQuotaSnapshot {
+        throw AppError.unknown("Quota status is unavailable in this suspended fake.")
     }
 }
 
@@ -90,10 +112,19 @@ let sampleReceiptProposal = ReceiptEntryProposal(
     isDiy: false, entryDate: nil, notes: "Synthetic blend", lineItems: ["Oil filter — $12.00"]
 )
 
+extension ReceiptQuotaSnapshot {
+    static let fixture = ReceiptQuotaSnapshot(
+        entitlement: .free, scanRemaining: 20, scanCeiling: 20,
+        confirmedRemaining: 5, confirmedAllowance: 5, resetAt: nil
+    )
+}
+
 @MainActor
 func makeReceiptCaptureViewModel(
     preflighter: any ReceiptPreflighting = FakeReceiptPreflighter(),
-    service: any ReceiptQuickAddCalling = FakeReceiptService(result: .success(sampleReceiptProposal)),
+    service: any ReceiptQuickAddCalling = FakeReceiptService(result: .success(.init(
+        proposal: sampleReceiptProposal, token: nil, quota: nil
+    ))),
     securityScope: any OilAnalysisPDFSecurityScopeAccessing = RecordingOilAnalysisSecurityScope(),
     analytics: AnalyticsSpy = AnalyticsSpy()
 ) -> ReceiptCaptureViewModel {
