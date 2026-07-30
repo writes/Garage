@@ -132,10 +132,15 @@ struct LogView: View {
     }
 
     /// The tab is built on first selection, so the frame between appearing and the first page
-    /// landing is real. It must read as loading, not as "No log entries yet". Gated on having a
-    /// vehicle at all: with none, reload() never runs and the empty state is the honest answer.
+    /// landing is real. It must read as loading, not as "No log entries yet".
+    ///
+    /// Two gates, the same tri-state pair DashboardView resolves: entries cannot be loading until
+    /// a vehicle exists to load them for, and "no vehicle" only means something once the vehicle
+    /// load has actually completed. A CONFIRMED zero-vehicle account is the one case where the
+    /// empty state is the honest answer.
     private var isAwaitingFirstLoad: Bool {
-        appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad
+        guard appState.hasCompletedInitialVehicleLoad else { return true }
+        return appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad
     }
 
     /// A search or type filter narrows `entries` below `allEntries`; the footer caption and

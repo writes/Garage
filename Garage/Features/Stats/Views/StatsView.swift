@@ -56,10 +56,12 @@ struct StatsView: View {
     }
 
     /// Stats is built on first selection, so the frame before the first load resolves is real — and
-    /// it must not read as "No stats data yet". No vehicle means load() never runs, so the empty
-    /// state is correct there.
+    /// it must not read as "No stats data yet". Same tri-state pair DashboardView resolves: only a
+    /// CONFIRMED zero-vehicle account (vehicle load completed, still no vehicle) is empty rather
+    /// than loading.
     private var isAwaitingFirstLoad: Bool {
-        appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad
+        guard appState.hasCompletedInitialVehicleLoad else { return true }
+        return appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad
     }
 
     private func load() async {
