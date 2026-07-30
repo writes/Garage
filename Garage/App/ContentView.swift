@@ -57,6 +57,9 @@ struct ContentView: View {
         }
         // Tab SWITCHES report via selectedTab's didSet; only the launch impression needs this.
         .onAppear { appState.reportInitialScreen() }
+        // The app's ONE live vehicles listener. Hosted here, not in VehicleSwitcher (five screens
+        // instantiate that), and not in AppState.bootstrap (a fetch is not a listener).
+        .vehicleSyncHost()
     }
 
     @ViewBuilder

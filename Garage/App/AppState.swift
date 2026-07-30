@@ -112,20 +112,13 @@ final class AppState {
 
         await loadProfile(uid: uid, expectedAuthenticationRevision: expectedAuthenticationRevision)
         guard authenticationMatches(expectedAuthenticationRevision, uid: uid) else { return }
-        await loadVehicles(uid: uid, expectedAuthenticationRevision: expectedAuthenticationRevision)
+        // Vehicles are NOT fetched here. `VehicleSyncHost`'s single live listener starts with the
+        // authenticated shell and its first snapshot is the initial load — bootstrapping a
+        // one-time fetch of the same collection alongside it just read the garage twice per cold
+        // launch. `refreshVehicles()` remains for explicit user-triggered refreshes and as the
+        // host's fallback when the listener fails before delivering anything.
         // Self-heal offline deletes (RULES-1): re-purge anything still tombstoned, off critical path.
         Task { await vehicleService.retryPendingPurges() }
-    }
-
-    private func loadVehicles(uid: String, expectedAuthenticationRevision: Int) async {
-        do {
-            let loadedVehicles = try await vehicleService.fetchVehicles()
-            guard authenticationMatches(expectedAuthenticationRevision, uid: uid) else { return }
-            applyLoadedVehicles(loadedVehicles)
-        } catch {
-            AppLogger.shared.error("App bootstrap failed: \(error.localizedDescription)")
-            crashReporter.record(error, context: "vehicle-bootstrap")
-        }
     }
 
     /// Drives vehicles/currentVehicle from the live Firestore listener (#9). Stale-auth snapshots
@@ -161,7 +154,7 @@ final class AppState {
         let expectedRevision = authService.authenticationRevision
         do {
             let loadedVehicles = try await vehicleService.fetchVehicles()
-            // Same stale-fetch guard as loadVehicles.
+            // Stale-fetch guard: an account switch mid-fetch must not apply the prior user's cars.
             guard authenticationMatches(expectedRevision, uid: uid) else { return }
             applyLoadedVehicles(loadedVehicles)
         } catch {
