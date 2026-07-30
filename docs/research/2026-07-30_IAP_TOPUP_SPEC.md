@@ -50,7 +50,13 @@ reserved, updatedAt}`; scan pool on `usage_quotas/${uid}_receipt_credit_scans`
 
 `receipt_credit_txns/{docId}`, docId = **sha256 hex of
 `${appId}|${store}|${environment}|${transactionId}`** (collision-resistant; no
-sanitization aliasing). **The environment component comes ONLY from purchase provenance**
+sanitization aliasing). ALL FOUR components pass one shared `canonicalizeSource`
+helper (upper-case env/store, trimmed) BEFORE hashing AND before any allowlist
+comparison — RC v2 emits lower-case (`sandbox`) while webhooks emit `SANDBOX`, and
+canonicalizing only at comparison time would let the two ingress paths hash two
+different docIds for one transaction = double grant (Grok-r5-1; the reconcile
+fixture must use v2-canonical lower-case input). **The environment component comes
+ONLY from purchase provenance**
 — the webhook event's own `environment`, or the RC lookup's environment in reconcile;
 never from a server default (Grok-r4-1: under Q4's two-environment allowlist, a
 defaulted env desyncs status/reconcile from the webhook's doc and can double-grant;
@@ -133,13 +139,15 @@ boundary tests at QUOTA_DOMAIN_MAX.**
    ledger mutation — and the event record carries a **retryable disposition**
    `rejected_source_config` (Sol-r3-5): a later re-send of the SAME event id may
    transition it atomically to applied once the current config accepts it, so a
-   temporary config error is not a permanent grant/claw loss. **If any RC_* expected
-   config is unset/empty, credits events are answered 503** (fail closed AND
+   temporary config error is not a permanent grant/claw loss. **Webhook-required
+   config = `RC_EXPECTED_APP_ID`, `RC_EXPECTED_STORE`, `RC_ALLOWED_ENVIRONMENTS`;
+   any of those unset/empty → credits events answered 503** (fail closed AND
    RC-retryable — Grok-r4-4: a 200-ack on a config gap would burn RC's five retries
    and permanently lose CANCELLATIONs; per-event source mismatches stay 200 +
    disposition, with the manual RC-dashboard claw replay documented in the runbook).
-   Config set also includes `RC_PROJECT_ID` (v2 API addressing, Sol-r4-1). All
-   rejection + retry cases pinned.
+   `RC_PROJECT_ID` and the v2 secret are RECONCILE-required only (missing →
+   `unavailable` on the callable; they must NOT gate webhook grants/claws —
+   Grok-r5-4). All rejection + retry cases pinned.
 3. **Credits branch = separate handler + transaction** (never threaded through the
    subscription branch). Reads, ALL before any write: `revenuecat_events/{event.id}`
    (duplicate → no-op unless `rejected_source_config`, which is retryable per 2),
@@ -209,15 +217,19 @@ boundary tests at QUOTA_DOMAIN_MAX.**
     replays a stable reason-specific error on retry — first `receipt_credits_revoked`
     and every retry after it identical (Sol-r2-11). Credit tokens: `count >= eff` →
     release + void (`releaseReason: "revoked"`) via result-kind, throw post-commit.
-    Refund paths that void tokens write `releaseReason: "refund"`; the expiry sweep
-    writes `"expired"`. Snapshots composed per 11.
+    The `"refund"` releaseReason's writer is the EXISTING refund machinery
+    (`refundReceiptQuota`/`voidReceiptReservation` already void tokens on upstream
+    failures — this rev adds the field there, in scope; clawback-time mass-voiding
+    remains the separately-deferred item). The expiry sweep writes `"expired"`. Snapshots composed per 11.
 
 ## receiptQuotaStatus.ts
 
 13. One transaction, explicit read order (all reads → all writes): `users/{uid}` →
     base buckets → credits + credit-scans docs → `app_config/receipt_credits` →
-    optional txn docs — **one candidate docId PER allowed environment**
-    (`RC_ALLOWED_ENVIRONMENTS` split, batch-read; the doc that exists wins —
+    optional txn docs — **one candidate docId PER allowed environment**, each
+    `sha256(canonicalize(RC_EXPECTED_APP_ID | RC_EXPECTED_STORE | env |
+    transactionId))` (the client supplies ONLY transactionId; app and store come
+    from server config; batch-read; the doc that exists wins —
     Gemini-r4-1: a single-environment default makes sandbox review purchases poll
     `"unknown"` for the full 60s schedule; the client never supplies the tuple) →
     expiry query → referenced expired-token buckets → sweep writes → composite
@@ -266,8 +278,11 @@ boundary tests at QUOTA_DOMAIN_MAX.**
     `unavailable` honoring Retry-After (never `grant_missing` analytics from an
     outage). Success → fold the purchase fact through the SAME transaction
     machinery (idempotent with any later webhook),
-    `eventIds += ["reconcile:" + txnId]`. If the v2 API cannot satisfy the
-    capability list at build time, STOP and escalate (no silent v1
+    `eventIds += ["reconcile:" + txnId]`. The returned `transactionState` is
+    derived from the POST-FOLD ledger by the same rules as status — v2
+    `status == "owned"` only ADMITS the fold; a ledger already refund-effective
+    reports `"refunded"`, never `"granted"` (Grok-r5-6). If the v2 API cannot
+    satisfy the capability list at build time, STOP and escalate (no silent v1
     merged-history fallback).
     Returns typed `{transactionState, quota: snapshot}` and the client routes it
     through the SAME terminal transition as polling (`granted` / `refunded` /
@@ -303,8 +318,12 @@ boundary tests at QUOTA_DOMAIN_MAX.**
 ## Server tests (delta beyond those named inline)
 Webhook: `entitlement_ids: null` grant; 6-permutation fold matrix + duplicates +
 refund→reverse→refund; concurrent duplicate (emulator) → one grant; source-filter
-rejections (SANDBOX-in-prod, PLAY_STORE, wrong/missing app_id, missing
-transaction_id); quantity clamp; credits+pro → no subscription write; lifetime
+cases per Q4-A: SANDBOX on the prod allowlist is an ACCEPTANCE pin (grant + flagged
+environment + warn log + poll-addressable); rejections = environment ∉ allowlist,
+PLAY_STORE, wrong/missing app_id, missing transaction_id, unset webhook config → 503;
+**quantity reject (≠1)**: zero ledger writes, event recorded with a disposition,
+HTTP 200 (same family as unknown types — a 500 would burn RC's retries, a bare 200
+without the record would lose forensics); credits+pro → no subscription write; lifetime
 allowlist empty; tombstoned uid inert; subscription regression suite unmodified.
 Quota: both-deny payload stability; stranded-reservation pin; scan-pool-on-granted
 rebuy pin; refund restores credit scan + reserved; sweepIncomplete convergence.
@@ -345,9 +364,15 @@ parallel path with the same identity discipline:
     as polling: `granted` → clear marker, refresh, celebrate; `refunded` → terminal
     refund handling; `unknown`/not-found → `receipt_credits_grant_missing` +
     "Purchase received — credits will appear shortly" + persisted-txn resume on next
-    sheet open (which re-polls then re-reconciles). Manual refresh runs the same
-    transition. Ask-to-Buy `pending` purchases that are approved later surface via
-    the next status refresh (no push channel; documented — Grok-r3-10).
+    sheet open (which re-polls then re-reconciles). **The persisted marker carries a
+    72-hour TTL from purchase** (Gemini-r5: a deterministic provenance rejection
+    would otherwise re-poll forever on every sheet open; a wire-visible
+    "foreign/rejected" state was REJECTED as an existence oracle — the uniform
+    `unknown`/not-found stays, and expiry is client-local): past the TTL the marker
+    clears terminally with a support-reference message and a final
+    `receipt_credits_grant_missing`. Manual refresh runs the same transition.
+    Ask-to-Buy `pending` purchases that are approved later surface via the next
+    status refresh (no push channel; documented — Grok-r3-10).
 21. Footer per-route: usable = `min(confirmedRemaining, scanRemaining) +
     min(creditsRemaining, creditsScanRemaining)`; exhausted iff both terms 0 (nil →
     0). `sweepIncomplete` → immediate refetch (cap 5).
