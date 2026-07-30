@@ -17,8 +17,38 @@ export interface DeleteAccountDeps {
   deleteUserQuotas(uid: string): Promise<void>;
   deleteReceiptScanTokens(uid: string): Promise<void>;
   deleteRevenueCatEvents(uid: string): Promise<void>;
+  eraseRevenueCatSubscriber(uid: string): Promise<void>;
   deleteUserStorage(uid: string): Promise<void>;
   deleteAuthUser(uid: string): Promise<void>;
+}
+
+/// Erases the subscriber record AT RevenueCat (the third party), not just our Firestore mirror —
+/// without this, a deleted user's email + full purchase history persisted at RevenueCat forever.
+/// Fail-soft when the key is unset: erasure is skipped with a logged warning rather than breaking
+/// account deletion for deployments that have not provisioned the key yet. The key is read from
+/// the runtime env (CloudFunctions/.env.* or Secret Manager) and trimmed because a trailing
+/// newline in a pasted secret has broken auth in this repo before.
+export async function eraseRevenueCatSubscriberImpl(
+  uid: string,
+  fetchImpl: typeof fetch,
+  secretKey: string | undefined,
+): Promise<void> {
+  const key = (secretKey ?? "").trim();
+  if (!key) {
+    logger.warn("revenuecat erasure skipped: REVENUECAT_SECRET_API_KEY unset; subscriber record retained", { uid });
+    return;
+  }
+  const response = await fetchImpl(
+    `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(uid)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
+  // 404 is idempotent success: a lost response + client retry must not fail the cascade.
+  if (response.ok || response.status === 404) return;
+  throw new Error(`RevenueCat subscriber deletion failed with ${response.status}`);
 }
 
 export interface DeleteAccountResult {
@@ -54,6 +84,8 @@ export async function deleteAccountRequest(
     await deps.deleteReceiptScanTokens(uid);
     step = "deleteRevenueCatEvents";
     await deps.deleteRevenueCatEvents(uid);
+    step = "eraseRevenueCatSubscriber";
+    await deps.eraseRevenueCatSubscriber(uid);
     step = "deleteUserStorage";
     await deps.deleteUserStorage(uid);
     step = "deleteAuthUser";
@@ -115,6 +147,9 @@ export const deleteAccount = onCall(
         async deleteRevenueCatEvents(uid) {
           const snapshot = await db.collection("revenuecat_events").where("appUserId", "==", uid).get();
           await Promise.all(snapshot.docs.map((eventDoc) => eventDoc.ref.delete()));
+        },
+        async eraseRevenueCatSubscriber(uid) {
+          await eraseRevenueCatSubscriberImpl(uid, fetch, process.env.REVENUECAT_SECRET_API_KEY);
         },
         async deleteUserStorage(uid) {
           await bucket.deleteFiles({ prefix: `users/${uid}/` });

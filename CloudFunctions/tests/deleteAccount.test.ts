@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deleteAccountRequest, type DeleteAccountDeps } from "../src/functions/deleteAccount";
+import { deleteAccountRequest, eraseRevenueCatSubscriberImpl, type DeleteAccountDeps } from "../src/functions/deleteAccount";
 
 function spyDeps(vehicleIds: string[], failOn?: keyof DeleteAccountDeps) {
   const calls: string[] = [];
@@ -13,6 +13,7 @@ function spyDeps(vehicleIds: string[], failOn?: keyof DeleteAccountDeps) {
     async deleteUserQuotas() { calls.push("quotas"); guard("deleteUserQuotas"); },
     async deleteReceiptScanTokens() { calls.push("receiptTokens"); guard("deleteReceiptScanTokens"); },
     async deleteRevenueCatEvents() { calls.push("rcEvents"); guard("deleteRevenueCatEvents"); },
+    async eraseRevenueCatSubscriber() { calls.push("rcErase"); guard("eraseRevenueCatSubscriber"); },
     async deleteUserStorage() { calls.push("storage"); guard("deleteUserStorage"); },
     async deleteAuthUser() { calls.push("auth"); guard("deleteAuthUser"); },
   };
@@ -30,7 +31,7 @@ describe("deleteAccountRequest", () => {
     const { calls, deps } = spyDeps(["v1", "v2"]);
     const result = await deleteAccountRequest({ auth: { uid: "owner-1" } }, deps);
     expect(calls).toEqual([
-      "list", "vehicle:v1", "vehicle:v2", "userDoc", "quotas", "receiptTokens", "rcEvents", "storage", "auth",
+      "list", "vehicle:v1", "vehicle:v2", "userDoc", "quotas", "receiptTokens", "rcEvents", "rcErase", "storage", "auth",
     ]);
     expect(calls[calls.length - 1]).toBe("auth");
     expect(result).toEqual({ deleted: true, vehiclesDeleted: 2 });
@@ -39,7 +40,7 @@ describe("deleteAccountRequest", () => {
   it("handles a user with no vehicles", async () => {
     const { calls, deps } = spyDeps([]);
     const result = await deleteAccountRequest({ auth: { uid: "owner-1" } }, deps);
-    expect(calls).toEqual(["list", "userDoc", "quotas", "receiptTokens", "rcEvents", "storage", "auth"]);
+    expect(calls).toEqual(["list", "userDoc", "quotas", "receiptTokens", "rcEvents", "rcErase", "storage", "auth"]);
     expect(result.vehiclesDeleted).toBe(0);
   });
 
@@ -47,5 +48,39 @@ describe("deleteAccountRequest", () => {
     const { calls, deps } = spyDeps(["v1"], "deleteVehicleCascade");
     await expect(deleteAccountRequest({ auth: { uid: "owner-1" } }, deps)).rejects.toThrow("boom:deleteVehicleCascade");
     expect(calls).not.toContain("auth");
+  });
+});
+
+describe("eraseRevenueCatSubscriberImpl", () => {
+  const fetchSpy = (status: number) => {
+    const urls: string[] = [];
+    const impl = (async (url: RequestInfo | URL) => {
+      urls.push(String(url));
+      return new Response(null, { status });
+    }) as typeof fetch;
+    return { urls, impl };
+  };
+
+  it("skips (and does not fetch) when the key is unset or whitespace", async () => {
+    const { urls, impl } = fetchSpy(200);
+    await eraseRevenueCatSubscriberImpl("owner-1", impl, undefined);
+    await eraseRevenueCatSubscriberImpl("owner-1", impl, "  \n");
+    expect(urls).toEqual([]);
+  });
+
+  it("deletes the subscriber at RevenueCat, trimming a pasted trailing newline", async () => {
+    const { urls, impl } = fetchSpy(200);
+    await eraseRevenueCatSubscriberImpl("owner-1", impl, "sk_test\n");
+    expect(urls).toEqual(["https://api.revenuecat.com/v1/subscribers/owner-1"]);
+  });
+
+  it("treats 404 as idempotent success (lost response + retry)", async () => {
+    const { impl } = fetchSpy(404);
+    await expect(eraseRevenueCatSubscriberImpl("owner-1", impl, "sk")).resolves.toBeUndefined();
+  });
+
+  it("propagates a real API failure so the cascade fails and the user can retry", async () => {
+    const { impl } = fetchSpy(500);
+    await expect(eraseRevenueCatSubscriberImpl("owner-1", impl, "sk")).rejects.toThrow("500");
   });
 });
