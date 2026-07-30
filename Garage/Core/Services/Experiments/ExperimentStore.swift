@@ -116,15 +116,19 @@ final class ExperimentStore {
         let arm = arm(for: id)
         guard let definition = registry.definition(for: id), !definition.isKilled else { return }
         guard var assignment = state.assignments[id.rawValue] else { return }
-        guard !assignment.exposedEpochs.contains(definition.epoch) else { return }
 
-        assignment.exposedEpochs.append(definition.epoch)
-        state.assignments[id.rawValue] = assignment
-        persist()
-
+        // Properties are idempotent STATE and re-emit on every call: an identity discarded
+        // before consent (sign-out pre-consent, profile mismatch) drops the held values, and
+        // without this re-emission the next consenting identity would permanently lack
+        // `design_arm` (Gemini cross-check #2). The EVENT below stays once-per-epoch.
         analytics.setUserProperty(.designArm(arm))
         analytics.setUserProperty(.experimentEpoch(definition.epoch))
         analytics.setUserProperty(.notifHoldout(isInNotificationHoldout))
+
+        guard !assignment.exposedEpochs.contains(definition.epoch) else { return }
+        assignment.exposedEpochs.append(definition.epoch)
+        state.assignments[id.rawValue] = assignment
+        persist()
         analytics.track(.experimentExposure(experiment: id, arm: arm, epoch: definition.epoch))
     }
 
