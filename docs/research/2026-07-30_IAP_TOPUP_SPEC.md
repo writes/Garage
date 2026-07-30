@@ -1,4 +1,4 @@
-# Receipt-credit IAP top-ups — implementation spec (2026-07-30, rev 4)
+# Receipt-credit IAP top-ups — implementation spec (2026-07-30, rev 5)
 
 > Extends `2026-07-30_RECEIPT_QUOTA_REFACTOR_SPEC.md` (shipped; reservation model live).
 > Product: `com.writes.harrysplayhouse.credits.receipts10` ($0.99, +10 credits), created by
@@ -12,7 +12,12 @@
 > history), txn-purge replay hole, App-Review sandbox conflict (resolved by tri-vote Q4:
 > **A unanimous** — prod accepts PRODUCTION+SANDBOX, flagged + warn-logged), packDelta
 > freezing, rejected-event replay poisoning, tombstone PII, sweep drain ceiling, secret
-> binding, checked arithmetic. Rev 4 incorporates all. Reviews in session scratchpad
+> binding, checked arithmetic. Rev 4: Gemini GO (2 fixes), Grok+Sol NO-GO — converged on
+> multi-environment docId addressing, the v2 reconcile contract being unimplementable as
+> sketched, alias/tombstone bypass, quantity contradiction, sweep ceiling, plus Sol's
+> live find: the SHIPPED expiry query needs a composite index absent from
+> FirestoreIndexes.json (pre-existing; blocks the queued functions deploy). Rev 5
+> incorporates every round-4 finding. Reviews in session scratchpad
 > `{sol,gemini,grok}-iap-review*.txt`.
 
 ## Model (unchanged from rev 2)
@@ -45,8 +50,13 @@ reserved, updatedAt}`; scan pool on `usage_quotas/${uid}_receipt_credit_scans`
 
 `receipt_credit_txns/{docId}`, docId = **sha256 hex of
 `${appId}|${store}|${environment}|${transactionId}`** (collision-resistant; no
-sanitization aliasing). Raw `appId`, `store`, `environment`, `transactionId` retained as
-fields (lookup + invariant checks). Server-only; explicit rules deny pin. **NEVER purged**
+sanitization aliasing). **The environment component comes ONLY from purchase provenance**
+— the webhook event's own `environment`, or the RC lookup's environment in reconcile;
+never from a server default (Grok-r4-1: under Q4's two-environment allowlist, a
+defaulted env desyncs status/reconcile from the webhook's doc and can double-grant;
+emulator pin: SANDBOX webhook followed by a reconcile → exactly ONE grant). Raw `appId`,
+`store`, `environment`, `transactionId` retained as fields (lookup + invariant checks).
+Server-only; explicit rules deny pin. **NEVER purged**
 — these docs are global idempotency keys for App Store transactions and must OUTLIVE the
 account (Gemini-r3 CRIT: purge + reconcile = cross-account replay of the same Apple
 transaction); deleteAccount ANONYMIZES them instead (see 15).
@@ -55,9 +65,11 @@ Fields: `uid` (beneficiary — **set ONLY by the purchase fact's `app_user_id`**
 refund/reversal-only events; a refund-first doc keeps `uid` unset and the fold applies
 nothing until the purchase fact arrives and pins it — Sol-r3 CRIT-1: first-arrival
 pinning made attribution arrival-order-dependent under alias churn), `productId`,
-`packDelta` (**frozen once set** by the first purchase fact: `10 × clamp(quantity ?? 1,
-1, 10)`; a later purchase fact with a different quantity is a logged error and a no-op —
-multi-quantity purchases are documented UNSUPPORTED, the in-app UI always buys 1), fact
+`packDelta` (**frozen once set** by the first purchase fact; quantity contract
+(Sol-r4-11): only missing or `1` is accepted → `packDelta = 10`; ANY other quantity
+(0, negative, ≥2) rejects the event with a logged error and NO ledger mutation —
+multi-quantity is formally unsupported end-to-end and the in-app UI always buys 1;
+a later purchase fact with a different quantity is a logged no-op), fact
 timestamps `purchaseAtMillis?`, `refundAtMillis?`, `reversalAtMillis?` (from
 `event_timestamp_ms`, validated by `isTimestampMillis` — NOT `safeQuotaCount`, which is
 count-shaped; refund/reversal keep the MAX seen — supports refund→reverse→refund
@@ -122,16 +134,25 @@ boundary tests at QUOTA_DOMAIN_MAX.**
    `rejected_source_config` (Sol-r3-5): a later re-send of the SAME event id may
    transition it atomically to applied once the current config accepts it, so a
    temporary config error is not a permanent grant/claw loss. **If any RC_* expected
-   config is unset/empty, ALL credits mutations are rejected** (reject-all, not
-   match-all — Grok-r3-4). All rejection + retry cases pinned.
+   config is unset/empty, credits events are answered 503** (fail closed AND
+   RC-retryable — Grok-r4-4: a 200-ack on a config gap would burn RC's five retries
+   and permanently lose CANCELLATIONs; per-event source mismatches stay 200 +
+   disposition, with the manual RC-dashboard claw replay documented in the runbook).
+   Config set also includes `RC_PROJECT_ID` (v2 API addressing, Sol-r4-1). All
+   rejection + retry cases pinned.
 3. **Credits branch = separate handler + transaction** (never threaded through the
    subscription branch). Reads, ALL before any write: `revenuecat_events/{event.id}`
    (duplicate → no-op unless `rejected_source_config`, which is retryable per 2),
-   `deleted_users/{sha256(uid)}` tombstone (see 15 — present → **log non-identifying
-   metadata only (event id + type), write NOTHING**, not even the event record: a
+   `receipt_credit_txns/{docId}` (read BEFORE tombstones so the pinned beneficiary is
+   known), then `deleted_users/{sha256(uid)}` tombstones for BOTH the incoming
+   `app_user_id` AND the txn's pinned beneficiary (Sol-r4-3: a refund carrying alias B
+   must not bypass beneficiary A's tombstone), and the literal sentinel
+   `uid == "__deleted__"` is terminal (Gemini-r4-2). ANY hit → **log non-identifying
+   metadata only (event id + type), write NOTHING** — not even the event record: a
    user-linked `revenuecat_events` doc after the purge would resurrect deleted-user
-   data — Sol-r3-6), `receipt_credit_txns/{docId}`, beneficiary's
-   `${uid}_receipt_credits`. Then fact update + fold + event record. Emulator tests:
+   data (Sol-r3-6). Otherwise read beneficiary's `${uid}_receipt_credits`, then fact
+   update + fold + event record. Emulator tests: purchase-A → delete-A →
+   refund-alias-B writes nothing;
    two CONCURRENT identical deliveries → exactly one grant; webhook delivered AFTER a
    completed deletion purge → no user-linked document reappears.
 4. Never a subscription write from the credits branch, even with
@@ -154,14 +175,15 @@ boundary tests at QUOTA_DOMAIN_MAX.**
    (even with zero expired tokens) so admission/status read credit state exclusively
    from the post-release map (Grok-r2-4; Sol-r1-8 pin: expired credit token + fallback
    admission in one transaction ends `reserved == 1`). When the expired-token query
-   returns a full `limit(10)` page, STATUS drains SERVER-SIDE: it runs further bounded
-   sweep transactions (max 10 rounds per call, i.e. 100 tokens) until a page comes back
-   non-full or the budget is hit, and only then responds — `sweepIncomplete: true` only
-   when the budget was exhausted with a still-full page (Sol-r3-7: a five-round CLIENT
-   cap had a hard 50-token correctness ceiling and a full-final-page false positive).
-   Client re-fetches on `sweepIncomplete` (cap 5 — now 500+ tokens/interaction, far
-   beyond any real balance). Admission keeps its single sweep page (denial heals via
-   status refresh). Regressions at 10, 12, 50, 51, and 120 expired reservations.
+   returns a full page, STATUS drains SERVER-SIDE: the sweep queries `limit(11)`,
+   processes 10, and uses the 11th row purely as a `hasMore` probe (Sol-r4-5: a full
+   final page is otherwise indistinguishable from done); it runs further bounded sweep
+   transactions (10 rounds/call) and responds with `sweepIncomplete = hasMore` — and
+   the client keeps re-fetching until `sweepIncomplete == false` with NO fixed round
+   cap (each round is cheap; convergence is guaranteed because every round strictly
+   consumes expired tokens). Admission keeps its single sweep page (denial heals via
+   status refresh). Regressions at 10, 12, 50, 51, 100 (exact boundary), and 520
+   expired reservations.
 10. **Admission fallback** (reads add: credits + credit-scans + tombstone-free... no —
     admission needs no tombstone; reads add the two credit docs only, all before
     writes): base route exactly as today; else credits route iff
@@ -194,12 +216,14 @@ boundary tests at QUOTA_DOMAIN_MAX.**
 
 13. One transaction, explicit read order (all reads → all writes): `users/{uid}` →
     base buckets → credits + credit-scans docs → `app_config/receipt_credits` →
-    optional txn doc (docId computed from the SERVER's expected
-    `{appId, store, environment}` config + caller-supplied `transactionId` — the
-    client never supplies the tuple) → expiry query → referenced expired-token
-    buckets → sweep writes → composite snapshot. `transactionState` returned only
-    when the txn's `uid` == caller: `"granted"` (grantApplied && !refundEffective),
-    `"refunded"` (refundEffective), else/foreign/absent `"unknown"`.
+    optional txn docs — **one candidate docId PER allowed environment**
+    (`RC_ALLOWED_ENVIRONMENTS` split, batch-read; the doc that exists wins —
+    Gemini-r4-1: a single-environment default makes sandbox review purchases poll
+    `"unknown"` for the full 60s schedule; the client never supplies the tuple) →
+    expiry query → referenced expired-token buckets → sweep writes → composite
+    snapshot. `transactionState` returned only when the txn's `uid` == caller:
+    `"granted"` (grantApplied && !refundEffective), `"refunded"` (refundEffective),
+    else/foreign/absent `"unknown"`.
     `creditsPurchasingEnabled` echoes `app_config/receipt_credits
     {purchasingEnabled: bool, expiresAtMillis: number}`: true iff enabled AND
     unexpired (operator renews; expiry fails closed on neglect — reduced-scope
@@ -213,18 +237,38 @@ boundary tests at QUOTA_DOMAIN_MAX.**
     the secret is defined and bound per function — a bare `process.env` read can pass
     the operator checklist yet stay permanently `unavailable`; read via the param API
     with `process.env` fallback for `.env` deployments; deploy verification asserts
-    the binding on the running revisions). Input `{transactionId}` (shape-validated
-    first). Key unset → `unavailable` (fail-soft precedent: RC erasure).
+    the binding on the running revisions). ONE coherent v2 credential (Sol-r4-7):
+    provision a v2 secret key with permissions `customer_information:purchases:read`,
+    `project_configuration:products:read`, `customer_information:customers:read_write`,
+    and MIGRATE deleteAccount's subscriber erasure from the v1 endpoint to v2
+    `DELETE /projects/{RC_PROJECT_ID}/customers/{uid}` in the same commit (else two
+    versioned secrets must be defined and bound — pick the migration). Input
+    `{transactionId}` (shape-validated first). Key unset → `unavailable` (fail-soft
+    precedent: RC erasure).
     **Provenance — transaction-addressed, never merged-customer history** (Sol-r3
-    CRIT-2/3, Gemini-r3-3, Grok-r3-3): look the transaction up via the RC **v2 API**
-    (purchase lookup by store transaction id; 15s AbortSignal) and require ALL of:
-    original customer id == caller's uid (transferred ownership → reject),
-    product ∈ `CREDITS_PRODUCT_IDS`, store == `RC_EXPECTED_STORE`, environment ∈
-    `RC_ALLOWED_ENVIRONMENTS`, app matches, and the purchase is NOT refunded/removed
-    (a lost CANCELLATION must not be resurrect-granted — claw stays webhook-primary).
-    Any failure → `not-found` (uniform, no oracle). Success → fold the purchase fact
-    (quantity from the v2 response) through the SAME transaction machinery
-    (idempotent with any later webhook), `eventIds += ["reconcile:" + txnId]`.
+    CRIT-2/3; contract pinned per Sol-r4-1/6/10 + Grok-r4-3): RC **v2 API** under
+    `RC_PROJECT_ID`, purchase search by store transaction identifier (15s
+    AbortSignal; implementer verifies the exact endpoint path against current RC v2
+    docs at build time — REQUIRED capabilities: owner customer ids, product ref,
+    store, environment, status, quantity). Normalize v2's lower-case enums
+    (`app_store`/`production`/`sandbox`) into the webhook's canonical upper-case
+    before comparison. Require EXACTLY ONE result and ALL of:
+    `original_customer_id === customer_id === caller uid` (rejects outbound AND
+    inbound transfers — `original == caller` alone passes an outbound transfer),
+    `status == "owned"` (not refunded/removed — a lost CANCELLATION must not be
+    resurrect-granted; claw stays webhook-primary), the purchase's product resolved
+    to its App Store `store_identifier` (via the v2 product endpoint or pinned
+    internal ids — v2 returns RC-internal product ids, NOT the ASC identifier) ∈
+    `CREDITS_PRODUCT_IDS`, app matches, environment ∈ `RC_ALLOWED_ENVIRONMENTS`
+    (docId env = the LOOKED-UP environment — provenance, never a default),
+    quantity missing/1. Error mapping (Sol-r4-10): `not-found` ONLY for 404/empty/
+    ambiguous/provenance failures; 429/5xx/timeout/malformed → retryable
+    `unavailable` honoring Retry-After (never `grant_missing` analytics from an
+    outage). Success → fold the purchase fact through the SAME transaction
+    machinery (idempotent with any later webhook),
+    `eventIds += ["reconcile:" + txnId]`. If the v2 API cannot satisfy the
+    capability list at build time, STOP and escalate (no silent v1
+    merged-history fallback).
     Returns typed `{transactionState, quota: snapshot}` and the client routes it
     through the SAME terminal transition as polling (`granted` / `refunded` /
     `unknown` — Sol-r3-9). Rejection tests: sandbox-not-allowed, wrong app/store,
@@ -242,8 +286,10 @@ boundary tests at QUOTA_DOMAIN_MAX.**
     deletion retry is idempotent against an existing tombstone (pinned — Grok-r3-7);
     the user's credits path being inert during a failed-deletion window is accepted
     (they asked for deletion). `receipt_credit_txns` are **NOT purged** — batched
-    UPDATE sets `uid: "__deleted__"` (anonymized, state/facts retained as the global
-    replay guard; Gemini-r3 CRIT-1). The two quota docs are covered by the `${uid}_`
+    UPDATE sets `uid: "__deleted__"` AND deletes the raw `transactionId` and
+    `eventIds` fields (Sol-r4-12: raw store identifiers are re-identifiable via RC —
+    the sha256 doc key plus monetary facts alone are what replay prevention needs;
+    Gemini-r3 CRIT-1). The two quota docs are covered by the `${uid}_`
     prefix purge; tests pin tombstone + anonymization + quota purge + the
     deletion-races-grant case. (The subscription webhook's own late-event
     resurrection of `users/{uid}` is PRE-EXISTING and out of scope; documented.)
@@ -323,6 +369,13 @@ clock); deficit copy; per-route footer matrix; sweepIncomplete refetch cap;
 analytics pins. UI journey: demo-mode sheet with inert purchaser.
 
 ## Operator gates (launch checklist)
+0. **URGENT, precedes even the ALREADY-QUEUED functions deploy (operator item b)**:
+   `firebase deploy --only firestore:indexes` and wait READY — the SHIPPED expiry
+   sweep queries `receipt_scan_tokens(uid ==, consumed ==, expiresAtMillis <)`,
+   which requires the composite index added to `Configuration/FirestoreIndexes.json`
+   in this branch (Sol-r4-4: without it, scan admission starts throwing
+   failed-precondition in prod as soon as the first token expires — the emulator and
+   the in-memory double never catch a missing production index).
 1. ASC: product submitted with a version; review screenshot.
 2. RevenueCat: product added WITHOUT entitlement attachment; **In-App Purchase Key
    uploaded + App Store Platform Server Notifications → RevenueCat** (consumable
