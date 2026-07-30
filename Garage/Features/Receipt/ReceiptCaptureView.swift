@@ -19,6 +19,7 @@ struct ReceiptCaptureView: View {
             content
             disclosureFooter
         }
+        .task { await viewModel.refreshQuotaStatus() }
         .onChange(of: viewModel.proposal) { _, _ in
             if let package = viewModel.consumeProposalPackage() {
                 router.presentReceiptPrefilledForm(package)
@@ -177,9 +178,9 @@ struct ReceiptCaptureView: View {
 
     private var upsell: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            Text("You've used your free receipt scans")
+            Text("You've used your free receipt saves")
                 .font(Theme.Typography.headline)
-            Text("Upgrade to Garage Pro for daily receipt scans.")
+            Text("Upgrade to Garage Pro for 20 receipt saves each month.")
                 .font(Theme.Typography.body)
                 .foregroundStyle(Theme.Colors.textSecondary)
             PrimaryButton(title: "Upgrade to Pro") {
@@ -190,12 +191,22 @@ struct ReceiptCaptureView: View {
     }
 
     private var disclosureFooter: some View {
-        Text("Sent to Claude (Anthropic) to draft your entry. AI can make mistakes — "
-            + "you review everything before saving.")
-            .font(Theme.Typography.caption)
-            .foregroundStyle(Theme.Colors.textSecondary)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity)
+        VStack(spacing: Theme.Spacing.xs) {
+            if let quotaFooterState = viewModel.quotaFooterState {
+                Text(quotaFooterState.message)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("receipt.capture.quota")
+            }
+            Text("Sent to Claude (Anthropic) to draft your entry. AI can make mistakes — "
+                + "you review everything before saving.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+        }
     }
 
     private func addLibraryPhoto(_ item: PhotosPickerItem) async {

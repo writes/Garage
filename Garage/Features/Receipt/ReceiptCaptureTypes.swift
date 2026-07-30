@@ -19,6 +19,29 @@ enum ReceiptCaptureFailure: Equatable {
     case generic(String)
 }
 
+/// The status footer intentionally distinguishes an exhausted scan ceiling from a remaining
+/// confirmation balance: a user cannot turn a displayed save into another proposal once scans are
+/// unavailable, even if a stale/abandoned reservation leaves `confirmedRemaining` positive.
+enum ReceiptQuotaFooterState: Equatable {
+    case freeSavesLeft(Int)
+    case proSavesLeft(Int)
+    case freeScansExhausted
+    case proScansExhausted
+
+    var message: String {
+        switch self {
+        case .freeSavesLeft(let remaining):
+            return "\(remaining) receipt saves left"
+        case .proSavesLeft(let remaining):
+            return "\(remaining) receipt saves left this month"
+        case .freeScansExhausted:
+            return "No receipt scans left"
+        case .proScansExhausted:
+            return "No receipt scans left this month"
+        }
+    }
+}
+
 struct ReceiptImagePage: Identifiable, Equatable {
     let id = UUID()
     let preflight: ReceiptPagePreflight

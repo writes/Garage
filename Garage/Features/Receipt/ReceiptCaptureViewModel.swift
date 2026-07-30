@@ -1,13 +1,10 @@
 import Foundation
 import Observation
 
-// Receipt state, failure policy, and task result wrappers live in ReceiptCaptureTypes.swift —
-// split out to stay under the file-length cap.
+// Receipt state, failure policy, and task results live in ReceiptCaptureTypes.swift to stay under the cap.
 
 /// Drives one receipt capture: pick page(s) -> preflight locally -> a Cloud-Function proposal.
-/// Pattern lineage is VoiceQuickAddViewModel (capture sheet -> strict parse -> one-shot AppRouter
-/// prefill -> user confirms), NOT the oil-analysis in-form coordinator: parsing completes before
-/// the entry form exists, so there is no mutation-gating/epoch/quarantine machinery to encode.
+/// It mirrors voice capture, not the in-form oil-analysis coordinator.
 @MainActor
 @Observable
 final class ReceiptCaptureViewModel {
@@ -24,6 +21,9 @@ final class ReceiptCaptureViewModel {
     private(set) var pdfPage: ReceiptPDFPage?
     /// Non-nil once a proposal is ready; the view consumes it exactly once and routes to the form.
     private(set) var proposal: ReceiptEntryProposal?
+    private(set) var proposalToken: String?
+    private(set) var proposalQuota: ReceiptQuotaSnapshot?
+    private(set) var quotaSnapshot: ReceiptQuotaSnapshot?
 
     private var pdfLease: OilAnalysisPDFSecurityScopeLease?
     private var pdfPreflightTask: Task<Void, Never>?
@@ -132,8 +132,14 @@ final class ReceiptCaptureViewModel {
     /// the proposal so the view routes exactly once.
     func consumeProposalPackage() -> ReceiptPrefillPackage? {
         guard let proposal else { return nil }
-        defer { self.proposal = nil }
-        return ReceiptPrefillPackage(proposal: proposal, attachments: buildAttachments())
+        defer {
+            self.proposal = nil
+            self.proposalToken = nil
+            self.proposalQuota = nil
+        }
+        return ReceiptPrefillPackage(
+            proposal: proposal, attachments: buildAttachments(), token: proposalToken, quota: proposalQuota
+        )
     }
 
     /// Restores only transient failures without clearing staged pages; retrying a model verdict or
@@ -158,6 +164,8 @@ final class ReceiptCaptureViewModel {
         imagePages = []
         pdfPage = nil
         proposal = nil
+        proposalToken = nil
+        proposalQuota = nil
         quotaFailure = nil
         notAReceiptBlocked = false
     }
@@ -186,6 +194,9 @@ final class ReceiptCaptureViewModel {
         switch result {
         case .success(let ready):
             proposal = ready.proposal
+            proposalToken = ready.token
+            proposalQuota = ready.quota
+            if let quota = ready.quota { quotaSnapshot = quota }
             phase = .ready
             analytics.track(.receiptProposalSucceeded(entryType: ready.proposal.entryType))
         case .failure(let error as ReceiptCallableError):

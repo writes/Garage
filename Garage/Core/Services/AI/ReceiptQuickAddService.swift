@@ -57,6 +57,9 @@ struct ReceiptPrefillAttachment: Equatable, Sendable {
 struct ReceiptPrefillPackage: Equatable, Sendable {
     let proposal: ReceiptEntryProposal
     let attachments: [ReceiptPrefillAttachment]
+    /// Nil only when an older server response omitted the additive confirmation fields.
+    let token: String? = nil
+    let quota: ReceiptQuotaSnapshot? = nil
 }
 
 enum ReceiptCallableError: Error, Equatable, Sendable {
