@@ -20,8 +20,10 @@ export interface DeleteAccountDeps {
   deleteUserQuotas(uid: string): Promise<void>;
   deleteReceiptScanTokens(uid: string): Promise<void>;
   deleteRevenueCatEvents(uid: string): Promise<void>;
-  deleteReceiptCreditEvents(uid: string): Promise<void>;
-  anonymizeReceiptCreditTransactions(uid: string): Promise<void>;
+  /// Returns the purged events' creditTxnDocId set so anonymization can also reach
+  /// refund-first ledgers whose uid was never pinned (Gemini code-check #3).
+  deleteReceiptCreditEvents(uid: string): Promise<string[]>;
+  anonymizeReceiptCreditTransactions(uid: string, extraDocIds: string[]): Promise<void>;
   eraseRevenueCatSubscriber(uid: string): Promise<void>;
   deleteUserStorage(uid: string): Promise<void>;
   deleteAuthUser(uid: string): Promise<void>;
@@ -112,11 +114,12 @@ export async function deleteAccountRequest(
     step = "deleteRevenueCatEvents";
     await deps.deleteRevenueCatEvents(uid);
     step = "deleteReceiptCreditEvents";
-    await deps.deleteReceiptCreditEvents(uid);
+    const creditTxnDocIds = await deps.deleteReceiptCreditEvents(uid);
     // Transaction documents are permanent App Store idempotency keys. Strip raw transaction/event
     // identifiers and sentinel-anonymize the beneficiary; never delete this replay-prevention row.
+    // The purged events' docId set reaches refund-first ledgers the uid query cannot see.
     step = "anonymizeReceiptCreditTransactions";
-    await deps.anonymizeReceiptCreditTransactions(uid);
+    await deps.anonymizeReceiptCreditTransactions(uid, creditTxnDocIds);
     step = "eraseRevenueCatSubscriber";
     await deps.eraseRevenueCatSubscriber(uid);
     step = "deleteUserStorage";
@@ -196,18 +199,36 @@ export const deleteAccount = onCall(
           const snapshot = await db.collection("revenuecat_events")
             .where("beneficiaryUidHash", "==", receiptCreditUidHash(uid))
             .get();
+          const creditTxnDocIds = new Set<string>();
+          for (const eventDoc of snapshot.docs) {
+            const docId = eventDoc.data()?.creditTxnDocId;
+            if (typeof docId === "string" && docId.length > 0) creditTxnDocIds.add(docId);
+          }
           for (let index = 0; index < snapshot.docs.length; index += 500) {
             const batch = db.batch();
             for (const eventDoc of snapshot.docs.slice(index, index + 500)) batch.delete(eventDoc.ref);
             await batch.commit();
           }
+          return Array.from(creditTxnDocIds);
         },
-        async anonymizeReceiptCreditTransactions(uid) {
+        async anonymizeReceiptCreditTransactions(uid, extraDocIds) {
           const snapshot = await db.collection("receipt_credit_txns").where("uid", "==", uid).get();
-          for (let index = 0; index < snapshot.docs.length; index += 500) {
+          // Only refs are needed; querying by uid misses refund-first ledgers whose uid was
+          // never pinned, so the purged events' docId set supplies those.
+          const refsById = new Map(snapshot.docs.map((transactionDoc) => [transactionDoc.id, transactionDoc.ref]));
+          const extras = await Promise.all(
+            extraDocIds
+              .filter((docId) => !refsById.has(docId))
+              .map(async (docId) => db.collection("receipt_credit_txns").doc(docId).get()),
+          );
+          for (const extra of extras) {
+            if (extra.exists) refsById.set(extra.id, extra.ref);
+          }
+          const refs = Array.from(refsById.values());
+          for (let index = 0; index < refs.length; index += 500) {
             const batch = db.batch();
-            for (const transactionDoc of snapshot.docs.slice(index, index + 500)) {
-              batch.update(transactionDoc.ref, {
+            for (const ref of refs.slice(index, index + 500)) {
+              batch.update(ref, {
                 ...receiptCreditTransactionAnonymizationFields(),
               });
             }

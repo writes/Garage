@@ -20,8 +20,17 @@ function spyDeps(vehicleIds: string[], failOn?: keyof DeleteAccountDeps) {
     async deleteUserQuotas() { calls.push("quotas"); guard("deleteUserQuotas"); },
     async deleteReceiptScanTokens() { calls.push("receiptTokens"); guard("deleteReceiptScanTokens"); },
     async deleteRevenueCatEvents() { calls.push("rcEvents"); guard("deleteRevenueCatEvents"); },
-    async deleteReceiptCreditEvents() { calls.push("creditEvents"); guard("deleteReceiptCreditEvents"); },
-    async anonymizeReceiptCreditTransactions() { calls.push("creditTxnAnonymize"); guard("anonymizeReceiptCreditTransactions"); },
+    async deleteReceiptCreditEvents() {
+      calls.push("creditEvents");
+      guard("deleteReceiptCreditEvents");
+      // Refund-first ledgers have no pinned uid; the purged events' docId set is how
+      // anonymization reaches them — assert the orchestration threads it through.
+      return ["txn-doc-from-event"];
+    },
+    async anonymizeReceiptCreditTransactions(_uid: string, extraDocIds: string[]) {
+      calls.push(`creditTxnAnonymize:${extraDocIds.join(",")}`);
+      guard("anonymizeReceiptCreditTransactions");
+    },
     async eraseRevenueCatSubscriber() { calls.push("rcErase"); guard("eraseRevenueCatSubscriber"); },
     async deleteUserStorage() { calls.push("storage"); guard("deleteUserStorage"); },
     async deleteAuthUser() { calls.push("auth"); guard("deleteAuthUser"); },
@@ -40,18 +49,18 @@ describe("deleteAccountRequest", () => {
     const { calls, deps } = spyDeps(["v1", "v2"]);
     const result = await deleteAccountRequest({ auth: { uid: "owner-1" } }, deps);
     expect(calls).toEqual([
-      "tombstone", "list", "vehicle:v1", "vehicle:v2", "userDoc", "quotas", "receiptTokens", "rcEvents", "creditEvents", "creditTxnAnonymize", "rcErase", "storage", "auth",
+      "tombstone", "list", "vehicle:v1", "vehicle:v2", "userDoc", "quotas", "receiptTokens", "rcEvents", "creditEvents", "creditTxnAnonymize:txn-doc-from-event", "rcErase", "storage", "auth",
     ]);
     expect(calls[calls.length - 1]).toBe("auth");
     expect(calls[0]).toBe("tombstone");
-    expect(calls.indexOf("creditEvents")).toBeLessThan(calls.indexOf("creditTxnAnonymize"));
+    expect(calls.indexOf("creditEvents")).toBeLessThan(calls.indexOf("creditTxnAnonymize:txn-doc-from-event"));
     expect(result).toEqual({ deleted: true, vehiclesDeleted: 2 });
   });
 
   it("handles a user with no vehicles", async () => {
     const { calls, deps } = spyDeps([]);
     const result = await deleteAccountRequest({ auth: { uid: "owner-1" } }, deps);
-    expect(calls).toEqual(["tombstone", "list", "userDoc", "quotas", "receiptTokens", "rcEvents", "creditEvents", "creditTxnAnonymize", "rcErase", "storage", "auth"]);
+    expect(calls).toEqual(["tombstone", "list", "userDoc", "quotas", "receiptTokens", "rcEvents", "creditEvents", "creditTxnAnonymize:txn-doc-from-event", "rcErase", "storage", "auth"]);
     expect(result.vehiclesDeleted).toBe(0);
   });
 
