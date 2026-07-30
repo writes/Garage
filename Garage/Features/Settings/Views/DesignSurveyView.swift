@@ -46,6 +46,8 @@ struct DesignSurveyView: View {
             .garageCard()
 
             PrimaryButton(title: "Send Feedback") {
+                // Rapid double-tap while the sheet animates away must not double-count.
+                guard !didSubmit else { return }
                 didSubmit = true
                 analytics.track(.surveySubmitted(
                     survey: .designMegatest,
