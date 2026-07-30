@@ -88,7 +88,6 @@ enum FirestorePaths {
 
     static func vehicleEntries(vehicleId: String) -> String { "\(vehicles)/\(vehicleId)/\(entries)" }
     static func vehicleWear(vehicleId: String) -> String { "\(vehicles)/\(vehicleId)/\(wearSnapshots)" }
-    static func vehicleTireSets(vehicleId: String) -> String { "\(vehicles)/\(vehicleId)/\(tireSets)" }
     static func vehicleReminders(vehicleId: String) -> String { "\(vehicles)/\(vehicleId)/\(reminders)" }
     static func vehicleGallery(vehicleId: String) -> String { "\(vehicles)/\(vehicleId)/\(gallery)" }
     static func vehicleParts(vehicleId: String) -> String { "\(vehicles)/\(vehicleId)/\(partsInventory)" }
