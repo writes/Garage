@@ -180,7 +180,10 @@ function parseExistingLedger(
   ) {
     return { reason: "invalid_existing_ledger_number" };
   }
-  if (packDelta !== undefined && packDelta !== RECEIPT_CREDITS_PACK_DELTA) {
+  // The stored packDelta is FROZEN at grant time: validate it as a positive domain value
+  // rather than equating it to today's constant, so a future pack-size change cannot make
+  // historic ledgers reject their own refunds/reversals (Gemini code-check #1).
+  if (packDelta !== undefined && packDelta < 1) {
     return { reason: "invalid_existing_pack_delta" };
   }
 
