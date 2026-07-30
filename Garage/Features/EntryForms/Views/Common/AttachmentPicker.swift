@@ -112,13 +112,23 @@ struct AttachmentPicker: View {
     private func addPhoto(_ item: PhotosPickerItem) async {
         pickerError = nil
         guard let data = try? await item.loadTransferable(type: Data.self),
-              let downsampled = AttachmentImageProcessor.downsampledJPEG(from: data) else {
+              let downsampled = await Self.downsampleJPEG(from: data) else {
             pickerError = "Could not read that photo. Try a different one."
             selectedPhoto = nil
             return
         }
         viewModel.addPendingImage(downsampled)
         selectedPhoto = nil
+    }
+
+    /// Off the main thread, like readPDFData below and OilAnalysisPDFPreflighter before it: a
+    /// full-resolution camera capture is decoded, re-rendered at 2048pt and JPEG-encoded here, and
+    /// running that on the main actor froze the form mid-pick for as long as it took. The photo
+    /// path was the odd one out — the PDF path in this same file was already detached.
+    private static func downsampleJPEG(from data: Data) async -> Data? {
+        await Task.detached(priority: .userInitiated) {
+            AttachmentImageProcessor.downsampledJPEG(from: data)
+        }.value
     }
 
     /// Security-scoped access is opened here (main actor) and held open via `defer` across the
