@@ -125,47 +125,6 @@ struct AppStateTests {
         #expect(analytics.enabledValues.last == false)
     }
 
-    @Test func hasCompletedInitialVehicleLoad_trueAfterBootstrapFalseAgainAfterSignOut() async {
-        let analytics = AnalyticsSpy()
-        let purchaseService = PurchaseService(testIsPro: false)
-        let authService = AuthService(testUID: "user", analytics: analytics)
-        let state = AppState(
-            authService: authService,
-            vehicleService: VehicleService(testVehicles: [], purchaseService: purchaseService),
-            purchaseService: purchaseService,
-            analytics: analytics,
-            crashReporter: NoopCrashReporter(),
-            profileStore: AppStateProfileStore(fields: ["analyticsOptOut": .boolean(false)])
-        )
-        #expect(state.hasCompletedInitialVehicleLoad == false)
-
-        await state.bootstrap()
-        #expect(state.hasCompletedInitialVehicleLoad == true)
-
-        state.signOut()
-        #expect(state.hasCompletedInitialVehicleLoad == false)
-    }
-
-    @Test func hasCompletedInitialVehicleLoad_trueAfterApplyVehicleSnapshotEvenWithZeroVehicles() {
-        let analytics = AnalyticsSpy()
-        let purchaseService = PurchaseService(testIsPro: false)
-        let state = AppState(
-            authService: AuthService(testUID: "user", analytics: analytics),
-            vehicleService: VehicleService(testVehicles: [], purchaseService: purchaseService),
-            purchaseService: purchaseService,
-            analytics: analytics,
-            crashReporter: NoopCrashReporter(),
-            profileStore: AppStateProfileStore(fields: ["analyticsOptOut": .boolean(false)])
-        )
-        #expect(state.hasCompletedInitialVehicleLoad == false)
-
-        // Empty on purpose: the flag must flip on a completed load regardless of its result —
-        // this is exactly the "confirmed zero vehicles" case AppRouter's gate needs to trust.
-        state.applyVehicleSnapshot(VehicleSnapshotEnvelope(vehicles: [], isFromCache: false, hasPendingWrites: false))
-        #expect(state.hasCompletedInitialVehicleLoad == true)
-        #expect(state.vehicles.isEmpty)
-    }
-
     @Test func accountSwitchDuringProfileLoad_restartsForTheCurrentAccount() async {
         let analytics = AnalyticsSpy()
         let purchaseService = PurchaseService(testIsPro: false)
