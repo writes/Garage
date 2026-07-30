@@ -92,13 +92,9 @@ final class VoiceQuickAddService: VoiceQuickAddCalling {
 }
 
 extension VoiceEntryProposal {
-    /// The parsed entry date, or `now`'s day when the model gave no date.
+    /// The parsed entry date, or `now`'s day when the model gave no date. Shared with the receipt
+    /// proposal, which carries the same field (QuickAddProposalDate).
     func resolvedDate(default fallback: Date) -> Date {
-        guard let entryDate else { return fallback }
-        let parser = ISO8601DateFormatter()
-        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return parser.date(from: entryDate)
-            ?? ISO8601DateFormatter().date(from: entryDate)
-            ?? fallback
+        QuickAddProposalDate.resolve(entryDate, default: fallback)
     }
 }
