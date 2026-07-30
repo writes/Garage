@@ -17,7 +17,7 @@ struct StatsView: View {
                         ) {
                             router.present(.subscription(.stats))
                         }
-                    } else if viewModel.isLoading {
+                    } else if viewModel.isLoading || isAwaitingFirstLoad {
                         LoadingOverlay()
                     } else if let error = viewModel.error {
                         ErrorBanner(error: error)
@@ -53,6 +53,13 @@ struct StatsView: View {
             }
             .task(id: [appState.currentVehicle?.id, appState.isPro ? "pro" : "free"]) { await load() }
         }
+    }
+
+    /// Stats is built on first selection, so the frame before the first load resolves is real — and
+    /// it must not read as "No stats data yet". No vehicle means load() never runs, so the empty
+    /// state is correct there.
+    private var isAwaitingFirstLoad: Bool {
+        appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad
     }
 
     private func load() async {
