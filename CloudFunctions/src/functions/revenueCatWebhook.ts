@@ -2,16 +2,38 @@ import { timingSafeEqual } from "node:crypto";
 import { getFirestore } from "firebase-admin/firestore";
 import { onRequest } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
-import { revenueCatWebhookAuth } from "../params";
+import {
+  revenueCatAllowedEnvironments,
+  revenueCatExpectedAppId,
+  revenueCatExpectedStore,
+  revenueCatWebhookAuth,
+} from "../params";
+import {
+  CREDITS_PRODUCT_IDS,
+  canonicalizeSource,
+  foldReceiptCreditFact,
+  isTimestampMillis,
+  RECEIPT_CREDITS_PACK_DELTA,
+  receiptCreditTransactionDocId,
+  receiptCreditUidHash,
+  type ReceiptCreditFact,
+  type ReceiptCreditSource,
+} from "./creditLedger";
 
 type StandardRevenueCatEvent = {
   appUserId: string;
+  appId?: string;
   cancelReason?: string;
+  environment?: string;
   entitlementIds: string[];
   eventTimestampMs: number;
   expirationAtMs?: number;
   id: string;
   kind: "standard";
+  productId?: string;
+  quantity?: unknown;
+  store?: string;
+  transactionId?: string;
   type: string;
 };
 
@@ -59,6 +81,11 @@ export type RevenueCatWebhookResponse = {
 };
 
 export type RevenueCatWebhookDependencies = {
+  creditSourceConfig?: {
+    allowedEnvironments?: string;
+    expectedAppId?: string;
+    expectedStore?: string;
+  };
   db: RevenueCatFirestore;
   expectedAuthorization?: string;
   now?: () => Date;
@@ -76,14 +103,8 @@ const grantEventTypes = new Set<StandardRevenueCatEvent["type"]>([
   "SUBSCRIPTION_EXTENDED",
 ]);
 
-/**
- * Only a lifetime/consumable purchase legitimately has no expiration. Every other grant type is
- * a renewable subscription whose expiration RevenueCat documents as present; treating a missing
- * expiration as "never expires" would hand out perpetual server-side Pro (the audit-#11 bug).
- */
-const lifetimeGrantEventTypes = new Set<StandardRevenueCatEvent["type"]>([
-  "NON_RENEWING_PURCHASE",
-]);
+/** No subscription SKU is lifetime; an empty allowlist prevents accidental perpetual Pro. */
+const lifetimeGrantEventTypes = new Set<StandardRevenueCatEvent["type"]>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -100,13 +121,6 @@ function isStringArray(value: unknown): value is string[] {
 /** RevenueCat TRANSFER fields identify Firebase/RevenueCat app users, not arbitrary payload values. */
 function isAppUserIdArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(isNonEmptyString);
-}
-
-function isTimestampMillis(value: unknown): value is number {
-  return typeof value === "number"
-    && Number.isFinite(value)
-    && Number.isSafeInteger(value)
-    && !Number.isNaN(new Date(value).getTime());
 }
 
 function parseRevenueCatEvent(body: unknown): RevenueCatEvent | undefined {
@@ -147,7 +161,9 @@ function parseRevenueCatEvent(body: unknown): RevenueCatEvent | undefined {
     };
   }
 
-  const entitlementIds = event.entitlement_ids;
+  // RevenueCat's standard-event test payloads use null and some event variants omit this
+  // field. Neither means the payload is malformed: they carry an empty entitlement set.
+  const entitlementIds = event.entitlement_ids == null ? [] : event.entitlement_ids;
   if (
     !isNonEmptyString(event.app_user_id)
     || !isStringArray(entitlementIds)
@@ -158,12 +174,18 @@ function parseRevenueCatEvent(body: unknown): RevenueCatEvent | undefined {
 
   return {
     appUserId: event.app_user_id,
+    ...(typeof event.app_id === "string" ? { appId: event.app_id } : {}),
     ...(isNonEmptyString(event.cancel_reason) ? { cancelReason: event.cancel_reason } : {}),
+    ...(typeof event.environment === "string" ? { environment: event.environment } : {}),
     entitlementIds,
     eventTimestampMs: event.event_timestamp_ms,
     ...(rawExpirationAtMs != null ? { expirationAtMs: rawExpirationAtMs } : {}),
     id: event.id,
     kind: "standard",
+    ...(typeof event.product_id === "string" ? { productId: event.product_id } : {}),
+    ...(event.quantity !== undefined ? { quantity: event.quantity } : {}),
+    ...(typeof event.store === "string" ? { store: event.store } : {}),
+    ...(typeof event.transaction_id === "string" ? { transactionId: event.transaction_id } : {}),
     type: event.type,
   };
 }
@@ -276,6 +298,322 @@ function eventRecord(event: RevenueCatEvent, receivedAt: string, updatedAt: stri
   };
 }
 
+type CreditSourceConfig = {
+  allowedEnvironments: Set<string>;
+  expectedAppId: string;
+  expectedStore: string;
+};
+
+type CreditSourceRejection = "environment_not_allowed" | "missing_source_fields" | "source_mismatch";
+
+type CreditWebhookOutcome =
+  | "applied"
+  | "duplicate"
+  | "invalid_ledger"
+  | "rejected_quantity"
+  | "rejected_source_config"
+  | "tombstoned"
+  | "unsupported_credits_event";
+
+function isCreditsEvent(event: StandardRevenueCatEvent): boolean {
+  return event.productId !== undefined && CREDITS_PRODUCT_IDS.has(event.productId);
+}
+
+function creditSourceFromEvent(event: StandardRevenueCatEvent): ReceiptCreditSource | undefined {
+  if (
+    !isNonEmptyString(event.appId)
+    || !isNonEmptyString(event.store)
+    || !isNonEmptyString(event.environment)
+    || !isNonEmptyString(event.transactionId)
+  ) {
+    return undefined;
+  }
+
+  return {
+    appId: event.appId,
+    environment: event.environment,
+    store: event.store,
+    transactionId: event.transactionId,
+  };
+}
+
+function configuredCreditSource(dependencies: RevenueCatWebhookDependencies): CreditSourceConfig | undefined {
+  const configured = dependencies.creditSourceConfig ?? {
+    allowedEnvironments: revenueCatAllowedEnvironments(),
+    expectedAppId: revenueCatExpectedAppId(),
+    expectedStore: revenueCatExpectedStore(),
+  };
+  if (
+    !isNonEmptyString(configured.expectedAppId)
+    || !isNonEmptyString(configured.expectedStore)
+    || !isNonEmptyString(configured.allowedEnvironments)
+  ) {
+    return undefined;
+  }
+
+  const allowedEnvironments = new Set(
+    configured.allowedEnvironments
+      .split(",")
+      .map((environment) => canonicalizeSource(environment, "environment"))
+      .filter((environment) => environment.length > 0),
+  );
+  if (allowedEnvironments.size === 0) return undefined;
+
+  return {
+    allowedEnvironments,
+    expectedAppId: canonicalizeSource(configured.expectedAppId, "appId"),
+    expectedStore: canonicalizeSource(configured.expectedStore, "store"),
+  };
+}
+
+function creditSourceRejection(
+  source: ReceiptCreditSource | undefined,
+  config: CreditSourceConfig,
+): CreditSourceRejection | undefined {
+  if (!source) return "missing_source_fields";
+  if (!config.allowedEnvironments.has(canonicalizeSource(source.environment, "environment"))) {
+    return "environment_not_allowed";
+  }
+  if (
+    canonicalizeSource(source.appId, "appId") !== config.expectedAppId
+    || canonicalizeSource(source.store, "store") !== config.expectedStore
+  ) {
+    return "source_mismatch";
+  }
+  return undefined;
+}
+
+function creditFactForEvent(event: StandardRevenueCatEvent, source: ReceiptCreditSource): ReceiptCreditFact | undefined {
+  if (event.type === "NON_RENEWING_PURCHASE") {
+    return { appUserId: event.appUserId, eventId: event.id, kind: "purchase", source, timestampMillis: event.eventTimestampMs };
+  }
+  if (event.type === "CANCELLATION") {
+    return { appUserId: event.appUserId, eventId: event.id, kind: "refund", source, timestampMillis: event.eventTimestampMs };
+  }
+  if (event.type === "REFUND_REVERSED") {
+    return { appUserId: event.appUserId, eventId: event.id, kind: "reversal", source, timestampMillis: event.eventTimestampMs };
+  }
+  return undefined;
+}
+
+function knownCreditBeneficiary(event: StandardRevenueCatEvent, pinnedBeneficiary: string | undefined): string | undefined {
+  // A source/quantity-rejected purchase still identifies its prospective beneficiary. A refund or
+  // reversal never does: using its alias here would defeat the beneficiary-hash deletion purge.
+  return pinnedBeneficiary ?? (event.type === "NON_RENEWING_PURCHASE" ? event.appUserId : undefined);
+}
+
+function creditEventRecord(
+  event: StandardRevenueCatEvent,
+  receivedAt: string,
+  updatedAt: string,
+  options: {
+    beneficiaryUid?: string;
+    creditTxnDocId?: string;
+    disposition: string;
+  },
+): Record<string, unknown> {
+  return {
+    ...eventRecord(event, receivedAt, updatedAt),
+    ...(options.beneficiaryUid ? { beneficiaryUidHash: receiptCreditUidHash(options.beneficiaryUid) } : {}),
+    ...(options.creditTxnDocId ? { creditTxnDocId: options.creditTxnDocId } : {}),
+    disposition: options.disposition,
+    ...(event.environment !== undefined ? { environment: event.environment } : {}),
+    packDelta: RECEIPT_CREDITS_PACK_DELTA,
+    productId: event.productId,
+    ...(event.store !== undefined ? { store: event.store } : {}),
+  };
+}
+
+async function recordRejectedCreditSource(
+  event: StandardRevenueCatEvent,
+  source: ReceiptCreditSource | undefined,
+  eventRef: DocumentReferenceLike,
+  dependencies: RevenueCatWebhookDependencies,
+  receivedAt: string,
+  updatedAt: string,
+): Promise<"duplicate" | "rejected_source_config" | "tombstoned"> {
+  const creditTxnDocId = source ? receiptCreditTransactionDocId(source) : undefined;
+  return dependencies.db.runTransaction(async (transaction) => {
+    const existingEvent = await transaction.get(eventRef);
+    if (existingEvent.exists && existingEvent.data()?.disposition !== "rejected_source_config") {
+      return "duplicate";
+    }
+
+    // Even a source-config rejection must not recreate an event record after account deletion.
+    // When addressing material exists, read its ledger before tombstones so an alias refund also
+    // checks the purchase-pinned beneficiary; a malformed/missing source can only check incoming.
+    const existingTxn = creditTxnDocId
+      ? await transaction.get(dependencies.db.collection("receipt_credit_txns").doc(creditTxnDocId))
+      : undefined;
+    const storedBeneficiary = existingTxn?.data()?.uid;
+    const pinnedBeneficiary = isNonEmptyString(storedBeneficiary) ? storedBeneficiary : undefined;
+    const tombstoneUserIds = Array.from(new Set([event.appUserId, pinnedBeneficiary].filter(isNonEmptyString)));
+    const tombstones = await Promise.all(tombstoneUserIds.map(async (uid) => transaction.get(
+      dependencies.db.collection("deleted_users").doc(receiptCreditUidHash(uid)),
+    )));
+    if (
+      event.appUserId === "__deleted__"
+      || pinnedBeneficiary === "__deleted__"
+      || tombstones.some((snapshot) => snapshot.exists)
+    ) {
+      return "tombstoned";
+    }
+
+    transaction.set(eventRef, creditEventRecord(event, receivedAt, updatedAt, {
+      beneficiaryUid: knownCreditBeneficiary(event, pinnedBeneficiary),
+      creditTxnDocId,
+      disposition: "rejected_source_config",
+    }));
+    return "rejected_source_config";
+  });
+}
+
+/**
+ * Processes the consumable ledger in a transaction deliberately isolated from subscription state.
+ * This keeps credit refunds alias-safe and guarantees a credits+pro payload cannot write Pro.
+ */
+async function handleReceiptCreditsEvent(
+  event: StandardRevenueCatEvent,
+  eventRef: DocumentReferenceLike,
+  dependencies: RevenueCatWebhookDependencies,
+  receivedAt: string,
+  updatedAt: string,
+): Promise<CreditWebhookOutcome | "webhook_config_unset"> {
+  const config = configuredCreditSource(dependencies);
+  if (!config) return "webhook_config_unset";
+
+  const source = creditSourceFromEvent(event);
+  const rejection = creditSourceRejection(source, config);
+  if (rejection) {
+    const outcome = await recordRejectedCreditSource(
+      event,
+      source,
+      eventRef,
+      dependencies,
+      receivedAt,
+      updatedAt,
+    );
+    if (outcome === "rejected_source_config") {
+      const log = rejection === "environment_not_allowed" ? logger.warn : logger.error;
+      log("revenuecat receipt-credit source rejected", { eventId: event.id, eventType: event.type, rejection });
+    } else if (outcome === "tombstoned") {
+      logger.warn("revenuecat receipt-credit ignored for deleted user", { eventId: event.id, eventType: event.type });
+    }
+    return outcome;
+  }
+
+  // `creditSourceRejection` only accepts a source after all four components are present.
+  const acceptedSource = source as ReceiptCreditSource;
+  if (canonicalizeSource(acceptedSource.environment, "environment") === "SANDBOX") {
+    // Production deliberately accepts App Review/TestFlight sandbox transactions; retain an
+    // explicit operational signal because this is bounded but not the normal revenue path.
+    logger.warn("revenuecat receipt-credit sandbox transaction accepted", {
+      eventId: event.id,
+      eventType: event.type,
+    });
+  }
+  const creditTxnDocId = receiptCreditTransactionDocId(acceptedSource);
+  const txnRef = dependencies.db.collection("receipt_credit_txns").doc(creditTxnDocId);
+  const fact = creditFactForEvent(event, acceptedSource);
+  const quantityAccepted = event.quantity === undefined || event.quantity === 1;
+
+  const outcome = await dependencies.db.runTransaction(async (transaction) => {
+    // Every possible read happens before the first write. In particular the ledger precedes
+    // tombstones so a refund alias cannot conceal the purchase-pinned beneficiary.
+    const existingEvent = await transaction.get(eventRef);
+    if (existingEvent.exists && existingEvent.data()?.disposition !== "rejected_source_config") {
+      return "duplicate" as const;
+    }
+
+    const existingTxn = await transaction.get(txnRef);
+    const existingLedger = existingTxn.data();
+    const pinnedBeneficiary = isNonEmptyString(existingLedger?.uid) ? existingLedger.uid : undefined;
+    const tombstoneUserIds = Array.from(new Set([event.appUserId, pinnedBeneficiary].filter(isNonEmptyString)));
+    const tombstones = await Promise.all(tombstoneUserIds.map(async (uid) => ({
+      snapshot: await transaction.get(dependencies.db.collection("deleted_users").doc(receiptCreditUidHash(uid))),
+      uid,
+    })));
+
+    if (
+      event.appUserId === "__deleted__"
+      || pinnedBeneficiary === "__deleted__"
+      || tombstones.some(({ snapshot }) => snapshot.exists)
+    ) {
+      return "tombstoned" as const;
+    }
+
+    if (!quantityAccepted) {
+      transaction.set(eventRef, creditEventRecord(event, receivedAt, updatedAt, {
+        beneficiaryUid: knownCreditBeneficiary(event, pinnedBeneficiary),
+        creditTxnDocId,
+        disposition: "rejected_quantity",
+      }));
+      return "rejected_quantity" as const;
+    }
+
+    if (!fact) {
+      transaction.set(eventRef, creditEventRecord(event, receivedAt, updatedAt, {
+        beneficiaryUid: pinnedBeneficiary,
+        creditTxnDocId,
+        disposition: "unsupported_credits_event",
+      }));
+      return "unsupported_credits_event" as const;
+    }
+
+    // A purchase is the only fact allowed to establish the beneficiary. Refund/reversal facts
+    // use the ledger's existing pin, never their incoming alias.
+    const beneficiaryForQuota = fact.kind === "purchase"
+      ? pinnedBeneficiary ?? event.appUserId
+      : pinnedBeneficiary;
+    const quotaSnapshot = beneficiaryForQuota
+      ? await transaction.get(dependencies.db.collection("usage_quotas").doc(`${beneficiaryForQuota}_receipt_credits`))
+      : undefined;
+    const folded = foldReceiptCreditFact(existingLedger, quotaSnapshot?.data(), fact);
+    if (folded.kind === "invalid") return { kind: "invalid_ledger" as const, reason: folded.reason };
+
+    const beneficiaryUid = folded.ledger.uid;
+    transaction.set(eventRef, creditEventRecord(event, receivedAt, updatedAt, {
+      beneficiaryUid,
+      creditTxnDocId,
+      disposition: "applied",
+    }));
+    transaction.set(txnRef, folded.ledger);
+    if (folded.kind === "applied") {
+      transaction.set(
+        dependencies.db.collection("usage_quotas").doc(`${folded.quota.uid}_receipt_credits`),
+        folded.quota,
+        { merge: true },
+      );
+    }
+    return { kind: "applied" as const };
+  });
+
+  if (outcome === "tombstoned") {
+    // Deliberately metadata-only: writing an event record after account purge recreates user data.
+    logger.warn("revenuecat receipt-credit ignored for deleted user", { eventId: event.id, eventType: event.type });
+    return outcome;
+  }
+  if (outcome === "rejected_quantity") {
+    logger.error("revenuecat receipt-credit quantity rejected", { eventId: event.id, eventType: event.type });
+    return outcome;
+  }
+  if (outcome === "unsupported_credits_event") {
+    logger.error("revenuecat receipt-credit event type unsupported", { eventId: event.id, eventType: event.type });
+    return outcome;
+  }
+  if (typeof outcome === "object") {
+    if (outcome.kind === "invalid_ledger") {
+      logger.error("revenuecat receipt-credit ledger rejected", {
+        eventId: event.id,
+        eventType: event.type,
+        reason: outcome.reason,
+      });
+    }
+    return outcome.kind;
+  }
+  return outcome;
+}
+
 export async function handleRevenueCatWebhookRequest(
   request: RevenueCatWebhookRequest,
   response: RevenueCatWebhookResponse,
@@ -331,6 +669,41 @@ export async function handleRevenueCatWebhookRequest(
   const eventRef = dependencies.db.collection("revenuecat_events").doc(event.id);
   const updatedAt = new Date(event.eventTimestampMs).toISOString();
   const receivedAt = (dependencies.now ?? (() => new Date()))().toISOString();
+
+  // Exact product membership routes a consumable before the subscription path. A RevenueCat
+  // payload may include the Pro entitlement alongside a credit purchase; it is never authority
+  // to write subscription state from this branch.
+  if (event.kind === "standard" && isCreditsEvent(event)) {
+    if (event.entitlementIds.includes("pro")) {
+      logger.error("revenuecat receipt-credit event carried pro entitlement; subscription write skipped", {
+        eventId: event.id,
+        eventType: event.type,
+      });
+    }
+
+    const outcome = await handleReceiptCreditsEvent(event, eventRef, dependencies, receivedAt, updatedAt);
+    if (outcome === "webhook_config_unset") {
+      logger.error("revenuecat receipt-credit webhook unavailable: source config unset", {
+        eventId: event.id,
+        eventType: event.type,
+      });
+      response.status(503).send("Receipt-credit webhook source configuration is not configured.");
+      return;
+    }
+    if (outcome === "invalid_ledger") {
+      // Checked arithmetic/invariant failures must remain retryable and create no forensic event
+      // record, because any write could falsely make a later repaired delivery look duplicate.
+      response.status(503).send("Receipt-credit ledger could not be safely applied.");
+      return;
+    }
+    logger.info("revenuecat receipt-credit webhook handled", {
+      eventId: event.id,
+      eventType: event.type,
+      outcome,
+    });
+    response.status(200).send("ok");
+    return;
+  }
 
   if (event.kind === "transfer") {
     // A RevenueCat alias transfer may list a user more than once. A destination
@@ -464,10 +837,9 @@ export async function handleRevenueCatWebhookRequest(
       ? new Date(event.expirationAtMs).toISOString()
       : priorExpiresAt;
 
-    // A renewable grant with no expiration anywhere would become perpetual server-side Pro
-    // (userHasActiveProEntitlement treats a missing expiresAt as lifetime). Only
-    // NON_RENEWING_PURCHASE legitimately has no expiration; everything else fails closed and
-    // waits for an expiry-bearing event.
+    // A subscription grant with no expiration anywhere would become perpetual server-side Pro
+    // (userHasActiveProEntitlement treats a missing expiresAt as lifetime). No lifetime
+    // subscription SKU exists, so every no-expiration grant fails closed.
     if (isActive === true && expiresAt === undefined && !lifetimeGrantEventTypes.has(event.type)) {
       return "skipped_no_expiration";
     }
@@ -485,7 +857,7 @@ export async function handleRevenueCatWebhookRequest(
   });
 
   if (outcome === "skipped_no_expiration") {
-    logger.warn("revenuecat grant skipped: renewable grant carried no expiration", {
+    logger.error("revenuecat grant skipped: subscription grant carried no expiration", {
       appUserId: event.appUserId,
       eventId: event.id,
       eventType: event.type,
@@ -523,6 +895,11 @@ export const handleRevenueCatWebhook = onRequest(
       response,
       {
         db: getFirestore() as unknown as RevenueCatFirestore,
+        creditSourceConfig: {
+          allowedEnvironments: revenueCatAllowedEnvironments(),
+          expectedAppId: revenueCatExpectedAppId(),
+          expectedStore: revenueCatExpectedStore(),
+        },
         expectedAuthorization: revenueCatWebhookAuth.value(),
       },
     );

@@ -7,3 +7,20 @@ import { defineSecret } from "firebase-functions/params";
 //   firebase functions:secrets:set REVENUECAT_WEBHOOK_AUTH
 export const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 export const revenueCatWebhookAuth = defineSecret("REVENUECAT_WEBHOOK_AUTH");
+
+/**
+ * Webhook source checks are deliberately ordinary runtime configuration, not secrets. Reading
+ * through these accessors keeps local `.env` deployments and deployed function environments on
+ * the same code path while leaving reconciliation-only credentials out of webhook availability.
+ */
+export function revenueCatExpectedAppId(): string | undefined {
+  return process.env.RC_EXPECTED_APP_ID;
+}
+
+export function revenueCatExpectedStore(): string | undefined {
+  return process.env.RC_EXPECTED_STORE;
+}
+
+export function revenueCatAllowedEnvironments(): string | undefined {
+  return process.env.RC_ALLOWED_ENVIRONMENTS;
+}

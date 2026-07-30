@@ -1,12 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as logger from "firebase-functions/logger";
 import {
   handleRevenueCatWebhookRequest,
   type RevenueCatWebhookResponse,
 } from "../src/functions/revenueCatWebhook";
+import { receiptCreditTransactionDocId, receiptCreditUidHash } from "../src/functions/creditLedger";
 import { InMemoryFirestore } from "./helpers/inMemoryFirestore";
 
 const expectedAuthorization = "webhook-test-secret";
 const fixedNow = new Date("2026-07-10T20:00:00.000Z");
+const creditSourceConfig = {
+  allowedEnvironments: "PRODUCTION,SANDBOX",
+  expectedAppId: "app-expected",
+  expectedStore: "APP_STORE",
+};
+const creditProductId = "com.writes.harrysplayhouse.credits.receipts10";
 
 type ResponseCapture = {
   body?: string;
@@ -71,15 +79,36 @@ function transferEvent(overrides: Record<string, unknown> = {}): { event: Record
   };
 }
 
+function creditEvent(overrides: Record<string, unknown> = {}): { event: Record<string, unknown> } {
+  return event({
+    app_id: creditSourceConfig.expectedAppId,
+    entitlement_ids: [],
+    environment: "PRODUCTION",
+    expiration_at_ms: undefined,
+    product_id: creditProductId,
+    quantity: 1,
+    store: creditSourceConfig.expectedStore,
+    transaction_id: "store-transaction-1",
+    type: "NON_RENEWING_PURCHASE",
+    ...overrides,
+  });
+}
+
 async function send(
   db: InMemoryFirestore,
   body: unknown,
   authorization = expectedAuthorization,
   configuredAuthorization: string | undefined = expectedAuthorization,
+  configuredCreditSource: {
+    allowedEnvironments?: string;
+    expectedAppId?: string;
+    expectedStore?: string;
+  } = creditSourceConfig,
 ): Promise<ResponseCapture> {
   const capture = captureResponse();
   await handleRevenueCatWebhookRequest(request(body, authorization), capture.response, {
     db,
+    creditSourceConfig: configuredCreditSource,
     expectedAuthorization: configuredAuthorization,
     now: () => fixedNow,
   });
@@ -686,7 +715,7 @@ describe("handleRevenueCatWebhookRequest", () => {
     });
   });
 
-  it("grants a lifetime NON_RENEWING_PURCHASE without an expiration", async () => {
+  it("records but skips a non-credit NON_RENEWING_PURCHASE without an expiration", async () => {
     const db = new InMemoryFirestore();
     db.seed("users/owner-1", {});
 
@@ -696,10 +725,8 @@ describe("handleRevenueCatWebhookRequest", () => {
       type: "NON_RENEWING_PURCHASE",
     }));
 
-    expect(db.data("users/owner-1")).toMatchObject({
-      subscription: { entitlement: "pro", isActive: true, updatedAt: "2026-07-10T10:00:00.000Z" },
-    });
-    expect(db.data("users/owner-1")?.subscription).not.toHaveProperty("expiresAt");
+    expect(db.data("users/owner-1")?.subscription).toBeUndefined();
+    expect(db.data("revenuecat_events/lifetime-1")).toMatchObject({ type: "NON_RENEWING_PURCHASE" });
   });
 
   it("re-grants on REFUND_REVERSED and extends expiry on SUBSCRIPTION_EXTENDED", async () => {
@@ -828,5 +855,252 @@ describe("handleRevenueCatWebhookRequest", () => {
       appUserId: "new-owner",
       type: "EXPIRATION",
     });
+  });
+
+  const creditFactPermutations: Array<Array<"purchase" | "cancellation" | "reversal">> = [
+    ["purchase", "cancellation", "reversal"],
+    ["purchase", "reversal", "cancellation"],
+    ["cancellation", "purchase", "reversal"],
+    ["cancellation", "reversal", "purchase"],
+    ["reversal", "purchase", "cancellation"],
+    ["reversal", "cancellation", "purchase"],
+  ];
+
+  function creditFactEvent(
+    fact: "purchase" | "cancellation" | "reversal",
+    overrides: Record<string, unknown> = {},
+  ): { event: Record<string, unknown> } {
+    const timestamps = {
+      cancellation: 2_000,
+      purchase: 1_000,
+      reversal: 3_000,
+    };
+    const eventType = {
+      cancellation: "CANCELLATION",
+      purchase: "NON_RENEWING_PURCHASE",
+      reversal: "REFUND_REVERSED",
+    };
+    return creditEvent({
+      event_timestamp_ms: timestamps[fact],
+      id: `credit-${fact}`,
+      type: eventType[fact],
+      ...overrides,
+    });
+  }
+
+  for (const arrivalOrder of creditFactPermutations) {
+    it(`folds receipt-credit facts independently of ${arrivalOrder.join(" → ")} arrival`, async () => {
+      const db = new InMemoryFirestore();
+      for (const fact of arrivalOrder) await send(db, creditFactEvent(fact));
+      // Replaying a fact after every possible arrival order is still one grant and no claw.
+      await send(db, creditFactEvent("purchase"));
+
+      const txnId = receiptCreditTransactionDocId({
+        appId: creditSourceConfig.expectedAppId,
+        environment: "PRODUCTION",
+        store: creditSourceConfig.expectedStore,
+        transactionId: "store-transaction-1",
+      });
+      expect(db.data("usage_quotas/owner-1_receipt_credits")).toMatchObject({
+        clawed: 0,
+        granted: 10,
+        kind: "receipt_credits",
+      });
+      expect(db.data(`receipt_credit_txns/${txnId}`)).toMatchObject({
+        clawApplied: false,
+        grantApplied: true,
+        purchaseAtMillis: 1_000,
+        refundAtMillis: 2_000,
+        reversalAtMillis: 3_000,
+        uid: "owner-1",
+      });
+    });
+  }
+
+  for (const arrivalOrder of creditFactPermutations) {
+    it(`pins purchase beneficiary across alias facts in ${arrivalOrder.join(" → ")}`, async () => {
+      const db = new InMemoryFirestore();
+      for (const fact of arrivalOrder) {
+        await send(db, creditFactEvent(fact, {
+          app_user_id: fact === "purchase" ? "owner-a" : "owner-b",
+          id: `alias-${fact}`,
+        }));
+      }
+
+      expect(db.data("usage_quotas/owner-a_receipt_credits")).toMatchObject({ clawed: 0, granted: 10 });
+      expect(db.data("usage_quotas/owner-b_receipt_credits")).toBeUndefined();
+      const txnId = receiptCreditTransactionDocId({
+        appId: creditSourceConfig.expectedAppId,
+        environment: "PRODUCTION",
+        store: creditSourceConfig.expectedStore,
+        transactionId: "store-transaction-1",
+      });
+      expect(db.data(`receipt_credit_txns/${txnId}`)).toMatchObject({ uid: "owner-a" });
+      const cancellationRecord = db.data("revenuecat_events/alias-cancellation");
+      if (arrivalOrder.indexOf("purchase") < arrivalOrder.indexOf("cancellation")) {
+        expect(cancellationRecord).toMatchObject({ beneficiaryUidHash: receiptCreditUidHash("owner-a") });
+      } else {
+        // Before a purchase fact arrives there is intentionally no beneficiary to hash; most
+        // importantly, the refund alias is never misrepresented as the ledger beneficiary.
+        expect(cancellationRecord).not.toHaveProperty("beneficiaryUidHash");
+      }
+    });
+  }
+
+  it("claws again when a later refund follows refund → reversal", async () => {
+    const db = new InMemoryFirestore();
+    await send(db, creditFactEvent("purchase"));
+    await send(db, creditFactEvent("cancellation", { id: "cycle-refund-one", event_timestamp_ms: 2_000 }));
+    await send(db, creditFactEvent("reversal", { id: "cycle-reversal", event_timestamp_ms: 3_000 }));
+    await send(db, creditFactEvent("cancellation", { id: "cycle-refund-two", event_timestamp_ms: 4_000 }));
+
+    expect(db.data("usage_quotas/owner-1_receipt_credits")).toMatchObject({ clawed: 10, granted: 10 });
+  });
+
+  it("converges concurrent identical credit deliveries to one grant", async () => {
+    const db = new InMemoryFirestore();
+    await Promise.all([
+      send(db, creditEvent({ id: "concurrent-credit" })),
+      send(db, creditEvent({ id: "concurrent-credit" })),
+    ]);
+
+    expect(db.data("usage_quotas/owner-1_receipt_credits")).toMatchObject({ clawed: 0, granted: 10 });
+    expect(db.collectionData("receipt_credit_txns")).toHaveLength(1);
+  });
+
+  it("accepts a null entitlement_ids credit grant and records an empty entitlement list", async () => {
+    const db = new InMemoryFirestore();
+    const result = await send(db, creditEvent({ entitlement_ids: null, id: "null-entitlements" }));
+
+    expect(result.statusCode).toBe(200);
+    expect(db.data("usage_quotas/owner-1_receipt_credits")).toMatchObject({ granted: 10 });
+    expect(db.data("revenuecat_events/null-entitlements")).toMatchObject({ entitlementIds: [] });
+  });
+
+  it("accepts a SANDBOX credit on the production allowlist, flags it, and warns", async () => {
+    const db = new InMemoryFirestore();
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    try {
+      const result = await send(db, creditEvent({ environment: "SANDBOX", id: "sandbox-accepted" }));
+      const txnId = receiptCreditTransactionDocId({
+        appId: creditSourceConfig.expectedAppId,
+        environment: "SANDBOX",
+        store: creditSourceConfig.expectedStore,
+        transactionId: "store-transaction-1",
+      });
+
+      expect(result.statusCode).toBe(200);
+      expect(db.data("usage_quotas/owner-1_receipt_credits")).toMatchObject({ granted: 10 });
+      expect(db.data(`receipt_credit_txns/${txnId}`)).toMatchObject({ environment: "SANDBOX" });
+      expect(warn).toHaveBeenCalledWith(
+        "revenuecat receipt-credit sandbox transaction accepted",
+        expect.objectContaining({ eventId: "sandbox-accepted" }),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("records source rejections without creating a ledger and allows rejected-source replay", async () => {
+    const db = new InMemoryFirestore();
+    const rejected = [
+      creditEvent({ environment: "DEVELOPMENT", id: "rejected-environment" }),
+      creditEvent({ id: "rejected-store", store: "PLAY_STORE" }),
+      creditEvent({ app_id: "other-app", id: "rejected-app" }),
+      creditEvent({ app_id: "", id: "missing-app" }),
+      creditEvent({ id: "missing-transaction", transaction_id: "" }),
+    ];
+    for (const body of rejected) {
+      const result = await send(db, body);
+      expect(result.statusCode).toBe(200);
+      const id = body.event.id as string;
+      expect(db.data(`revenuecat_events/${id}`)).toMatchObject({ disposition: "rejected_source_config" });
+      expect(db.data(`revenuecat_events/${id}`)).not.toHaveProperty("transactionId");
+    }
+    expect(db.collectionData("receipt_credit_txns")).toEqual([]);
+    expect(db.data("usage_quotas/owner-1_receipt_credits")).toBeUndefined();
+
+    await send(db, creditEvent({ id: "retry-source-config" as string, store: "PLAY_STORE" }));
+    const replay = await send(db, creditEvent({ id: "retry-source-config" }));
+    expect(replay.statusCode).toBe(200);
+    expect(db.data("revenuecat_events/retry-source-config")).toMatchObject({ disposition: "applied" });
+    expect(db.data("usage_quotas/owner-1_receipt_credits")).toMatchObject({ granted: 10 });
+  });
+
+  it("returns 503 without writing a credit event when required source configuration is unset", async () => {
+    const db = new InMemoryFirestore();
+    const result = await send(db, creditEvent({ id: "missing-source-config" }), expectedAuthorization, expectedAuthorization, {});
+
+    expect(result.statusCode).toBe(503);
+    expect(db.data("revenuecat_events/missing-source-config")).toBeUndefined();
+    expect(db.collectionData("receipt_credit_txns")).toEqual([]);
+  });
+
+  it("records quantity conflicts as terminal no-ops in either purchase order", async () => {
+    for (const order of [[0, 1], [1, 0]]) {
+      const db = new InMemoryFirestore();
+      const bodies = [
+        creditEvent({ id: "quantity-invalid", quantity: 2 }),
+        creditEvent({ id: "quantity-valid", quantity: 1 }),
+      ];
+      for (const index of order) await send(db, bodies[index]);
+
+      expect(db.data("revenuecat_events/quantity-invalid")).toMatchObject({ disposition: "rejected_quantity" });
+      expect(db.data("usage_quotas/owner-1_receipt_credits")).toMatchObject({ granted: 10 });
+    }
+  });
+
+  it("does not recreate any user-linked state after the purchase beneficiary is tombstoned", async () => {
+    const db = new InMemoryFirestore();
+    await send(db, creditFactEvent("purchase", { app_user_id: "owner-a", id: "tombstone-purchase" }));
+    db.seed(`deleted_users/${receiptCreditUidHash("owner-a")}`, { deletedAtMillis: 9_999 });
+    const priorLedger = db.collectionData("receipt_credit_txns");
+    const priorQuota = db.data("usage_quotas/owner-a_receipt_credits");
+
+    const result = await send(db, creditFactEvent("cancellation", {
+      app_user_id: "owner-b",
+      id: "tombstone-refund-alias",
+    }));
+
+    expect(result.statusCode).toBe(200);
+    expect(db.data("revenuecat_events/tombstone-refund-alias")).toBeUndefined();
+    expect(db.collectionData("receipt_credit_txns")).toEqual(priorLedger);
+    expect(db.data("usage_quotas/owner-a_receipt_credits")).toEqual(priorQuota);
+
+    const sentinel = new InMemoryFirestore();
+    await send(sentinel, creditEvent({ app_user_id: "__deleted__", id: "deleted-sentinel" }));
+    expect(sentinel.data("revenuecat_events/deleted-sentinel")).toBeUndefined();
+    expect(sentinel.collectionData("receipt_credit_txns")).toEqual([]);
+  });
+
+  it("never writes subscription state for a credits+pro payload", async () => {
+    const db = new InMemoryFirestore();
+    const result = await send(db, creditEvent({ entitlement_ids: ["pro"], id: "credits-with-pro" }));
+
+    expect(result.statusCode).toBe(200);
+    expect(db.data("users/owner-1")).toBeUndefined();
+    expect(db.data("usage_quotas/owner-1_receipt_credits")).toMatchObject({ granted: 10 });
+  });
+
+  it("uses an identical ledger key for lower-case v2-style and upper-case webhook sources", async () => {
+    const lowerCase = receiptCreditTransactionDocId({
+      appId: creditSourceConfig.expectedAppId,
+      environment: " sandbox ",
+      store: "app_store",
+      transactionId: "store-transaction-1",
+    });
+    const upperCase = receiptCreditTransactionDocId({
+      appId: creditSourceConfig.expectedAppId,
+      environment: "SANDBOX",
+      store: "APP_STORE",
+      transactionId: "store-transaction-1",
+    });
+    expect(lowerCase).toBe(upperCase);
+
+    const db = new InMemoryFirestore();
+    await send(db, creditEvent({ environment: "sandbox", id: "lower-source", store: "app_store" }));
+    await send(db, creditEvent({ environment: "SANDBOX", id: "upper-source", store: "APP_STORE" }));
+    expect(db.collectionData("receipt_credit_txns")).toHaveLength(1);
+    expect(db.data("usage_quotas/owner-1_receipt_credits")).toMatchObject({ granted: 10 });
   });
 });
