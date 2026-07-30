@@ -24,6 +24,11 @@ final class LogViewModel {
     private(set) var entries: [FirestoreEntry] = []
     private(set) var isLoading = false
     private(set) var isLoadingMore = false
+    /// True once a reload has RESOLVED (either way). Distinct from `entries.isEmpty`, which is also
+    /// true before the first fetch lands — and the Log tab is now built on first selection, so that
+    /// frame happens on every first visit. Telling the two apart is what keeps "No log entries yet"
+    /// off the screen of an owner who has plenty (the false-empty-state bug, shipped twice).
+    private(set) var hasCompletedFirstLoad = false
     private(set) var error: AppError?
     private var reloadToken = 0
     private var lastLoadedKey: LoadKey?
@@ -61,7 +66,12 @@ final class LogViewModel {
         reloadToken &+= 1
         let token = reloadToken
         isLoading = true
-        defer { if token == reloadToken { isLoading = false } }
+        defer {
+            if token == reloadToken {
+                isLoading = false
+                hasCompletedFirstLoad = true
+            }
+        }
 
         do {
             let query = EntryQuery(vehicleId: vehicleId, entryTypes: [], searchText: "")

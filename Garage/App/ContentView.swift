@@ -28,25 +28,14 @@ struct ContentView: View {
             get: { appState.selectedTab },
             set: { appState.selectedTab = $0 }
         )) {
-            DashboardView()
-                .tag(AppTab.dashboard)
-                .tabItem { Label(AppTab.dashboard.rawValue, systemImage: AppTab.dashboard.icon) }
-
-            LogView()
-                .tag(AppTab.log)
-                .tabItem { Label(AppTab.log.rawValue, systemImage: AppTab.log.icon) }
-
-            GarageView()
-                .tag(AppTab.garage)
-                .tabItem { Label(AppTab.garage.rawValue, systemImage: AppTab.garage.icon) }
-
-            StatsView()
-                .tag(AppTab.stats)
-                .tabItem { Label(AppTab.stats.rawValue, systemImage: AppTab.stats.icon) }
-
-            SettingsView()
-                .tag(AppTab.settings)
-                .tabItem { Label(AppTab.settings.rawValue, systemImage: AppTab.settings.icon) }
+            // Every tab is built on FIRST SELECTION, not at launch: an eager TabView fired the
+            // Dashboard, Log and Stats fetches concurrently before the owner had seen anything but
+            // the Dashboard. Content is kept once built, so switching tabs never refetches.
+            lazyTab(.dashboard) { DashboardView() }
+            lazyTab(.log) { LogView() }
+            lazyTab(.garage) { GarageView() }
+            lazyTab(.stats) { StatsView() }
+            lazyTab(.settings) { SettingsView() }
         }
         .overlay(alignment: .bottomTrailing) {
             if appState.selectedTab == .dashboard || appState.selectedTab == .log {
@@ -60,6 +49,14 @@ struct ContentView: View {
         // The app's ONE live vehicles listener. Hosted here, not in VehicleSwitcher (five screens
         // instantiate that), and not in AppState.bootstrap (a fetch is not a listener).
         .vehicleSyncHost()
+    }
+
+    private func lazyTab(
+        _ tab: AppTab, @ViewBuilder content: @escaping () -> some View
+    ) -> some View {
+        LazyTabContent(tab: tab, selection: appState.selectedTab, content: content)
+            .tag(tab)
+            .tabItem { Label(tab.rawValue, systemImage: tab.icon) }
     }
 
     @ViewBuilder

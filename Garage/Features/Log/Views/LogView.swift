@@ -15,7 +15,7 @@ struct LogView: View {
             VStack(spacing: Theme.Spacing.md) {
                 SearchBar(text: $viewModel.searchText, placeholder: "Search notes, types, and details")
 
-                if viewModel.isLoading {
+                if viewModel.isLoading || isAwaitingFirstLoad {
                     LoadingOverlay()
                 } else if let error = viewModel.error {
                     ErrorBanner(error: error, retry: { Task { await reload() } })
@@ -129,6 +129,13 @@ struct LogView: View {
         } catch {
             deletionError = AppError(from: error)
         }
+    }
+
+    /// The tab is built on first selection, so the frame between appearing and the first page
+    /// landing is real. It must read as loading, not as "No log entries yet". Gated on having a
+    /// vehicle at all: with none, reload() never runs and the empty state is the honest answer.
+    private var isAwaitingFirstLoad: Bool {
+        appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad
     }
 
     /// A search or type filter narrows `entries` below `allEntries`; the footer caption and

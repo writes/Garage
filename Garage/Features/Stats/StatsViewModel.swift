@@ -30,6 +30,10 @@ final class StatsViewModel {
     private(set) var wearItems: [WearItem] = []
     private(set) var error: AppError?
     private(set) var isLoading = false
+    /// True once a load has RESOLVED (either way). `hasContent` alone is also false before the
+    /// first fetch lands — and Stats is now built on first selection, so that frame happens on
+    /// every first visit; without this the tab would greet a Pro owner with "No stats data yet".
+    private(set) var hasCompletedFirstLoad = false
     var hasContent: Bool { !entries.isEmpty || !wearItems.isEmpty }
     private var reloadToken = 0
     private var lastLoadedKey: LoadKey?
@@ -59,7 +63,12 @@ final class StatsViewModel {
         // while the fetch is in flight, so every owner WITH data would be told "No stats data yet"
         // until it resolved. Set before the first await, and the view branches on it first.
         isLoading = true
-        defer { if token == reloadToken { isLoading = false } }
+        defer {
+            if token == reloadToken {
+                isLoading = false
+                hasCompletedFirstLoad = true
+            }
+        }
         do {
             let content: StatsContent
             if let contentLoader {
