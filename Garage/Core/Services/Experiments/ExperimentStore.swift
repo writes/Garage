@@ -28,10 +28,14 @@ final class ExperimentStore {
     private struct State: Codable, Equatable {
         var unitID: String
         var assignments: [String: Assignment]
+        /// Server registry override (`experimentConfig` callable), cached so a kill switch
+        /// fetched in one session still applies at the next cold launch even offline.
+        var overrideDefinitions: [ExperimentDefinition]?
 
         init() {
             unitID = UUID().uuidString
             assignments = [:]
+            overrideDefinitions = nil
         }
     }
 
@@ -47,9 +51,21 @@ final class ExperimentStore {
     )
 
     private let defaults: UserDefaults?
+    /// The BUNDLED registry compiled into this build.
     private let registry: ExperimentRegistry
     private let analytics: any AnalyticsTracking
     private var state: State
+
+    /// The registry actually consulted: per-experiment, a cached server override wins over
+    /// the bundled definition. Override is definition-granular so a server doc naming only
+    /// one experiment leaves every other bundled experiment untouched.
+    private var activeRegistry: ExperimentRegistry {
+        guard let overrides = state.overrideDefinitions, !overrides.isEmpty else { return registry }
+        var byID: [ExperimentID: ExperimentDefinition] = [:]
+        for definition in registry.definitions { byID[definition.id] = definition }
+        for definition in overrides { byID[definition.id] = definition }
+        return ExperimentRegistry(definitions: ExperimentID.allCases.compactMap { byID[$0] })
+    }
 
     init(defaults: UserDefaults?, registry: ExperimentRegistry, analytics: any AnalyticsTracking) {
         self.defaults = defaults
@@ -82,7 +98,7 @@ final class ExperimentStore {
             return forcedArm
         }
 #endif
-        guard let definition = registry.definition(for: id) else { return .control }
+        guard let definition = activeRegistry.definition(for: id) else { return .control }
         if definition.isKilled { return .control }
 
         if var existing = state.assignments[id.rawValue] {
@@ -114,7 +130,7 @@ final class ExperimentStore {
     /// pre-consent exactly like the sign-in funnel.
     func recordExposureIfNeeded(for id: ExperimentID) {
         let arm = arm(for: id)
-        guard let definition = registry.definition(for: id), !definition.isKilled else { return }
+        guard let definition = activeRegistry.definition(for: id), !definition.isKilled else { return }
         guard var assignment = state.assignments[id.rawValue] else { return }
 
         // Properties are idempotent STATE and re-emit on every call: an identity discarded
@@ -135,19 +151,32 @@ final class ExperimentStore {
     /// Whether the design survey should be offered: exposed to an active experiment this epoch
     /// and not yet submitted for it.
     func isSurveyAvailable(for id: ExperimentID) -> Bool {
-        guard let definition = registry.definition(for: id), !definition.isKilled else { return false }
+        guard let definition = activeRegistry.definition(for: id), !definition.isKilled else { return false }
         guard let assignment = state.assignments[id.rawValue] else { return false }
         return assignment.exposedEpochs.contains(definition.epoch)
             && !assignment.surveySubmittedEpochs.contains(definition.epoch)
     }
 
     func markSurveySubmitted(for id: ExperimentID) {
-        guard let definition = registry.definition(for: id) else { return }
+        guard let definition = activeRegistry.definition(for: id) else { return }
         guard var assignment = state.assignments[id.rawValue] else { return }
         guard !assignment.surveySubmittedEpochs.contains(definition.epoch) else { return }
         assignment.surveySubmittedEpochs.append(definition.epoch)
         state.assignments[id.rawValue] = assignment
         persist()
+    }
+
+    /// Applies a fetched server override: persists it (so it survives cold launches
+    /// offline) and returns whether any experiment's EFFECTIVE state changed — the caller
+    /// reapplies the design pack so an emergency kill restyles mid-session without a
+    /// relaunch.
+    @discardableResult
+    func applyServerOverride(_ definitions: [ExperimentDefinition]) -> Bool {
+        let before = state.overrideDefinitions
+        guard before != definitions else { return false }
+        state.overrideDefinitions = definitions
+        persist()
+        return true
     }
 
     private func persist() {

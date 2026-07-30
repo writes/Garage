@@ -10,6 +10,7 @@ import { deleteAccount } from "./functions/deleteAccount";
 import { deleteVehicle } from "./functions/deleteVehicle";
 import { recomputeVehicleOdometer } from "./functions/recomputeVehicleOdometer";
 import { enforceAttachmentProGate } from "./functions/enforceAttachmentProGate";
+import { experimentConfig } from "./functions/experimentConfig";
 
 initializeApp();
 
@@ -18,6 +19,7 @@ export {
   deleteVehicle,
   confirmReceiptScan,
   enforceAttachmentProGate,
+  experimentConfig,
   handleRevenueCatWebhook,
   lookupRecalls,
   parseOilAnalysis,

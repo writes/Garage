@@ -130,6 +130,58 @@ struct ExperimentStoreTests {
         #expect(spy.events.isEmpty)
     }
 
+    @Test func serverOverrideKillSwitchForcesControlAndPersists() {
+        let defaults = makeDefaults()
+        let store = ExperimentStore(
+            defaults: defaults,
+            registry: registry(arms: [(.variantA, 1)]),
+            analytics: AnalyticsSpy()
+        )
+        #expect(store.arm(for: .designMegatest) == .variantA)
+
+        let killed = ExperimentDefinition(
+            id: .designMegatest,
+            epoch: 1,
+            allocations: [ArmAllocation(arm: .variantA, weight: 1)],
+            isKilled: true
+        )
+        #expect(store.applyServerOverride([killed]))
+        #expect(store.arm(for: .designMegatest) == .control)
+        // Idempotent re-application reports no change.
+        #expect(!store.applyServerOverride([killed]))
+
+        // The cached override survives a cold relaunch even though the BUNDLED registry
+        // still says alive.
+        let relaunched = ExperimentStore(
+            defaults: defaults,
+            registry: registry(arms: [(.variantA, 1)]),
+            analytics: AnalyticsSpy()
+        )
+        #expect(relaunched.arm(for: .designMegatest) == .control)
+
+        // Lifting the kill (empty override) restores the stored assignment.
+        #expect(relaunched.applyServerOverride([]))
+        #expect(relaunched.arm(for: .designMegatest) == .variantA)
+    }
+
+    @Test func serverOverrideEpochBumpRetiringTheArmRehashes() {
+        let defaults = makeDefaults()
+        let store = ExperimentStore(
+            defaults: defaults,
+            registry: registry(arms: [(.variantA, 1)]),
+            analytics: AnalyticsSpy()
+        )
+        #expect(store.arm(for: .designMegatest) == .variantA)
+        let retiring = ExperimentDefinition(
+            id: .designMegatest,
+            epoch: 2,
+            allocations: [ArmAllocation(arm: .variantB, weight: 1)],
+            isKilled: false
+        )
+        store.applyServerOverride([retiring])
+        #expect(store.arm(for: .designMegatest) == .variantB)
+    }
+
     @Test func surveyAvailabilityRequiresExposureAndFlipsOffOnSubmission() {
         let store = ExperimentStore(defaults: makeDefaults(), registry: registry(), analytics: AnalyticsSpy())
         #expect(!store.isSurveyAvailable(for: .designMegatest))
