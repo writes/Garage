@@ -1,3 +1,4 @@
+import ImageIO
 import UIKit
 
 /// Downsamples a picked photo before it ever reaches Storage — external audit finding ("photo
@@ -22,6 +23,28 @@ enum AttachmentImageProcessor {
     /// and this attachment variant) from ONE decode instead of decoding the source image twice.
     static func downsampledJPEG(from image: UIImage) -> Data? {
         resized(image, maxDimension: maxDimension).jpegData(compressionQuality: jpegQuality)
+    }
+
+    /// Decodes `data` STRAIGHT to a thumbnail whose longest edge is at most `maxPixelSize`, rather
+    /// than decoding the full image and shrinking it afterwards. Attachments are stored at
+    /// `maxDimension` (2048pt), which is roughly a 16 MB bitmap to decode in full — per row, for a
+    /// 44pt thumbnail. ImageIO reads only what that size needs.
+    ///
+    /// `maxPixelSize` is in PIXELS: pass points x displayScale, or the thumbnail renders soft on a
+    /// 2x/3x screen. Nothing here touches UIKit, so callers run it off the main actor.
+    /// `kCGImageSourceCreateThumbnailWithTransform` applies the EXIF orientation UIImage would
+    /// otherwise have carried, so a phone-camera photo is not rendered on its side.
+    static func thumbnail(from data: Data, maxPixelSize: Int) -> CGImage? {
+        guard maxPixelSize > 0, let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            return nil
+        }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
     /// Scales `image` down so its longest edge is at most `maxDimension`, preserving aspect
