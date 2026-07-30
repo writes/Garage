@@ -52,7 +52,7 @@ export type ReceiptQuotaConfiguration = {
   period: string | null;
 };
 
-type ReceiptTokenData = {
+export type ReceiptScanToken = {
   uid: string;
   entitlementUsed: ReceiptEntitlement;
   confirmedBucketId: string;
@@ -183,7 +183,7 @@ function quotaBucketState(ref: DocumentReferenceLike, snapshot: DocumentSnapshot
   };
 }
 
-function tokenData(value: Record<string, unknown> | undefined): ReceiptTokenData | undefined {
+export function receiptScanTokenFromData(value: Record<string, unknown> | undefined): ReceiptScanToken | undefined {
   if (!value
     || typeof value.uid !== "string"
     || (value.entitlementUsed !== "free" && value.entitlementUsed !== "pro")
@@ -197,7 +197,7 @@ function tokenData(value: Record<string, unknown> | undefined): ReceiptTokenData
     return undefined;
   }
 
-  return value as ReceiptTokenData;
+  return value as ReceiptScanToken;
 }
 
 /**
@@ -374,7 +374,7 @@ async function releaseReceiptReservation(
     const scanSnapshot = await transaction.get(scanRef);
     const confirmedSnapshot = await transaction.get(confirmedRef);
     const tokenSnapshot = await transaction.get(tokenRef);
-    const token = tokenData(tokenSnapshot.data());
+    const token = receiptScanTokenFromData(tokenSnapshot.data());
     if (!token || token.consumed) return;
 
     const scan = quotaBucketState(scanRef, scanSnapshot);

@@ -15,6 +15,7 @@ export interface DeleteAccountDeps {
   deleteVehicleCascade(vehicleId: string): Promise<void>;
   deleteUserDoc(uid: string): Promise<void>;
   deleteUserQuotas(uid: string): Promise<void>;
+  deleteReceiptScanTokens(uid: string): Promise<void>;
   deleteRevenueCatEvents(uid: string): Promise<void>;
   deleteUserStorage(uid: string): Promise<void>;
   deleteAuthUser(uid: string): Promise<void>;
@@ -49,6 +50,8 @@ export async function deleteAccountRequest(
     await deps.deleteUserDoc(uid);
     step = "deleteUserQuotas";
     await deps.deleteUserQuotas(uid);
+    step = "deleteReceiptScanTokens";
+    await deps.deleteReceiptScanTokens(uid);
     step = "deleteRevenueCatEvents";
     await deps.deleteRevenueCatEvents(uid);
     step = "deleteUserStorage";
@@ -98,6 +101,16 @@ export const deleteAccount = onCall(
             .where(FieldPath.documentId(), "<", `${uid}_\uf8ff`)
             .get();
           await Promise.all(snapshot.docs.map((quotaDoc) => quotaDoc.ref.delete()));
+        },
+        async deleteReceiptScanTokens(uid) {
+          const snapshot = await db.collection("receipt_scan_tokens").where("uid", "==", uid).get();
+          // Firestore writes cap a batch at 500 documents. Tokens have no TTL yet, so retain
+          // correctness for long-lived accounts rather than assuming their history is small.
+          for (let index = 0; index < snapshot.docs.length; index += 500) {
+            const batch = db.batch();
+            for (const tokenDoc of snapshot.docs.slice(index, index + 500)) batch.delete(tokenDoc.ref);
+            await batch.commit();
+          }
         },
         async deleteRevenueCatEvents(uid) {
           const snapshot = await db.collection("revenuecat_events").where("appUserId", "==", uid).get();

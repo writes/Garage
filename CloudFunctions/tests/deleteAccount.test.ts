@@ -11,6 +11,7 @@ function spyDeps(vehicleIds: string[], failOn?: keyof DeleteAccountDeps) {
     async deleteVehicleCascade(id) { calls.push(`vehicle:${id}`); guard("deleteVehicleCascade"); },
     async deleteUserDoc() { calls.push("userDoc"); guard("deleteUserDoc"); },
     async deleteUserQuotas() { calls.push("quotas"); guard("deleteUserQuotas"); },
+    async deleteReceiptScanTokens() { calls.push("receiptTokens"); guard("deleteReceiptScanTokens"); },
     async deleteRevenueCatEvents() { calls.push("rcEvents"); guard("deleteRevenueCatEvents"); },
     async deleteUserStorage() { calls.push("storage"); guard("deleteUserStorage"); },
     async deleteAuthUser() { calls.push("auth"); guard("deleteAuthUser"); },
@@ -29,7 +30,7 @@ describe("deleteAccountRequest", () => {
     const { calls, deps } = spyDeps(["v1", "v2"]);
     const result = await deleteAccountRequest({ auth: { uid: "owner-1" } }, deps);
     expect(calls).toEqual([
-      "list", "vehicle:v1", "vehicle:v2", "userDoc", "quotas", "rcEvents", "storage", "auth",
+      "list", "vehicle:v1", "vehicle:v2", "userDoc", "quotas", "receiptTokens", "rcEvents", "storage", "auth",
     ]);
     expect(calls[calls.length - 1]).toBe("auth");
     expect(result).toEqual({ deleted: true, vehiclesDeleted: 2 });
@@ -38,7 +39,7 @@ describe("deleteAccountRequest", () => {
   it("handles a user with no vehicles", async () => {
     const { calls, deps } = spyDeps([]);
     const result = await deleteAccountRequest({ auth: { uid: "owner-1" } }, deps);
-    expect(calls).toEqual(["list", "userDoc", "quotas", "rcEvents", "storage", "auth"]);
+    expect(calls).toEqual(["list", "userDoc", "quotas", "receiptTokens", "rcEvents", "storage", "auth"]);
     expect(result.vehiclesDeleted).toBe(0);
   });
 
