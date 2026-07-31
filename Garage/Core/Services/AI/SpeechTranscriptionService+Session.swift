@@ -86,18 +86,26 @@ extension SpeechTranscriptionService {
         onUpdate: @escaping @MainActor (String) -> Void
     ) -> SFSpeechRecognitionTask {
         let generation = sessionGeneration
-        return recognizer.recognitionTask(with: request) { [weak self] result, error in
+        // @Sendable is load-bearing: the recognizer invokes this on an UNSPECIFIED queue, and a
+        // plain closure formed in this @MainActor context inherits main-actor isolation — the
+        // exact runtime-trap class as the installTap crash (2026-07-31 TestFlight). Sendable
+        // payloads are extracted BEFORE the main-actor hop because SFSpeechRecognitionResult
+        // itself is not Sendable.
+        return recognizer.recognitionTask(with: request) { @Sendable [weak self] result, error in
+            let transcript = result?.bestTranscription.formattedString
+            let isFinal = result?.isFinal ?? false
+            let failed = error != nil
             Task { @MainActor [weak self] in
                 // A callback from a superseded session must not touch current state: its late
                 // error would otherwise wake the live session's waiter with the wrong transcript.
                 guard let self, generation == self.sessionGeneration else { return }
-                if let result {
-                    self.partialTranscript = result.bestTranscription.formattedString
-                    onUpdate(self.partialTranscript)
+                if let transcript {
+                    self.partialTranscript = transcript
+                    onUpdate(transcript)
                     // The final result is the rescored one and includes the tail of the sentence.
-                    if result.isFinal { self.resumeFinalContinuation(with: self.partialTranscript) }
+                    if isFinal { self.resumeFinalContinuation(with: transcript) }
                 }
-                if error != nil {
+                if failed {
                     // A recognition error mid-sentence is not fatal — whatever was heard so far
                     // is still worth offering. It must not hang the caller waiting for a final
                     // result that will never arrive.
