@@ -164,8 +164,16 @@ final class SpeechTranscriptionService: SpeechTranscribing {
         // The sample rate and channel count are the two values the uncatchable installTap
         // exceptions are about, so the trace carries them.
         VoiceSessionTrace.shared.mark("tap.install sr=\(Int(format.sampleRate)) ch=\(format.channelCount)")
-        inputNode.installTap(onBus: 0, bufferSize: 1_024, format: format) { buffer, _ in
-            request.append(buffer)
+        // The tap block runs on AVFAudio's realtime messenger queue, NEVER the main actor. A
+        // plain closure formed here (a @MainActor context) INHERITS main-actor isolation, and
+        // iOS 26.5's runtime executor check traps on entry off-main — the 2026-07-31 TestFlight
+        // crash (dispatch_assert_queue_fail via _swift_task_checkIsolatedSwift in this exact
+        // closure), the same Swift 6 class as build 4's TCC callback. @Sendable severs the
+        // inference; `append` is thread-safe by SDK contract (its purpose is audio-queue
+        // feeding), so the nonisolated(unsafe) capture states a real invariant, not a wish.
+        nonisolated(unsafe) let feed = request
+        inputNode.installTap(onBus: 0, bufferSize: 1_024, format: format) { @Sendable buffer, _ in
+            feed.append(buffer)
         }
         audioEngine.prepare()
         VoiceSessionTrace.shared.mark("engine.start")
