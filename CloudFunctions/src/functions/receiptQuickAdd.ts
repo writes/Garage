@@ -520,7 +520,20 @@ export async function receiptQuickAddRequest(
   }
 
   try {
-    return { ...sanitizeReceiptProposal(parsed, now), token: reservation.tokenId, quota: reservation.quota };
+    const proposal = sanitizeReceiptProposal(parsed, now);
+    // Field PRESENCE only, never content (receipts carry names, addresses, card last-4, VINs).
+    // This is the one signal that distinguishes "extraction returned nothing" from "the client
+    // dropped the payload" when a tester reports an empty prefilled form.
+    logger.info("receipt-quickadd proposal fields", {
+      entryType: proposal.entryType,
+      hasOdometer: proposal.odometerReading !== null,
+      hasCost: proposal.cost !== null,
+      hasShopName: proposal.shopName !== null,
+      hasEntryDate: proposal.entryDate !== null,
+      hasNotes: proposal.notes !== null,
+      lineItemCount: proposal.lineItems.length,
+    });
+    return { ...proposal, token: reservation.tokenId, quota: reservation.quota };
   } catch (error) {
     await voidReceiptReservation(dependencies.db, reservation, now);
     if (error instanceof HttpsError) throw error;

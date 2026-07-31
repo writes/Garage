@@ -40,16 +40,20 @@ final class AppRouter {
     /// previews and tests without the whole app-state graph — same reasoning as `hasVehicles`.
     private let analytics: any AnalyticsTracking
 
-    /// Carries a voice proposal from the capture sheet to the entry form it opens. Consumed once
-    /// by the form that appears next, so a manually-opened form never picks up a stale prefill.
+    /// Carries a voice proposal from the capture sheet to the entry form it opens. Held (not
+    /// consumed) for the lifetime of that presentation: SwiftUI may build a sheet's content more
+    /// than once during the voice→form swap, and a consume-on-first-build handoff hands the
+    /// payload to a throwaway build while the surviving build renders blank. Every OTHER
+    /// presentation path clears it (see `present`), so a manually-opened form never picks up a
+    /// stale prefill.
     private(set) var pendingVoicePrefill: VoiceEntryProposal?
 
-    /// Same one-shot pattern as pendingVoicePrefill, kept separate (plan §2): a receipt scan and
+    /// Same held-slot pattern as pendingVoicePrefill, kept separate (plan §2): a receipt scan and
     /// a voice dictation are independent AI sources and must never be conflated into one slot.
     private(set) var pendingReceiptPrefill: ReceiptPrefillPackage?
 
-    /// Carries an existing entry from EntryDetailView to the edit form it opens. Same one-shot
-    /// pattern as pendingVoicePrefill: consumed once by the form that appears next.
+    /// Carries an existing entry from EntryDetailView to the edit form it opens. Same held-slot
+    /// pattern as pendingVoicePrefill.
     private(set) var pendingEditEntry: FirestoreEntry?
 
     init(
@@ -72,6 +76,20 @@ final class AppRouter {
     /// the three-case-with-trailing-where form silently gated only `.entryForm` and let
     /// `.entryPicker`/`.voiceQuickAdd` through unconditionally, even with vehicles present.
     func present(_ sheet: Sheet) {
+        // Any plain presentation starts a NEW flow, so whatever a previous voice/receipt/edit
+        // handoff left behind is stale by definition. The three presentXxx handoff entry points
+        // below bypass this wipe via presentPreservingHandoff — they set their slot first.
+        clearPendingHandoffs()
+        presentPreservingHandoff(sheet)
+    }
+
+    private func clearPendingHandoffs() {
+        pendingVoicePrefill = nil
+        pendingReceiptPrefill = nil
+        pendingEditEntry = nil
+    }
+
+    private func presentPreservingHandoff(_ sheet: Sheet) {
         let isGatedSheet: Bool
         switch sheet {
         case .entryPicker, .voiceQuickAdd, .receiptCapture, .entryForm:
@@ -85,9 +103,7 @@ final class AppRouter {
             reportOpened(sheet)
             return
         }
-        pendingVoicePrefill = nil
-        pendingReceiptPrefill = nil
-        pendingEditEntry = nil
+        clearPendingHandoffs()
         activeSheet = .vehicleForm
         // Report the redirect target, not the request: attributing this open to `entry` would
         // misreport the funnel, since what the user is actually looking at is vehicle creation.
@@ -111,42 +127,36 @@ final class AppRouter {
         analytics.track(.formOpened(form: form))
     }
 
+    /// Programmatic close (the save path). Interactive swipe-down instead writes nil straight
+    /// through ContentView's sheet binding, deliberately WITHOUT clearing the handoff slots:
+    /// SwiftUI can emit transient nil writes while it swaps one sheet for another, and clearing
+    /// there would drop an in-flight prefill. Stale slots are harmless — every next `present`
+    /// wipes them before any form could read them.
     func dismissSheet() {
+        clearPendingHandoffs()
         activeSheet = nil
     }
 
     /// Swap the voice sheet for the proposed entry form, seeding it with the spoken details.
     func presentVoicePrefilledForm(_ proposal: VoiceEntryProposal) {
+        clearPendingHandoffs()
         pendingVoicePrefill = proposal
-        present(.entryForm(proposal.entryType))
-    }
-
-    func consumeVoicePrefill() -> VoiceEntryProposal? {
-        defer { pendingVoicePrefill = nil }
-        return pendingVoicePrefill
+        presentPreservingHandoff(.entryForm(proposal.entryType))
     }
 
     /// Swap the receipt sheet for the proposed entry form, seeding it with the parsed receipt.
     func presentReceiptPrefilledForm(_ package: ReceiptPrefillPackage) {
+        clearPendingHandoffs()
         pendingReceiptPrefill = package
-        present(.entryForm(package.proposal.entryType))
+        presentPreservingHandoff(.entryForm(package.proposal.entryType))
     }
 
-    func consumeReceiptPrefill() -> ReceiptPrefillPackage? {
-        defer { pendingReceiptPrefill = nil }
-        return pendingReceiptPrefill
-    }
-
-    /// Opens the edit form for an existing entry, seeding it via the same one-shot handoff as
-    /// voice prefill. Goes through `present` (not a raw `activeSheet` assignment) so the
-    /// zero-vehicle gate still applies to it like every other entry-form presentation.
+    /// Opens the edit form for an existing entry, seeding it via the same held-slot handoff as
+    /// voice prefill. Goes through the gate-checked path so the zero-vehicle redirect still
+    /// applies to it like every other entry-form presentation.
     func presentEditForm(for entry: FirestoreEntry) {
+        clearPendingHandoffs()
         pendingEditEntry = entry
-        present(.entryForm(entry.entryType))
-    }
-
-    func consumeEditEntry() -> FirestoreEntry? {
-        defer { pendingEditEntry = nil }
-        return pendingEditEntry
+        presentPreservingHandoff(.entryForm(entry.entryType))
     }
 }

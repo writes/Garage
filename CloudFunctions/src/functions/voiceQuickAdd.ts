@@ -378,7 +378,20 @@ export async function voiceQuickAddRequest(
   }
 
   try {
-    return sanitizeVoiceProposal(parsed, now);
+    const proposal = sanitizeVoiceProposal(parsed, now);
+    // Field PRESENCE only, never content (spoken content is user PII). This is the one signal
+    // that distinguishes "extraction returned nothing" from "the client dropped the payload"
+    // when a tester reports an empty prefilled form.
+    logger.info("voice-quickadd proposal fields", {
+      entryType: proposal.entryType,
+      hasOdometer: proposal.odometerReading !== null,
+      hasCost: proposal.cost !== null,
+      hasShopName: proposal.shopName !== null,
+      hasIsDiy: proposal.isDiy !== null,
+      hasEntryDate: proposal.entryDate !== null,
+      hasNotes: proposal.notes !== null,
+    });
+    return proposal;
   } catch (error) {
     if (error instanceof HttpsError) throw error;
     // The transcript and model output are never logged (spoken content is user PII) — and

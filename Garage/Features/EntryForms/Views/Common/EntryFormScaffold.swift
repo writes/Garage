@@ -96,19 +96,23 @@ struct EntryFormScaffold<Content: View>: View {
         }
         .accessibilityIdentifier("entry.form.sheet")
         .task {
-            // One-shot: only the form opened straight from voice capture sees a pending prefill.
-            if let prefill = router.consumeVoicePrefill() {
+            // Peek, don't consume: SwiftUI may build this sheet's content more than once during
+            // the voice/receipt→form swap, and a fresh build means a fresh EntryFormViewModel —
+            // consuming on the first (possibly throwaway) build left the surviving form blank on
+            // device. The router holds the slot for the whole presentation; the seeded flags keep
+            // a same-viewModel re-run from clobbering the user's edits.
+            if !viewModel.wasVoiceSeeded, let prefill = router.pendingVoicePrefill {
                 viewModel.applyVoicePrefill(prefill)
             }
-            // Same one-shot pattern, kept as its own slot (never both — see wasReceiptSeeded).
-            if let package = router.consumeReceiptPrefill() {
+            // Same held-slot pattern, kept as its own slot (never both — see wasReceiptSeeded).
+            if !viewModel.wasReceiptSeeded, let package = router.pendingReceiptPrefill {
                 viewModel.applyReceiptPrefill(package, isPro: appState.isPro)
             }
-            // One-shot, same pattern: only the form opened via presentEditForm(for:) sees a
-            // pending edit. Sequenced strictly before prepare() below (same task, in order) so
-            // editingEntryID is always set before prepare() reads it — no ordering race against a
-            // form's own separate .task, which two independent .task blocks could not guarantee.
-            if let editEntry = router.consumeEditEntry() {
+            // Same pattern for edit-in-place. Sequenced strictly before prepare() below (same
+            // task, in order) so editingEntryID is always set before prepare() reads it — no
+            // ordering race against a form's own separate .task, which two independent .task
+            // blocks could not guarantee.
+            if viewModel.editingEntryID == nil, let editEntry = router.pendingEditEntry {
                 viewModel.applyExistingEntry(editEntry)
                 onEditEntry?(editEntry)
             }
