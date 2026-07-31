@@ -16,7 +16,10 @@ struct BrakeFormView: View {
     @State private var rearRotor = ""
 
     var body: some View {
-        EntryFormScaffold(title: "Brake Service", viewModel: form, onSave: save, onEditEntry: seed) {
+        EntryFormScaffold(
+            title: "Brake Service", viewModel: form, onSave: save, onEditEntry: seed,
+            onAIPrefill: seedProposal
+        ) {
             Picker("Action", selection: $action) {
                 ForEach(BrakeServiceAction.allCases, id: \.self) { action in Text(action.displayName).tag(action) }
             }
@@ -42,6 +45,21 @@ struct BrakeFormView: View {
             .keyboardType(.numberPad)
             .textFieldStyle(.roundedBorder)
             .accessibilityIdentifier(identifier)
+    }
+
+    /// Typed-extraction seeding (spec rev 4 §3). `serviceAction` is a raw wire string that must
+    /// fail soft to the picker default rather than throw the whole payload away.
+    private func seedProposal(_ details: TypedProposalDetails) {
+        switch details.serviceAction {
+        case "pads_replaced": action = .padsReplaced
+        case "rotors_replaced": action = .rotorsReplaced
+        case "fluid_flush": action = .fluidFlush
+        case "inspection": action = .inspection
+        default: break // tire actions ("rotation", …) and unknown values leave the picker untouched
+        }
+        if let value = details.brand, !value.isEmpty {
+            padBrand = value
+        }
     }
 
     private func seed(from entry: FirestoreEntry) {

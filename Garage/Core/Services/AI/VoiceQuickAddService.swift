@@ -14,6 +14,60 @@ struct VoiceEntryProposal: Codable, Equatable, Sendable {
     /// ISO 8601 string, or nil meaning "today".
     let entryDate: String?
     let notes: String?
+    /// schemaVersion-2 typed fields; all-nil against a v1 server. Decoded from the SAME flat
+    /// object (the wire has no nesting), hence the custom Codable below.
+    let typed: TypedProposalDetails
+
+    init(
+        entryType: EntryType,
+        odometerReading: Int? = nil,
+        cost: Double? = nil,
+        shopName: String? = nil,
+        isDiy: Bool? = nil,
+        entryDate: String? = nil,
+        notes: String? = nil,
+        typed: TypedProposalDetails = .empty
+    ) {
+        self.entryType = entryType
+        self.odometerReading = odometerReading
+        self.cost = cost
+        self.shopName = shopName
+        self.isDiy = isDiy
+        self.entryDate = entryDate
+        self.notes = notes
+        self.typed = typed
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case entryType, odometerReading, cost, shopName, isDiy, entryDate, notes
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        entryType = try container.decode(EntryType.self, forKey: .entryType)
+        odometerReading = try container.decodeIfPresent(Int.self, forKey: .odometerReading)
+        cost = try container.decodeIfPresent(Double.self, forKey: .cost)
+        shopName = try container.decodeIfPresent(String.self, forKey: .shopName)
+        isDiy = try container.decodeIfPresent(Bool.self, forKey: .isDiy)
+        entryDate = try container.decodeIfPresent(String.self, forKey: .entryDate)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        // Same-level decode: TypedProposalDetails' own keys are all optional, so this succeeds
+        // (all-nil) on any v1 payload. `try?` guards only genuinely malformed typed values —
+        // a bad typed field must degrade to "not extracted", never sink the whole proposal.
+        typed = (try? TypedProposalDetails(from: decoder)) ?? .empty
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(entryType, forKey: .entryType)
+        try container.encodeIfPresent(odometerReading, forKey: .odometerReading)
+        try container.encodeIfPresent(cost, forKey: .cost)
+        try container.encodeIfPresent(shopName, forKey: .shopName)
+        try container.encodeIfPresent(isDiy, forKey: .isDiy)
+        try container.encodeIfPresent(entryDate, forKey: .entryDate)
+        try container.encodeIfPresent(notes, forKey: .notes)
+        try typed.encode(to: encoder)
+    }
 }
 
 enum VoiceCallableError: Error, Equatable {
@@ -39,7 +93,9 @@ final class VoiceQuickAddService: VoiceQuickAddCalling {
 
     func proposeEntry(transcript: String, vehicle: Vehicle?, now: Date) async throws -> VoiceEntryProposal {
         let callable = functions.httpsCallable("voiceQuickAdd")
-        var payload: [String: Any] = ["transcript": transcript]
+        // schemaVersion 2 opts into typed detail extraction; a v1 server ignores the key and
+        // the typed fields simply decode nil (the version-gated contract, spec rev 3).
+        var payload: [String: Any] = ["transcript": transcript, "schemaVersion": 2]
         if let vehicle {
             payload["vehicle"] = [
                 "year": vehicle.year,

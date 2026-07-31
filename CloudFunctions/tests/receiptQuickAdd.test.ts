@@ -182,6 +182,84 @@ describe("receiptQuickAddRequest validation", () => {
   });
 });
 
+describe("receiptQuickAddRequest schema versioning", () => {
+  /** Serves call 1 (record_receipt_entry) then call 2 (record_entry_details), recording bodies. */
+  function twoCallDependencies(db: InMemoryFirestore, calls: Array<Record<string, unknown>>, typedStatus = 200) {
+    return {
+      apiKey: "test-key",
+      db,
+      fetchImpl: (async (_url: unknown, init?: { body?: unknown }) => {
+        calls.push(JSON.parse(String(init?.body ?? "{}")));
+        if (calls.length === 1) {
+          return new Response(
+            JSON.stringify({ content: [{ type: "tool_use", name: "record_receipt_entry", input: goodModel }] }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            content: [{
+              type: "tool_use", name: "record_entry_details",
+              input: { serviceAction: "pads_replaced", brand: "Brembo" },
+            }],
+          }),
+          { status: typedStatus },
+        );
+      }) as unknown as typeof fetch,
+      now: () => fixedNow,
+    };
+  }
+
+  it("a v2 request makes the narrow second call with the SAME source pages and merges flat", async () => {
+    const db = new InMemoryFirestore();
+    seedActivePro(db);
+    const calls: Array<Record<string, unknown>> = [];
+    const response = await receiptQuickAddRequest(
+      { auth: { uid: "owner-1" }, data: { images: [jpegBase64], schemaVersion: 2 } },
+      twoCallDependencies(db, calls),
+    );
+    expect(calls).toHaveLength(2);
+    // Call 1 stays byte-identical to v1 config: the 9-property tool.
+    const call1Tools = calls[0].tools as Array<{ input_schema: { properties: Record<string, unknown> } }>;
+    expect(Object.keys(call1Tools[0].input_schema.properties)).toHaveLength(9);
+    // Call 2: brake-only fields, and the receipt image rides along again.
+    const call2Tools = calls[1].tools as Array<{ name: string; input_schema: { properties: Record<string, unknown> } }>;
+    expect(call2Tools[0].name).toBe("record_entry_details");
+    expect(Object.keys(call2Tools[0].input_schema.properties).sort()).toEqual(["brand", "serviceAction"]);
+    const call2Content = (calls[1].messages as Array<{ content: Array<{ type: string }> }>)[0].content;
+    expect(call2Content.some((block) => block.type === "image")).toBe(true);
+    expect(response).toMatchObject({
+      entryType: "brake", cost: 462.78,
+      serviceAction: "pads_replaced", brand: "Brembo",
+      proposalSchemaVersion: 2,
+    });
+  });
+
+  it("a v1 request makes one call and returns no typed keys", async () => {
+    const db = new InMemoryFirestore();
+    seedActivePro(db);
+    const calls: Array<Record<string, unknown>> = [];
+    const response = await receiptQuickAddRequest(
+      { auth: { uid: "owner-1" }, data: { images: [jpegBase64] } },
+      twoCallDependencies(db, calls),
+    );
+    expect(calls).toHaveLength(1);
+    expect("serviceAction" in response).toBe(false);
+    expect("proposalSchemaVersion" in response).toBe(false);
+  });
+
+  it("a failed second call degrades to all-null typed fields without touching the proposal", async () => {
+    const db = new InMemoryFirestore();
+    seedActivePro(db);
+    const response = await receiptQuickAddRequest(
+      { auth: { uid: "owner-1" }, data: { images: [jpegBase64], schemaVersion: 2 } },
+      twoCallDependencies(db, [], 500),
+    );
+    expect(response).toMatchObject({ entryType: "brake", cost: 462.78, proposalSchemaVersion: 2 });
+    expect((response as Record<string, unknown>).serviceAction).toBeNull();
+  });
+});
+
 describe("receiptQuickAddRequest quota", () => {
   it("admits a free user with an additive token and byte-stable proposal fields", async () => {
     const db = new InMemoryFirestore(); // no subscription seeded

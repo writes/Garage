@@ -9,13 +9,30 @@ struct OilChangeFormView: View {
     @State private var filterBrand = ""
 
     var body: some View {
-        EntryFormScaffold(title: "Oil Change", viewModel: form, onSave: save, onEditEntry: seed) {
+        EntryFormScaffold(
+            title: "Oil Change", viewModel: form, onSave: save, onEditEntry: seed,
+            onAIPrefill: seedProposal
+        ) {
             TextField("Oil brand", text: $oilBrand).textFieldStyle(.roundedBorder)
             TextField("Oil grade", text: $oilGrade).textFieldStyle(.roundedBorder)
             TextField("Quantity (quarts)", text: $quantityQuarts)
                 .keyboardType(.decimalPad)
                 .textFieldStyle(.roundedBorder)
             TextField("Filter brand", text: $filterBrand).textFieldStyle(.roundedBorder)
+        }
+    }
+
+    /// Typed-extraction seeding (spec rev 3 §3). Plain strings land only when the proposal has a
+    /// non-empty value; quantity mirrors `seed(from:)`'s own costString formatting below.
+    private func seedProposal(_ details: TypedProposalDetails) {
+        if let value = details.brand, !value.isEmpty {
+            oilBrand = value
+        }
+        if let value = details.oilGrade, !value.isEmpty {
+            oilGrade = value
+        }
+        if let quarts = details.quantityQuarts, quarts > 0 {
+            quantityQuarts = EntryFormViewModel.costString(quarts)
         }
     }
 

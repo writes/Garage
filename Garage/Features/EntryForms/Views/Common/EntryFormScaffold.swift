@@ -12,6 +12,11 @@ struct EntryFormScaffold<Content: View>: View {
     /// Fires once, only when opened via AppRouter.presentEditForm(for:) — mirrors onSave as the
     /// per-form opt-in point. Each form's own seed(from:) reads its own `entry.details` keys.
     var onEditEntry: ((FirestoreEntry) -> Void)?
+    /// Fires once per seeded presentation, only when a voice/receipt handoff opened this form —
+    /// the typed-extraction mirror of onEditEntry. Each form maps the raw wire values it cares
+    /// about through its own explicit conversion tables; common fields (shop, cost, date…) are
+    /// already applied to the view model by the time this runs, so a form may read those too.
+    var onAIPrefill: ((TypedProposalDetails) -> Void)?
     /// Nil by default so every non-oil form preserves its existing behavior. The oil-analysis
     /// form opts in to live epoch-checked bindings while an authorized import owns its draft.
     var mutationGate: (any EntryFormMutationGating)?
@@ -31,6 +36,7 @@ struct EntryFormScaffold<Content: View>: View {
         viewModel: EntryFormViewModel,
         onSave: @escaping () async -> Bool,
         onEditEntry: ((FirestoreEntry) -> Void)? = nil,
+        onAIPrefill: ((TypedProposalDetails) -> Void)? = nil,
         mutationGate: (any EntryFormMutationGating)? = nil,
         @ViewBuilder content: () -> Content
     ) {
@@ -38,6 +44,7 @@ struct EntryFormScaffold<Content: View>: View {
         _viewModel = Bindable(wrappedValue: viewModel)
         self.onSave = onSave
         self.onEditEntry = onEditEntry
+        self.onAIPrefill = onAIPrefill
         self.mutationGate = mutationGate
         self.content = content()
     }
@@ -101,13 +108,19 @@ struct EntryFormScaffold<Content: View>: View {
             // consuming on the first (possibly throwaway) build left the surviving form blank on
             // device. The router holds the slot for the whole presentation; the seeded flags keep
             // a same-viewModel re-run from clobbering the user's edits.
+            var aiDetails: TypedProposalDetails?
             if !viewModel.wasVoiceSeeded, let prefill = router.pendingVoicePrefill {
                 viewModel.applyVoicePrefill(prefill)
+                aiDetails = prefill.typed
             }
             // Same held-slot pattern, kept as its own slot (never both — see wasReceiptSeeded).
             if !viewModel.wasReceiptSeeded, let package = router.pendingReceiptPrefill {
                 viewModel.applyReceiptPrefill(package, isPro: appState.isPro)
+                aiDetails = package.proposal.typed
             }
+            // After the common apply (so forms can read shop/cost off the view model), before
+            // prepare() (same ordering rationale as the edit seed below).
+            if let aiDetails { onAIPrefill?(aiDetails) }
             // Same pattern for edit-in-place. Sequenced strictly before prepare() below (same
             // task, in order) so editingEntryID is always set before prepare() reads it — no
             // ordering race against a form's own separate .task, which two independent .task

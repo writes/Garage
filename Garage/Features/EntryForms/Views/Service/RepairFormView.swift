@@ -7,11 +7,22 @@ struct RepairFormView: View {
     @State private var status: ServiceStatus = .resolved
 
     var body: some View {
-        EntryFormScaffold(title: "Repair", viewModel: form, onSave: save, onEditEntry: seed) {
+        EntryFormScaffold(
+            title: "Repair", viewModel: form, onSave: save, onEditEntry: seed,
+            onAIPrefill: seedProposal
+        ) {
             TextField("Title", text: $title).textFieldStyle(.roundedBorder)
             Picker("Status", selection: $status) {
                 ForEach(ServiceStatus.allCases, id: \.self) { status in Text(status.displayName).tag(status) }
             }
+        }
+    }
+
+    /// Typed-extraction seeding (spec rev 3 §3). Only fills the title when the user hasn't
+    /// already typed one — never overwrites an in-progress edit.
+    private func seedProposal(_ details: TypedProposalDetails) {
+        if title.isEmpty, let workItem = details.workItem {
+            title = workItem
         }
     }
 

@@ -8,10 +8,27 @@ struct OilConsumptionFormView: View {
     @State private var oilGrade = ""
 
     var body: some View {
-        EntryFormScaffold(title: "Oil Consumption", viewModel: form, onSave: save, onEditEntry: seed) {
+        EntryFormScaffold(
+            title: "Oil Consumption", viewModel: form, onSave: save, onEditEntry: seed,
+            onAIPrefill: seedProposal
+        ) {
             TextField("Quarts added", text: $amountAdded).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
             TextField("Oil brand", text: $oilBrand).textFieldStyle(.roundedBorder)
             TextField("Oil grade", text: $oilGrade).textFieldStyle(.roundedBorder)
+        }
+    }
+
+    /// Typed-extraction seeding (spec rev 3 §3). `quantityQuarts` maps onto this form's own
+    /// amount-added field, formatted the same way `seed(from:)` formats it below.
+    private func seedProposal(_ details: TypedProposalDetails) {
+        if let quarts = details.quantityQuarts, quarts > 0 {
+            amountAdded = EntryFormViewModel.costString(quarts)
+        }
+        if let value = details.brand, !value.isEmpty {
+            oilBrand = value
+        }
+        if let value = details.oilGrade, !value.isEmpty {
+            oilGrade = value
         }
     }
 

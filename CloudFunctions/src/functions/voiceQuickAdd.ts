@@ -9,6 +9,15 @@ import {
   safeQuotaCount,
   userHasActiveProEntitlement,
 } from "./claudeProxy";
+import {
+  EntryTypeValue,
+  TYPED_SYSTEM_PROMPT,
+  TypedDetails,
+  VALID_ENTRY_TYPES,
+  buildTypedDetailTool,
+  sanitizeTypedDetails,
+  typedFieldCount,
+} from "./typedExtraction";
 
 /**
  * Voice quick-add is a Pro feature (the flagship AI hook, per the 2026-07-21 Law-1 vote). It turns
@@ -20,11 +29,10 @@ import {
 export const DAILY_VOICE_QUICKADD_QUOTA = 30;
 export const MAX_TRANSCRIPT_CHARS = 2_000;
 
-export const VALID_ENTRY_TYPES = [
-  "oil_change", "oil_consumption", "oil_analysis", "fuel", "tire", "brake",
-  "alignment", "maintenance", "repair", "track_day", "upgrade", "dme_report",
-] as const;
-export type EntryTypeValue = typeof VALID_ENTRY_TYPES[number];
+// Moved to typedExtraction.ts (shared with the receipt tool); re-exported so every existing
+// import site (receiptQuickAdd, evals, tests) keeps working unchanged.
+export { VALID_ENTRY_TYPES } from "./typedExtraction";
+export type { EntryTypeValue } from "./typedExtraction";
 
 export type VoiceEntryProposal = {
   entryType: EntryTypeValue;
@@ -35,6 +43,13 @@ export type VoiceEntryProposal = {
   entryDate: string | null;
   notes: string | null;
 };
+
+/**
+ * schemaVersion 2 responses: the same proposal plus the typed detail fields, all top-level
+ * (the client decodes flat), plus an explicit version marker so the client can distinguish
+ * "old server" from "nothing extracted" (Sol #17).
+ */
+export type VoiceEntryProposalV2 = VoiceEntryProposal & TypedDetails & { proposalSchemaVersion: 2 };
 
 export type VoiceQuickAddRequest = { auth?: { uid: string } | null; data?: unknown };
 
@@ -151,13 +166,20 @@ function vehicleContextLine(data: unknown): string {
  * first is sometimes a partial draft, so reading `content[0]` silently discards most of what the
  * model heard.
  */
-export function toolInputFromPayload(payload: unknown): Record<string, unknown> | undefined {
+export function toolInputFromPayload(
+  payload: unknown,
+  expectedToolName?: string,
+): Record<string, unknown> | undefined {
   if (!isRecord(payload) || !Array.isArray(payload.content)) return undefined;
 
   let best: Record<string, unknown> | undefined;
   let bestCount = -1;
   for (const block of payload.content) {
     if (!isRecord(block) || block.type !== "tool_use" || !isRecord(block.input)) continue;
+    // Model output is untrusted: with tool_choice forced, a block answering some OTHER tool
+    // name must not win the most-populated contest (review finding — a verbose foreign draft
+    // could otherwise beat the correct sparse block at the trust boundary).
+    if (expectedToolName !== undefined && block.name !== expectedToolName) continue;
     const populated = Object.values(block.input).filter(
       (value) => value !== null && value !== undefined && value !== "",
     ).length;
@@ -202,6 +224,11 @@ export const VOICE_ENTRY_TOOL = {
   },
   strict: true,
 } as const;
+
+/** v2 requests opt in explicitly; anything else (older builds) gets the legacy contract. */
+export function schemaVersionFromData(data: unknown): 1 | 2 {
+  return isRecord(data) && data.schemaVersion === 2 ? 2 : 1;
+}
 
 /**
  * Every clause here is evidence-backed by scripts/voiceGoldenEval.ts (18 dictations, scored
@@ -294,10 +321,75 @@ export function fewShotMessages(now: Date): unknown[] {
   ];
 }
 
+/**
+ * The v2 second call (split-call architecture — typedExtraction.ts header): a narrow tool with
+ * only the classified entry type's fields. Fails SOFT to all-null: typed details are an
+ * enhancement on top of an already-good proposal, and a failure here must never sink it. The
+ * quota unit was consumed by call 1; this call rides the same unit (one user action, one unit).
+ */
+async function extractVoiceTypedDetails(args: {
+  apiKey: string;
+  fetchImpl: typeof fetch;
+  transcript: string;
+  vehicleLine: string;
+  entryType: EntryTypeValue;
+}): Promise<TypedDetails> {
+  const empty = sanitizeTypedDetails({}, args.entryType);
+  const tool = buildTypedDetailTool(args.entryType);
+  if (!tool) return empty;
+  let response: Response;
+  try {
+    response = await args.fetchImpl("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": args.apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      signal: AbortSignal.timeout(25_000),
+      body: JSON.stringify({
+        model: "claude-haiku-4-5",
+        max_tokens: 512,
+        temperature: 0,
+        system: TYPED_SYSTEM_PROMPT,
+        tools: [tool],
+        tool_choice: { type: "tool", name: tool.name },
+        messages: [
+          {
+            role: "user",
+            content: [{
+              type: "text",
+              text: args.vehicleLine + `This is a ${args.entryType} entry.`
+                + ` The owner said: "${args.transcript}"`,
+            }],
+          },
+        ],
+      }),
+    });
+  } catch (error) {
+    logger.warn("voice-quickadd typed-details request failed", {
+      reason: error instanceof Error ? error.name : "unknown",
+    });
+    return empty;
+  }
+  if (!response.ok) {
+    logger.warn("voice-quickadd typed-details request rejected", { status: response.status });
+    return empty;
+  }
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return empty;
+  }
+  const parsed = toolInputFromPayload(payload, tool.name);
+  return parsed ? sanitizeTypedDetails(parsed, args.entryType) : empty;
+}
+
 export async function voiceQuickAddRequest(
   request: VoiceQuickAddRequest,
   dependencies: VoiceQuickAddDependencies,
-): Promise<VoiceEntryProposal> {
+): Promise<VoiceEntryProposal | VoiceEntryProposalV2> {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
 
   const transcript = transcriptFromData(request.data);
@@ -309,6 +401,7 @@ export async function voiceQuickAddRequest(
   const apiKey = dependencies.apiKey;
   if (!apiKey) throw new HttpsError("failed-precondition", "Anthropic API key is not configured.");
 
+  const schemaVersion = schemaVersionFromData(request.data);
   const now = (dependencies.now ?? (() => new Date()))();
   const reservation = await consumeVoiceQuota(dependencies.db, request.auth.uid, now);
 
@@ -327,6 +420,9 @@ export async function voiceQuickAddRequest(
         // different name, and two conventions for one model invites them drifting apart.
         model: "claude-haiku-4-5",
         max_tokens: 512,
+        // Byte-identical to v1 for BOTH schema versions: merging typed fields into this call
+        // measurably destroyed common-field extraction (see typedExtraction.ts header). Typed
+        // details ride a second, narrow call below.
         system: SYSTEM_PROMPT + referenceDateLine(now),
         tools: [VOICE_ENTRY_TOOL],
         tool_choice: { type: "tool", name: VOICE_ENTRY_TOOL.name },
@@ -371,7 +467,7 @@ export async function voiceQuickAddRequest(
     throw new HttpsError("internal", "Claude returned malformed JSON.");
   }
 
-  const parsed = toolInputFromPayload(payload);
+  const parsed = toolInputFromPayload(payload, VOICE_ENTRY_TOOL.name);
   if (!parsed) {
     logger.error("voice-quickadd anthropic response had no tool_use block");
     throw new HttpsError("internal", "Claude returned malformed JSON.");
@@ -379,10 +475,17 @@ export async function voiceQuickAddRequest(
 
   try {
     const proposal = sanitizeVoiceProposal(parsed, now);
+    const typed: TypedDetails | null = schemaVersion === 2
+      ? await extractVoiceTypedDetails({
+        apiKey, fetchImpl: dependencies.fetchImpl, transcript,
+        vehicleLine: vehicleContextLine(request.data), entryType: proposal.entryType,
+      })
+      : null;
     // Field PRESENCE only, never content (spoken content is user PII). This is the one signal
     // that distinguishes "extraction returned nothing" from "the client dropped the payload"
     // when a tester reports an empty prefilled form.
     logger.info("voice-quickadd proposal fields", {
+      schemaVersion,
       entryType: proposal.entryType,
       hasOdometer: proposal.odometerReading !== null,
       hasCost: proposal.cost !== null,
@@ -390,8 +493,9 @@ export async function voiceQuickAddRequest(
       hasIsDiy: proposal.isDiy !== null,
       hasEntryDate: proposal.entryDate !== null,
       hasNotes: proposal.notes !== null,
+      typedFieldCount: typed === null ? 0 : typedFieldCount(typed),
     });
-    return proposal;
+    return typed === null ? proposal : { ...proposal, ...typed, proposalSchemaVersion: 2 };
   } catch (error) {
     if (error instanceof HttpsError) throw error;
     // The transcript and model output are never logged (spoken content is user PII) — and
@@ -405,7 +509,7 @@ export async function voiceQuickAddRequest(
 
 export const voiceQuickAdd = onCall(
   { region: "us-central1", enforceAppCheck: true, timeoutSeconds: 120, secrets: [anthropicApiKey] },
-  async (request): Promise<VoiceEntryProposal> => {
+  async (request): Promise<VoiceEntryProposal | VoiceEntryProposalV2> => {
     try {
       return await voiceQuickAddRequest(request, {
         apiKey: anthropicApiKey.value(),

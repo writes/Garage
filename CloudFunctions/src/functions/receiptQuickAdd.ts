@@ -16,8 +16,16 @@ import {
   VALID_ENTRY_TYPES,
   EntryTypeValue,
   referenceDateLine,
+  schemaVersionFromData,
   toolInputFromPayload,
 } from "./voiceQuickAdd";
+import {
+  TYPED_SYSTEM_PROMPT,
+  TypedDetails,
+  buildTypedDetailTool,
+  sanitizeTypedDetails,
+  typedFieldCount,
+} from "./typedExtraction";
 
 // Re-exported so the golden eval imports the exact response picker prod uses (no drift).
 export { toolInputFromPayload, referenceDateLine };
@@ -64,6 +72,11 @@ export type ReceiptEntryProposal = {
 export type ReceiptQuickAddResponse = ReceiptEntryProposal & {
   token: string;
   quota: ReceiptQuotaSnapshot;
+};
+
+/** schemaVersion 2: typed detail fields join the same flat envelope, plus the version marker. */
+export type ReceiptQuickAddResponseV2 = ReceiptQuickAddResponse & TypedDetails & {
+  proposalSchemaVersion: 2;
 };
 
 export type ReceiptQuickAddRequest = { auth?: { uid: string } | null; data?: unknown };
@@ -133,6 +146,7 @@ export const RECEIPT_ENTRY_TOOL = {
   },
   strict: true,
 } as const;
+
 
 /**
  * Every clause here is evidence-backed by scripts/receiptGoldenEval.ts (18 synthetic receipts,
@@ -247,6 +261,7 @@ export function receiptFewShotMessages(now: Date): unknown[] {
     },
   ];
 }
+
 
 function clampString(value: unknown, maxLength: number): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim().slice(0, maxLength) : null;
@@ -412,10 +427,78 @@ function sourceBlocks(payload: ReceiptPayload): unknown[] {
   }));
 }
 
+/**
+ * The v2 second call (split-call architecture — typedExtraction.ts header): the same document
+ * pages, a narrow tool with only the classified entry type's fields. Fails SOFT to all-null —
+ * typed details are an enhancement; a failure here must never sink an already-good proposal or
+ * touch its quota/token bookkeeping.
+ */
+async function extractReceiptTypedDetails(args: {
+  apiKey: string;
+  fetchImpl: typeof fetch;
+  payload: ReceiptPayload;
+  vehicleLine: string;
+  entryType: EntryTypeValue;
+}): Promise<TypedDetails> {
+  const empty = sanitizeTypedDetails({}, args.entryType);
+  const tool = buildTypedDetailTool(args.entryType);
+  if (!tool) return empty;
+  let response: Response;
+  try {
+    response = await args.fetchImpl("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": args.apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      signal: AbortSignal.timeout(40_000),
+      body: JSON.stringify({
+        model: "claude-haiku-4-5",
+        max_tokens: 512,
+        temperature: 0,
+        system: TYPED_SYSTEM_PROMPT,
+        tools: [tool],
+        tool_choice: { type: "tool", name: tool.name },
+        messages: [
+          {
+            role: "user",
+            content: [
+              ...sourceBlocks(args.payload),
+              {
+                type: "text",
+                text: args.vehicleLine + `This receipt is a ${args.entryType} entry.`
+                  + ` Extract the ${args.entryType} details it shows.`,
+              },
+            ],
+          },
+        ],
+      }),
+    });
+  } catch (error) {
+    logger.warn("receipt-quickadd typed-details request failed", {
+      reason: error instanceof Error ? error.name : "unknown",
+    });
+    return empty;
+  }
+  if (!response.ok) {
+    logger.warn("receipt-quickadd typed-details request rejected", { status: response.status });
+    return empty;
+  }
+  let modelPayload: unknown;
+  try {
+    modelPayload = await response.json();
+  } catch {
+    return empty;
+  }
+  const parsed = toolInputFromPayload(modelPayload, tool.name);
+  return parsed ? sanitizeTypedDetails(parsed, args.entryType) : empty;
+}
+
 export async function receiptQuickAddRequest(
   request: ReceiptQuickAddRequest,
   dependencies: ReceiptQuickAddDependencies,
-): Promise<ReceiptQuickAddResponse> {
+): Promise<ReceiptQuickAddResponse | ReceiptQuickAddResponseV2> {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
 
   const payload = payloadFromData(request.data);
@@ -424,6 +507,7 @@ export async function receiptQuickAddRequest(
   const apiKey = dependencies.apiKey;
   if (!apiKey) throw new HttpsError("failed-precondition", "Anthropic API key is not configured.");
 
+  const schemaVersion = schemaVersionFromData(request.data);
   const now = (dependencies.now ?? (() => new Date()))();
   const reservation = await consumeReceiptQuota(dependencies.db, request.auth.uid, now);
 
@@ -444,6 +528,8 @@ export async function receiptQuickAddRequest(
         max_tokens: 1024,
         // No extended thinking: the API rejects thinking + forced tool_choice (verified live,
         // claudeProxy). The date line lives in the SYSTEM prompt — the documented voice lesson.
+        // Byte-identical to v1 for BOTH schema versions (split-call architecture — see
+        // typedExtraction.ts header): typed details ride a second, narrow call below.
         system: SYSTEM_PROMPT + referenceDateLine(now),
         tools: [RECEIPT_ENTRY_TOOL],
         tool_choice: { type: "tool", name: RECEIPT_ENTRY_TOOL.name },
@@ -498,7 +584,7 @@ export async function receiptQuickAddRequest(
     throw new HttpsError("internal", "Claude returned malformed JSON.");
   }
 
-  const parsed = toolInputFromPayload(modelPayload);
+  const parsed = toolInputFromPayload(modelPayload, RECEIPT_ENTRY_TOOL.name);
   if (!parsed) {
     logger.error("receipt-quickadd anthropic response had no tool_use block");
     await voidReceiptReservation(dependencies.db, reservation, now);
@@ -521,10 +607,17 @@ export async function receiptQuickAddRequest(
 
   try {
     const proposal = sanitizeReceiptProposal(parsed, now);
+    const typed: TypedDetails | null = schemaVersion === 2
+      ? await extractReceiptTypedDetails({
+        apiKey, fetchImpl: dependencies.fetchImpl, payload,
+        vehicleLine: vehicleContextLine(request.data), entryType: proposal.entryType,
+      })
+      : null;
     // Field PRESENCE only, never content (receipts carry names, addresses, card last-4, VINs).
     // This is the one signal that distinguishes "extraction returned nothing" from "the client
     // dropped the payload" when a tester reports an empty prefilled form.
     logger.info("receipt-quickadd proposal fields", {
+      schemaVersion,
       entryType: proposal.entryType,
       hasOdometer: proposal.odometerReading !== null,
       hasCost: proposal.cost !== null,
@@ -532,8 +625,10 @@ export async function receiptQuickAddRequest(
       hasEntryDate: proposal.entryDate !== null,
       hasNotes: proposal.notes !== null,
       lineItemCount: proposal.lineItems.length,
+      typedFieldCount: typed === null ? 0 : typedFieldCount(typed),
     });
-    return { ...proposal, token: reservation.tokenId, quota: reservation.quota };
+    const envelope = { ...proposal, token: reservation.tokenId, quota: reservation.quota };
+    return typed === null ? envelope : { ...envelope, ...typed, proposalSchemaVersion: 2 };
   } catch (error) {
     await voidReceiptReservation(dependencies.db, reservation, now);
     if (error instanceof HttpsError) throw error;
@@ -549,7 +644,7 @@ export async function receiptQuickAddRequest(
 
 export const receiptQuickAdd = onCall(
   { region: "us-central1", enforceAppCheck: true, timeoutSeconds: 120, secrets: [anthropicApiKey] },
-  async (request): Promise<ReceiptQuickAddResponse> => {
+  async (request): Promise<ReceiptQuickAddResponse | ReceiptQuickAddResponseV2> => {
     try {
       return await receiptQuickAddRequest(request, {
         apiKey: anthropicApiKey.value(),

@@ -1,0 +1,1630 @@
+{
+ "variant": "prod-v2",
+ "model": "claude-sonnet-5",
+ "runs": 1,
+ "now": "2026-07-28T17:00:00.000Z",
+ "pass": 105,
+ "total": 120,
+ "results": [
+  {
+   "id": "oil-basic",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "oil_change",
+     "got": "oil_change",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "odometerReading",
+     "expected": 92000,
+     "got": 92000,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 65,
+     "got": 65,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "shopName",
+     "expected": "Jiffy Lube",
+     "got": "Jiffy Lube",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "isDiy",
+     "expected": null,
+     "got": null,
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "oil_change",
+    "odometerReading": 92000,
+    "cost": 65,
+    "shopName": "Jiffy Lube",
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null,
+    "workItem": null,
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "oil-diy-weight",
+   "run": 1,
+   "fields": [
+    {
+     "field": "typed.brand",
+     "expected": "mobil",
+     "got": "Mobil 1",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.oilGrade",
+     "expected": "0W-20",
+     "got": "0W-20",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.quantityQuarts",
+     "expected": 5,
+     "got": 5,
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.gallons",
+     "expected": null,
+     "got": null,
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "entryType",
+     "expected": "oil_change",
+     "got": "oil_change",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 40,
+     "got": 40,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "notes~mobil 1",
+     "expected": "mobil 1",
+     "got": null,
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "oil_change",
+    "odometerReading": null,
+    "cost": 40,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": null,
+    "workItem": null,
+    "brand": "Mobil 1",
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": "0W-20",
+    "quantityQuarts": 5,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "tires-brand",
+   "run": 1,
+   "fields": [
+    {
+     "field": "typed.brand",
+     "expected": "michelin",
+     "got": "Michelin",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.serviceAction",
+     "expected": "new_install",
+     "got": "new_install",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.position",
+     "expected": "all_four",
+     "got": null,
+     "pass": false,
+     "kind": "typed"
+    },
+    {
+     "field": "entryType",
+     "expected": "tire",
+     "got": "tire",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 1200,
+     "got": 1200,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "shopName",
+     "expected": "Discount Tire",
+     "got": "Discount Tire",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "isDiy",
+     "expected": null,
+     "got": null,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "notes~michelin",
+     "expected": "michelin",
+     "got": null,
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "tire",
+    "odometerReading": null,
+    "cost": 1200,
+    "shopName": "Discount Tire",
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null,
+    "workItem": null,
+    "brand": "Michelin",
+    "productModel": "CrossClimate 2",
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": "new_install",
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "rotation",
+   "run": 1,
+   "fields": [
+    {
+     "field": "typed.serviceAction",
+     "expected": "rotation",
+     "got": "rotation",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "entryType",
+     "expected": "tire|maintenance",
+     "got": "tire",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "odometerReading",
+     "expected": 103500,
+     "got": 103500,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": null,
+     "got": null,
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "tire",
+    "odometerReading": 103500,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null,
+    "workItem": null,
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": "rotation",
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "brakes-shop",
+   "run": 1,
+   "fields": [
+    {
+     "field": "typed.serviceAction",
+     "expected": "pads_replaced",
+     "got": "pads_replaced",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.position",
+     "expected": "front",
+     "got": null,
+     "pass": false,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.gallons",
+     "expected": null,
+     "got": null,
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "entryType",
+     "expected": "brake",
+     "got": "brake",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "odometerReading",
+     "expected": 88450,
+     "got": 88450,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 487,
+     "got": 487,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "shopName",
+     "expected": "Midas",
+     "got": "Midas",
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "brake",
+    "odometerReading": 88450,
+    "cost": 487,
+    "shopName": "Midas",
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null,
+    "workItem": null,
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": "pads_replaced",
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "fuel",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "fuel",
+     "got": "fuel",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 52,
+     "got": null,
+     "pass": false,
+     "kind": "common"
+    },
+    {
+     "field": "notes~13.2",
+     "expected": "13.2",
+     "got": null,
+     "pass": false,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "fuel",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null,
+    "workItem": null,
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": 13.2,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "date-yesterday",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 140,
+     "got": 140,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-27",
+     "got": "2026-07-27",
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": 140,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": "2026-07-27T00:00:00.000Z",
+    "notes": null,
+    "workItem": "Coolant flush",
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "date-last-saturday",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "repair|maintenance",
+     "got": "maintenance",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 160,
+     "got": null,
+     "pass": false,
+     "kind": "common"
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": null,
+     "pass": false,
+     "kind": "common"
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-25",
+     "got": "2026-07-25",
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": "2026-07-25T00:00:00.000Z",
+    "notes": null,
+    "workItem": "Battery replacement",
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "date-explicit",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 20,
+     "got": null,
+     "pass": false,
+     "kind": "common"
+    },
+    {
+     "field": "entryDay",
+     "expected": "2026-07-10",
+     "got": "2026-07-10",
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": "2026-07-10T00:00:00.000Z",
+    "notes": null,
+    "workItem": "State inspection",
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "wipers-cheap",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 18,
+     "got": 18,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "notes~wiper",
+     "expected": "wiper",
+     "got": null,
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": 18,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": null,
+    "workItem": "wiper blades",
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "transmission",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "odometerReading",
+     "expected": 112000,
+     "got": null,
+     "pass": false,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 240,
+     "got": null,
+     "pass": false,
+     "kind": "common"
+    },
+    {
+     "field": "shopName",
+     "expected": "AAMCO",
+     "got": null,
+     "pass": false,
+     "kind": "common"
+    },
+    {
+     "field": "isDiy",
+     "expected": null,
+     "got": null,
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null,
+    "workItem": "Transmission fluid service",
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "air-filter-vehicle-ctx",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": null,
+     "got": null,
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null,
+    "workItem": "engine air filter",
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "alignment",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "alignment",
+     "got": "alignment",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 129.99,
+     "got": 129.99,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "shopName",
+     "expected": "Firestone",
+     "got": "Firestone",
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "alignment",
+    "odometerReading": null,
+    "cost": 129.99,
+    "shopName": "Firestone",
+    "isDiy": null,
+    "entryDate": null,
+    "notes": "Four wheel alignment after new tires",
+    "workItem": null,
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "upgrade-exhaust",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "upgrade",
+     "got": "upgrade",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 1100,
+     "got": 1100,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "notes~borla",
+     "expected": "borla",
+     "got": null,
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "upgrade",
+    "odometerReading": null,
+    "cost": 1100,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": null,
+    "workItem": null,
+    "brand": "Borla",
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": "engine"
+   }
+  },
+  {
+   "id": "no-invention",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "maintenance|repair",
+     "got": "maintenance",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "odometerReading",
+     "expected": null,
+     "got": null,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": null,
+     "got": null,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "shopName",
+     "expected": null,
+     "got": null,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "isDiy",
+     "expected": null,
+     "got": null,
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null,
+    "workItem": "&lt;UNKNOWN&gt;",
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "spoken-decimal-odo",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "oil_change",
+     "got": "oil_change",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "odometerReading",
+     "expected": 87500,
+     "got": 87500,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "oil_change",
+    "odometerReading": 87500,
+    "cost": null,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": null,
+    "workItem": null,
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "two-numbers",
+   "run": 1,
+   "fields": [
+    {
+     "field": "typed.workItem",
+     "expected": "spark plug",
+     "got": "spark plugs",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "entryType",
+     "expected": "maintenance|repair",
+     "got": "maintenance",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "odometerReading",
+     "expected": 90000,
+     "got": 90000,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 94,
+     "got": 94,
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": 90000,
+    "cost": 94,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null,
+    "workItem": "spark plugs",
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "track-day",
+   "run": 1,
+   "fields": [
+    {
+     "field": "entryType",
+     "expected": "track_day",
+     "got": "track_day",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 250,
+     "got": 250,
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "track_day",
+    "odometerReading": null,
+    "cost": 250,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": "Laguna Seca, car ran great",
+    "workItem": null,
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "typed-oil-full",
+   "run": 1,
+   "fields": [
+    {
+     "field": "typed.brand",
+     "expected": "castrol",
+     "got": "Castrol",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.oilGrade",
+     "expected": "5W-30",
+     "got": "5W-30",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.quantityQuarts",
+     "expected": 6,
+     "got": 6,
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.filterBrand",
+     "expected": "wix",
+     "got": null,
+     "pass": false,
+     "kind": "typed"
+    },
+    {
+     "field": "entryType",
+     "expected": "oil_change",
+     "got": "oil_change",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 62,
+     "got": 62,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "oil_change",
+    "odometerReading": null,
+    "cost": 62,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": null,
+    "workItem": null,
+    "brand": "Castrol",
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": "5W-30",
+    "quantityQuarts": 6,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "typed-fuel-regular",
+   "run": 1,
+   "fields": [
+    {
+     "field": "typed.gallons",
+     "expected": 14.1,
+     "got": 14.1,
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.pricePerGallon",
+     "expected": 3.09,
+     "got": 3.09,
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.fuelGrade",
+     "expected": "regular_87",
+     "got": "regular_87",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.position",
+     "expected": null,
+     "got": null,
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "entryType",
+     "expected": "fuel",
+     "got": "fuel",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "shopName",
+     "expected": "Wawa",
+     "got": "Wawa",
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "fuel",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": "Wawa",
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null,
+    "workItem": null,
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": 14.1,
+    "pricePerGallon": 3.09,
+    "fuelGrade": "regular_87",
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "typed-fuel-89-omitted",
+   "run": 1,
+   "fields": [
+    {
+     "field": "typed.gallons",
+     "expected": 10.5,
+     "got": 10.5,
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.fuelGrade",
+     "expected": null,
+     "got": null,
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "entryType",
+     "expected": "fuel",
+     "got": "fuel",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 34.5,
+     "got": null,
+     "pass": false,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "fuel",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null,
+    "workItem": null,
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": 10.5,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "typed-tire-staggered",
+   "run": 1,
+   "fields": [
+    {
+     "field": "typed.brand",
+     "expected": "continental",
+     "got": "Continental",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.productModel",
+     "expected": "extremecontact",
+     "got": "ExtremeContact DWS06 Plus",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.serviceAction",
+     "expected": "new_install",
+     "got": "new_install",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.position",
+     "expected": "all_four",
+     "got": null,
+     "pass": false,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.tireSizeFront",
+     "expected": "245/40R18",
+     "got": "245/40R18",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.tireSizeRear",
+     "expected": "275/35R18",
+     "got": "275/35R18",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "entryType",
+     "expected": "tire",
+     "got": "tire",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "shopName",
+     "expected": "Tire Rack",
+     "got": null,
+     "pass": false,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "tire",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null,
+    "workItem": null,
+    "brand": "Continental",
+    "productModel": "ExtremeContact DWS06 Plus",
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": "new_install",
+    "nextDueOdometer": null,
+    "tireSizeFront": "245/40R18",
+    "tireSizeRear": "275/35R18",
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "typed-nextdue-absolute",
+   "run": 1,
+   "fields": [
+    {
+     "field": "typed.workItem",
+     "expected": "cabin",
+     "got": "Cabin air filter",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.nextDueOdometer",
+     "expected": 65000,
+     "got": 65000,
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null,
+    "workItem": "Cabin air filter",
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": 65000,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "typed-nextdue-interval",
+   "run": 1,
+   "fields": [
+    {
+     "field": "typed.workItem",
+     "expected": "differential",
+     "got": "Differential service",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.nextDueOdometer",
+     "expected": 66200,
+     "got": 66200,
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "entryType",
+     "expected": "maintenance",
+     "got": "maintenance",
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "maintenance",
+    "odometerReading": null,
+    "cost": null,
+    "shopName": null,
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null,
+    "workItem": "Differential service",
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": 66200,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  },
+  {
+   "id": "typed-upgrade-coilovers",
+   "run": 1,
+   "fields": [
+    {
+     "field": "typed.workItem",
+     "expected": "coilover",
+     "got": null,
+     "pass": false,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.brand",
+     "expected": "kw",
+     "got": "KW",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.upgradeCategory",
+     "expected": "suspension",
+     "got": "suspension",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "entryType",
+     "expected": "upgrade",
+     "got": "upgrade",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 2100,
+     "got": 2100,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "isDiy",
+     "expected": true,
+     "got": true,
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "upgrade",
+    "odometerReading": null,
+    "cost": 2100,
+    "shopName": null,
+    "isDiy": true,
+    "entryDate": null,
+    "notes": null,
+    "workItem": null,
+    "brand": "KW",
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": "suspension"
+   }
+  },
+  {
+   "id": "typed-repair-alternator",
+   "run": 1,
+   "fields": [
+    {
+     "field": "typed.workItem",
+     "expected": "alternator",
+     "got": "alternator replacement",
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.brand",
+     "expected": null,
+     "got": null,
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "typed.gallons",
+     "expected": null,
+     "got": null,
+     "pass": true,
+     "kind": "typed"
+    },
+    {
+     "field": "entryType",
+     "expected": "repair",
+     "got": "repair",
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "cost",
+     "expected": 560,
+     "got": 560,
+     "pass": true,
+     "kind": "common"
+    },
+    {
+     "field": "shopName",
+     "expected": "Roy",
+     "got": "Roy's Garage",
+     "pass": true,
+     "kind": "common"
+    }
+   ],
+   "raw": {
+    "entryType": "repair",
+    "odometerReading": null,
+    "cost": 560,
+    "shopName": "Roy's Garage",
+    "isDiy": null,
+    "entryDate": null,
+    "notes": null,
+    "workItem": "alternator replacement",
+    "brand": null,
+    "productModel": null,
+    "filterBrand": null,
+    "oilGrade": null,
+    "quantityQuarts": null,
+    "gallons": null,
+    "pricePerGallon": null,
+    "fuelGrade": null,
+    "position": null,
+    "serviceAction": null,
+    "nextDueOdometer": null,
+    "tireSizeFront": null,
+    "tireSizeRear": null,
+    "upgradeCategory": null
+   }
+  }
+ ]
+}

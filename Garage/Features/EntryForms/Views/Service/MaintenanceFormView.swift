@@ -8,7 +8,10 @@ struct MaintenanceFormView: View {
     @State private var dueMileage = ""
 
     var body: some View {
-        EntryFormScaffold(title: "Maintenance", viewModel: form, onSave: save, onEditEntry: seed) {
+        EntryFormScaffold(
+            title: "Maintenance", viewModel: form, onSave: save, onEditEntry: seed,
+            onAIPrefill: seedProposal
+        ) {
             Picker("Item", selection: $item) {
                 ForEach(MaintenanceItemKind.allCases, id: \.self) { item in Text(item.displayName).tag(item) }
             }
@@ -18,6 +21,18 @@ struct MaintenanceFormView: View {
             TextField("Next due mileage", text: $dueMileage)
                 .keyboardType(.numberPad)
                 .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    /// Typed-extraction seeding (spec rev 3 §3). `workItem` matches through
+    /// `MaintenanceItemMatcher`'s keyword table — a miss leaves the picker at its default rather
+    /// than risk filing the entry under the wrong service.
+    private func seedProposal(_ details: TypedProposalDetails) {
+        if let workItem = details.workItem, let matched = MaintenanceItemMatcher.match(workItem) {
+            item = matched
+        }
+        if let due = details.nextDueOdometer, due > 0 {
+            dueMileage = String(due)
         }
     }
 

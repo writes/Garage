@@ -2,22 +2,6 @@ import FirebaseFunctions
 import Foundation
 import Observation
 
-/// A prefill proposal produced by the receiptQuickAdd Cloud Function from a photographed/imported
-/// receipt. It is a SUGGESTION only — the UI presents it in the entry form for the user to
-/// confirm/edit/save (Trust Pledge). Exactly `VoiceEntryProposal`'s shape plus `lineItems`, which
-/// is joined into notes client-side (EntryFormViewModel+ReceiptPrefill.swift).
-struct ReceiptEntryProposal: Codable, Equatable, Sendable {
-    let entryType: EntryType
-    let odometerReading: Int?
-    let cost: Double?
-    let shopName: String?
-    let isDiy: Bool?
-    /// ISO 8601 string, or nil meaning "today".
-    let entryDate: String?
-    let notes: String?
-    let lineItems: [String]?
-}
-
 /// The server-authoritative receipt quota state. `resetAt` deliberately stays an ISO-8601 string
 /// to mirror the callable wire contract exactly; UI-only date formatting happens at the boundary
 /// that renders a specific outcome.
@@ -98,7 +82,9 @@ final class ReceiptQuickAddService: ReceiptQuickAddCalling {
         images: [String]?, pdfBase64: String?, vehicle: Vehicle?, now: Date
     ) async throws -> ReceiptProposalResult {
         let callable = functions.httpsCallable("receiptQuickAdd")
-        var payload: [String: Any] = [:]
+        // schemaVersion 2 opts into typed detail extraction; a v1 server ignores the key and
+        // the typed fields simply decode nil (the version-gated contract, spec rev 3).
+        var payload: [String: Any] = ["schemaVersion": 2]
         if let images { payload["images"] = images }
         if let pdfBase64 { payload["pdfBase64"] = pdfBase64 }
         if let vehicle {

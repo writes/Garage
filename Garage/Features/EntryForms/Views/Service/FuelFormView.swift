@@ -10,7 +10,10 @@ struct FuelFormView: View {
     @State private var fuelGrade: FuelType = .premium93
 
     var body: some View {
-        EntryFormScaffold(title: "Fuel Fill-up", viewModel: form, onSave: save, onEditEntry: seed) {
+        EntryFormScaffold(
+            title: "Fuel Fill-up", viewModel: form, onSave: save, onEditEntry: seed,
+            onAIPrefill: seedProposal
+        ) {
             TextField("Gallons", text: $gallons)
                 .keyboardType(.decimalPad)
                 .textFieldStyle(.roundedBorder)
@@ -31,6 +34,20 @@ struct FuelFormView: View {
                     Text(grade.displayName).tag(grade)
                 }
             }
+        }
+    }
+
+    /// Typed-extraction seeding (spec rev 4 §3). Fuel's own numeric trio (gallons, price/gal,
+    /// grade) was TRIMMED from the extraction vocabulary — measured bistable/fabrication-prone
+    /// (rev 4 final) — so fuel seeds only the mirrors of the common fields, which land via the
+    /// view model's shared prefill first: station from shop, total from cost.
+    private func seedProposal(_ details: TypedProposalDetails) {
+        _ = details
+        if stationName.isEmpty, !form.shopName.isEmpty {
+            stationName = form.shopName
+        }
+        if totalCost.isEmpty, !form.cost.isEmpty {
+            totalCost = form.cost
         }
     }
 
