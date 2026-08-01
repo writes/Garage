@@ -288,6 +288,31 @@ arm and is a breaking change to every running experiment.
 proactive category exists yet; user-created reminders are NEVER suppressed — the property
 ships now so the split exists in the data from day one.
 
+## 5.4 Receipt-credits funnel (additive, 2026-07-31)
+
+Ships with the consumable top-up client (`docs/research/2026-07-30_IAP_TOPUP_SPEC.md` §§17–24).
+Names in `AnalyticsEvent.receiptCreditsNames`; enums in `AnalyticsTypes+Reasons.swift`.
+
+| Event | Parameters | Purpose |
+|---|---|---|
+| `receipt_credits_offer_shown` | `scope` | The top-up affordance rendered (once per scope per sheet). Q3-C placement: `pro_month` directly at the cap; `free_lifetime` only after ≥1 receipt-scan paywall dismissal. |
+| `receipt_credits_purchase_started` | — | Buy tapped. Fires BEFORE the identity/product preconditions, so identity-rejected and product-unavailable taps are included — read it as buy_tapped, not as StoreKit-reached (tri-review Sol advisory). |
+| `receipt_credits_purchase_succeeded` | — | StoreKit success ONLY — the grant is server-side and reports separately. |
+| `receipt_credits_purchase_failed` | `reason` | `identity_mismatch` / `store_error` / `product_unavailable`. Cancelled and Ask-to-Buy are NOT failures. |
+| `receipt_credits_purchase_pending` | — | Ask-to-Buy/SCA deferral; may convert later via a status refresh. |
+| `receipt_credits_grant_confirmed` | — | The server ledger reported `granted` for this client's transaction — the real outcome. |
+| `receipt_credits_grant_delayed` | — | The 2/4/8/16/30s poll window elapsed without a grant; reconcile follows. |
+| `receipt_credits_grant_missing` | — | Poll AND reconcile empty, or a marker expired at its 72h TTL. |
+| `receipt_credits_refund_observed` | — | The ledger reported `refunded` for a polled transaction. |
+
+**The ops alert query for lost webhooks** is `purchase_succeeded` without a later
+`grant_confirmed` for the same user-session neighborhood (analytics are consent-gated, so this
+is a signal — the reconcile callable is the repair, never analytics).
+
+**Purchase-state truth lives server-side.** Client events chart the funnel; the credits
+BALANCE and every grant/claw decision come from the transaction ledger via
+`receiptQuotaStatus`/`reconcileReceiptCreditPurchase`.
+
 ## 6. Why funnel instrumentation was prioritised
 
 The launch research (`docs/research/2026-07-27_BRANDING_AND_LAUNCH_PLAN.md`) found that **90% of

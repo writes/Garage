@@ -7,9 +7,13 @@ import UniformTypeIdentifiers
 /// to the matching form prefilled for the user to confirm. Unlike voice, this is NOT Pro-gated at
 /// the entry point — a free user gets a lifetime teaser (plan §5); only quota exhaustion upsells.
 struct ReceiptCaptureView: View {
-    @Environment(AppRouter.self) private var router
+    @Environment(AppRouter.self) var router // internal for the +Credits sibling file
     @Environment(AppState.self) private var appState
-    @State private var viewModel = ReceiptCaptureViewModel()
+    // Internal for the +Credits sibling file.
+    @State var viewModel = ReceiptCaptureViewModel()
+    /// Created on first task (needs the environment's AppState for identity) — owns the
+    /// credits top-up offer and the purchase->grant lifecycle.
+    @State var credits: ReceiptCreditsController?
     @State private var showCamera = false
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isImportingPDF = false
@@ -19,13 +23,35 @@ struct ReceiptCaptureView: View {
             content
             disclosureFooter
         }
-        .task { await viewModel.refreshQuotaStatus() }
+        .task {
+            // Controller setup + marker repair run BEFORE the quota refresh: the refresh's
+            // sweepIncomplete loop is uncapped by contract, and awaiting it first would let a
+            // stuck server flag starve paid-purchase repair forever (tri-review Sol r5).
+            let controller = credits ?? ReceiptCreditsController(
+                purchaser: ReceiptCreditsPurchaser(
+                    store: ReceiptCreditsStoreClientFactory.make(),
+                    markers: .shared,
+                    currentUID: { [weak appState] in appState?.currentUserID }
+                ),
+                currentUID: { [weak appState] in appState?.currentUserID }
+            )
+            credits = controller
+            // Marker repair BEFORE product availability: the offer cannot render until
+            // availability is true, so Buy can never appear ahead of the resume pass's
+            // unresolved-marker suppression (tri-review Sol r7).
+            await controller.resumeOutstandingMarkers(recoveringInto: viewModel)
+            await controller.refreshProductAvailability()
+            await viewModel.refreshQuotaStatus()
+        }
         .onChange(of: viewModel.proposal) { _, _ in
             if let package = viewModel.consumeProposalPackage() {
                 router.presentReceiptPrefilledForm(package)
             }
         }
-        .onDisappear { viewModel.abandon() }
+        .onDisappear {
+            credits?.cancelActiveWork()
+            viewModel.abandon()
+        }
         .fullScreenCover(isPresented: $showCamera) {
             CameraPicker(
                 onCapture: { data in
@@ -147,49 +173,6 @@ struct ReceiptCaptureView: View {
         .accessibilityIdentifier("receipt.capture.confirm")
     }
 
-    @ViewBuilder
-    private func failureView(_ failure: ReceiptCaptureFailure) -> some View {
-        switch failure {
-        case .preflight(let error):
-            // retry returns to .ready/.idle WITHOUT clearing any surviving page; a resubmit is a
-            // fresh confirmAndParse call, so it goes back through the reentrancy guard normally.
-            ErrorBanner(error: error, retry: { viewModel.retryAfterFailure() })
-                .accessibilityIdentifier("receipt.capture.error")
-        case .notAReceipt:
-            failureText("That doesn't look like a service receipt or invoice. Try another photo or file.")
-        case .freeLifetimeExhausted:
-            upsell
-        case .proMonthExhausted(let resetAt):
-            ErrorBanner(error: .unknown(Self.proMonthExhaustedMessage(resetAt)))
-                .accessibilityIdentifier("receipt.capture.error")
-        case .generic(let message):
-            ErrorBanner(error: .unknown(message), retry: { viewModel.retryAfterFailure() })
-                .accessibilityIdentifier("receipt.capture.error")
-        }
-    }
-
-    private func failureText(_ message: String) -> some View {
-        Text(message)
-            .font(Theme.Typography.caption)
-            .foregroundStyle(Theme.Colors.textSecondary)
-            .multilineTextAlignment(.center)
-            .accessibilityIdentifier("receipt.capture.error")
-    }
-
-    private var upsell: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            Text("You've used your free receipt saves")
-                .font(Theme.Typography.headline)
-            Text("Upgrade to Garage Pro for 20 receipt saves each month.")
-                .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Colors.textSecondary)
-            PrimaryButton(title: "Upgrade to Pro") {
-                router.present(.subscription(.receiptScan))
-            }
-            .accessibilityIdentifier("receipt.capture.upgrade")
-        }
-    }
-
     private var disclosureFooter: some View {
         VStack(spacing: Theme.Spacing.xs) {
             if let quotaFooterState = viewModel.quotaFooterState {
@@ -224,7 +207,7 @@ struct ReceiptCaptureView: View {
         return formatter.string(from: date)
     }
 
-    private static func proMonthExhaustedMessage(_ resetAt: Date?) -> String {
+    static func proMonthExhaustedMessage(_ resetAt: Date?) -> String {
         guard let resetAt else { return "You've used this month's receipt saves. Try again next month." }
         return "You've used this month's receipt saves. Resets " + resetText(resetAt) + "."
     }

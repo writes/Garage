@@ -72,9 +72,23 @@ final class FakeReceiptService: ReceiptQuickAddCalling {
         return try confirmResult.get()
     }
 
-    func quotaStatus() async throws -> ReceiptQuotaSnapshot {
+    var reconcileResult: Result<ReceiptQuotaSnapshot, Error> = .success(.fixture)
+    private(set) var quotaStatusTransactionIDs: [String?] = []
+    private(set) var reconcileTransactionIDs: [String] = []
+
+    /// Runs inside the await — lets a test flip signed-in identity mid-call (lease tests).
+    var onQuotaStatus: (() -> Void)?
+
+    func quotaStatus(transactionID: String?) async throws -> ReceiptQuotaSnapshot {
         quotaStatusCallCount += 1
+        quotaStatusTransactionIDs.append(transactionID)
+        onQuotaStatus?()
         return try quotaStatusResult.get()
+    }
+
+    func reconcileCreditPurchase(transactionID: String) async throws -> ReceiptQuotaSnapshot {
+        reconcileTransactionIDs.append(transactionID)
+        return try reconcileResult.get()
     }
 }
 
@@ -102,8 +116,12 @@ final class SuspendedReceiptService: ReceiptQuickAddCalling {
         throw AppError.unknown("Confirmation is unavailable in this suspended fake.")
     }
 
-    func quotaStatus() async throws -> ReceiptQuotaSnapshot {
+    func quotaStatus(transactionID: String?) async throws -> ReceiptQuotaSnapshot {
         throw AppError.unknown("Quota status is unavailable in this suspended fake.")
+    }
+
+    func reconcileCreditPurchase(transactionID: String) async throws -> ReceiptQuotaSnapshot {
+        throw AppError.unknown("Reconcile is unavailable in this suspended fake.")
     }
 }
 

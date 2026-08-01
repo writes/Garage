@@ -16,7 +16,7 @@ final class ReceiptCaptureViewModel {
     private let analytics: any AnalyticsTracking
     private let now: () -> Date
 
-    private(set) var phase: ReceiptCapturePhase = .idle
+    var phase: ReceiptCapturePhase = .idle // setter internal for +Credits recovery; views never write
     private(set) var imagePages: [ReceiptImagePage] = []
     private(set) var pdfPage: ReceiptPDFPage?
     /// Non-nil once a proposal is ready; the view consumes it exactly once and routes to the form.
@@ -33,8 +33,8 @@ final class ReceiptCaptureViewModel {
     /// stays enabled through the whole `.parsing` round trip. Without this a double-tap re-enters
     /// `confirmAndParse` and calls the metered proposeEntry TWICE for one scan.
     private var isSubmitting = false
-    private var quotaFailure: ReceiptCaptureFailure?
-    private var notAReceiptBlocked = false
+    var quotaFailure: ReceiptCaptureFailure? // internal for the sibling files; views must not write
+    var notAReceiptBlocked = false // internal for the sibling files; views must not write
 
     init(
         preflighter: any ReceiptPreflighting = ReceiptPreflighter(),

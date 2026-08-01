@@ -225,6 +225,26 @@ extension AnalyticsEvent {
                 name: "survey_dismissed",
                 parameters: [.survey(survey)]
             )
+        case .receiptCreditsOfferShown(let scope):
+            return AnalyticsEventDefinition(name: "receipt_credits_offer_shown", parameters: [.creditsScope(scope)])
+        case .receiptCreditsPurchaseStarted:
+            return AnalyticsEventDefinition(name: "receipt_credits_purchase_started")
+        case .receiptCreditsPurchaseSucceeded:
+            return AnalyticsEventDefinition(name: "receipt_credits_purchase_succeeded")
+        case .receiptCreditsPurchaseFailed(let reason):
+            return AnalyticsEventDefinition(
+                name: "receipt_credits_purchase_failed", parameters: [.creditsFailureReason(reason)]
+            )
+        case .receiptCreditsPurchasePending:
+            return AnalyticsEventDefinition(name: "receipt_credits_purchase_pending")
+        case .receiptCreditsGrantConfirmed:
+            return AnalyticsEventDefinition(name: "receipt_credits_grant_confirmed")
+        case .receiptCreditsGrantDelayed:
+            return AnalyticsEventDefinition(name: "receipt_credits_grant_delayed")
+        case .receiptCreditsGrantMissing:
+            return AnalyticsEventDefinition(name: "receipt_credits_grant_missing")
+        case .receiptCreditsRefundObserved:
+            return AnalyticsEventDefinition(name: "receipt_credits_refund_observed")
         }
     }
 }

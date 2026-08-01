@@ -11,12 +11,30 @@ struct ReceiptQuotaSnapshot: Codable, Equatable, Sendable {
         case pro
     }
 
+    /// The server ledger's verdict for a polled transaction (status-only, additive).
+    enum TransactionState: String, Codable, Equatable, Sendable {
+        case granted
+        case refunded
+        case unknown
+    }
+
     let entitlement: Entitlement
     let scanRemaining: Int
     let scanCeiling: Int
     let confirmedRemaining: Int
     let confirmedAllowance: Int
     let resetAt: String?
+    // Additive credit fields (2026-07-31). `var` + nil defaults on purpose: a `let` with a
+    // default is EXCLUDED from both the memberwise init and Codable synthesis (the
+    // let-default-kills-memberwise-init defect class) — `var` keeps old construction sites
+    // compiling AND decodes old servers as nil.
+    var creditsRemaining: Int?
+    var creditsScanRemaining: Int?
+    var creditsGranted: Int?
+    var creditsDeficit: Int?
+    var creditsPurchasingEnabled: Bool?
+    var sweepIncomplete: Bool?
+    var transactionState: TransactionState?
 }
 
 /// The additive receipt proposal response. This preserves the server's existing top-level proposal
@@ -61,7 +79,17 @@ protocol ReceiptQuickAddCalling {
         images: [String]?, pdfBase64: String?, vehicle: Vehicle?, now: Date
     ) async throws -> ReceiptProposalResult
     func confirmScan(token: String) async throws -> ReceiptQuotaSnapshot
-    func quotaStatus() async throws -> ReceiptQuotaSnapshot
+    /// `transactionID` non-nil = also resolve that purchase's ledger state (post-purchase poll).
+    func quotaStatus(transactionID: String?) async throws -> ReceiptQuotaSnapshot
+    /// Server-side repair for a purchase whose webhook never arrived. The returned snapshot
+    /// carries `transactionState` from the POST-FOLD ledger.
+    func reconcileCreditPurchase(transactionID: String) async throws -> ReceiptQuotaSnapshot
+}
+
+extension ReceiptQuickAddCalling {
+    func quotaStatus() async throws -> ReceiptQuotaSnapshot {
+        try await quotaStatus(transactionID: nil)
+    }
 }
 
 @MainActor
@@ -117,9 +145,24 @@ final class ReceiptQuickAddService: ReceiptQuickAddCalling {
         return try Self.decodeQuotaSnapshot(from: result)
     }
 
-    func quotaStatus() async throws -> ReceiptQuotaSnapshot {
-        let result = try await functions.httpsCallable("receiptQuotaStatus").call()
+    func quotaStatus(transactionID: String?) async throws -> ReceiptQuotaSnapshot {
+        // [String: String] (Sendable) rather than [String: Any]: the async call is a region
+        // boundary under strict concurrency.
+        let payload: [String: String] = transactionID.map { ["transactionId": $0] } ?? [:]
+        let result = try await functions.httpsCallable("receiptQuotaStatus").call(payload)
         return try Self.decodeQuotaSnapshot(from: result)
+    }
+
+    func reconcileCreditPurchase(transactionID: String) async throws -> ReceiptQuotaSnapshot {
+        let result = try await functions.httpsCallable("reconcileReceiptCreditPurchase")
+            .call(["transactionId": transactionID])
+        // The wire shape is {transactionState, quota:{...}} — fold the top-level state into the
+        // snapshot so polling and reconcile route through ONE terminal transition client-side.
+        let json = try Self.callableJSON(from: result)
+        let response = try JSONDecoder().decode(ReconcileResponse.self, from: json)
+        var snapshot = response.quota
+        snapshot.transactionState = response.transactionState
+        return snapshot
     }
 
     /// Deliberately narrow (mirrors VoiceQuickAddService/ClaudeService): maps exactly the current
@@ -175,6 +218,11 @@ final class ReceiptQuickAddService: ReceiptQuickAddCalling {
 private struct ReceiptQuickAddMetadata: Codable {
     let token: String?
     let quota: ReceiptQuotaSnapshot?
+}
+
+private struct ReconcileResponse: Codable {
+    let transactionState: ReceiptQuotaSnapshot.TransactionState
+    let quota: ReceiptQuotaSnapshot
 }
 
 extension ReceiptEntryProposal {

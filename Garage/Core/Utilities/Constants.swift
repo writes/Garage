@@ -29,6 +29,12 @@ enum Constants {
     /// funnel keyed on `product_id`.
     static let annualPlanIdentifier = "com.writes.harrysplayhouse.pro.yearly"
     static let monthlyPlanIdentifier = "com.writes.harrysplayhouse.pro.monthly"
+    /// The receipt-credits CONSUMABLE (+10 saves, $0.99). Purchased via the direct-product path
+    /// (`ReceiptCreditsPurchaser`), NEVER through offerings — the subscriptions pipeline
+    /// structurally drops period-less products. Must match ASC and the server's
+    /// CREDITS_PRODUCT_IDS exactly; a mismatch hides the offer silently (availability probe
+    /// fails), it never crashes.
+    static let receiptCreditsPackIdentifier = "com.writes.harrysplayhouse.credits.receipts10"
     static let appleSignInTimeoutNanoseconds: UInt64 = 15_000_000_000
     /// Headroom under firebase.storage.rules' 25MB owner-write ceiling for entry attachments —
     /// checked client-side (AttachmentPicker) before a PDF is ever read into memory, so an

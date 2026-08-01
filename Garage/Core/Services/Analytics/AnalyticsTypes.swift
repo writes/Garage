@@ -35,6 +35,10 @@ enum PaywallSource: String, CaseIterable, Equatable, Sendable {
 enum AnalyticsProductID: String, CaseIterable, Equatable, Sendable {
     case monthly = "garage_pro_monthly"
     case annual = "garage_pro_annual"
+    /// The receipt-credits consumable. Its purchase lifecycle reports through the dedicated
+    /// `receipt_credits_*` family; this case exists so the store↔analytics identifier mapping
+    /// stays one closed, test-pinned surface.
+    case receiptCredits10 = "receipt_credits_10"
 
     init?(storeProductIdentifier: String) {
         switch storeProductIdentifier {
@@ -42,6 +46,8 @@ enum AnalyticsProductID: String, CaseIterable, Equatable, Sendable {
             self = .monthly
         case Constants.annualPlanIdentifier:
             self = .annual
+        case Constants.receiptCreditsPackIdentifier:
+            self = .receiptCredits10
         default:
             return nil
         }
@@ -108,6 +114,9 @@ enum AnalyticsParameter: Equatable, Sendable {
     case visualScore(Int)
     /// Sent as 0/1.
     case wouldSwitch(Bool)
+    // Receipt-credits funnel (2026-07-31) — enums in AnalyticsTypes+Reasons.swift.
+    case creditsScope(ReceiptCreditsOfferScope)
+    case creditsFailureReason(ReceiptCreditsPurchaseFailureReason)
 
     fileprivate var name: String {
         switch self {
@@ -129,6 +138,8 @@ enum AnalyticsParameter: Equatable, Sendable {
         case .easeScore: return "ease_score"
         case .visualScore: return "visual_score"
         case .wouldSwitch: return "would_switch"
+        case .creditsScope: return "scope"
+        case .creditsFailureReason: return "reason"
         // The failure/denial-reason parameters share the wire name "reason": each lives on a
         // different event, and one consistent key is what BigQuery queries group on.
         case .voiceFailureReason, .purchaseFailureReason,
@@ -175,6 +186,8 @@ enum AnalyticsParameter: Equatable, Sendable {
         case .survey(let value): return value.rawValue
         case .easeScore(let value), .visualScore(let value): return min(5, max(1, value))
         case .wouldSwitch(let value): return value ? 1 : 0
+        case .creditsScope(let value): return value.rawValue
+        case .creditsFailureReason(let value): return value.rawValue
         }
     }
 }

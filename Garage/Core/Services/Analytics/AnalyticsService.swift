@@ -160,6 +160,23 @@ enum AnalyticsEvent: Equatable, Sendable {
     /// In-app design survey. Scores are 1–5, clamped at definition time; no free text ever.
     case surveySubmitted(survey: SurveyKind, easeScore: Int, visualScore: Int, wouldSwitch: Bool)
     case surveyDismissed(survey: SurveyKind)
+
+    // MARK: Receipt-credits funnel (additive, 2026-07-31) — see ANALYTICS_CONTRACT.md §5.4
+
+    case receiptCreditsOfferShown(scope: ReceiptCreditsOfferScope)
+    case receiptCreditsPurchaseStarted
+    /// StoreKit success only; the GRANT is server-side and reports separately below.
+    case receiptCreditsPurchaseSucceeded
+    case receiptCreditsPurchaseFailed(reason: ReceiptCreditsPurchaseFailureReason)
+    /// Ask-to-Buy/SCA deferral — may still convert later via the next status refresh.
+    case receiptCreditsPurchasePending
+    /// The server ledger reported `granted` for this client's transaction — the real outcome.
+    case receiptCreditsGrantConfirmed
+    /// Poll window elapsed without a grant; reconcile follows. succeeded-without-confirmed is
+    /// the lost-webhook ops alert query.
+    case receiptCreditsGrantDelayed
+    case receiptCreditsGrantMissing
+    case receiptCreditsRefundObserved
 }
 
 /// Thin adapter over `AnalyticsConsentGate`. All gate/buffer decisions live in that value type so

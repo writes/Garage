@@ -22,7 +22,7 @@ struct ActivationFunnelAnalyticsTests {
         let all = AnalyticsEvent.allNames
         #expect(all == AnalyticsEvent.v1Names + AnalyticsEvent.activationFunnelNames
             + AnalyticsEvent.depthNames + AnalyticsEvent.receiptFunnelNames
-            + AnalyticsEvent.experimentationNames)
+            + AnalyticsEvent.experimentationNames + AnalyticsEvent.receiptCreditsNames)
         #expect(Set(all).count == all.count, "event names must be unique")
     }
 

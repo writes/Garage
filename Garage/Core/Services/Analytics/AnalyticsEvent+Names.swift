@@ -79,7 +79,22 @@ extension AnalyticsEvent {
         "survey_dismissed"
     ]
 
+    /// Receipt-credits funnel (additive, 2026-07-31) — the consumable top-up purchase and its
+    /// server-grant lifecycle. See ANALYTICS_CONTRACT.md §5.4.
+    static let receiptCreditsNames = [
+        "receipt_credits_offer_shown",
+        "receipt_credits_purchase_started",
+        "receipt_credits_purchase_succeeded",
+        "receipt_credits_purchase_failed",
+        "receipt_credits_purchase_pending",
+        "receipt_credits_grant_confirmed",
+        "receipt_credits_grant_delayed",
+        "receipt_credits_grant_missing",
+        "receipt_credits_refund_observed"
+    ]
+
     static var allNames: [String] {
         v1Names + activationFunnelNames + depthNames + receiptFunnelNames + experimentationNames
+            + receiptCreditsNames
     }
 }

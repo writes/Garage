@@ -25,6 +25,11 @@ extension AppState {
     /// design; see docs/developer/ANALYTICS_CONTRACT.md.
     func paywallDidDismiss(source: PaywallSource) {
         analytics.track(.paywallDismissed(source: source))
+        // Q3-C: a free user is offered the credits top-up only AFTER dismissing the receipt-scan
+        // Pro paywall at least once — this is that flag's single writer.
+        if source == .receiptScan, let uid = currentUserID {
+            ReceiptCreditsMarkerStore.shared.recordPaywallDismissed(uid: uid)
+        }
     }
 
     /// The launch impression `selectedTab`'s didSet cannot see (assigning the initial value

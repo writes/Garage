@@ -42,3 +42,19 @@ enum RecallLookupFailureReason: String, CaseIterable, Equatable, Sendable {
     case vinNotRecognised = "vin_not_recognised"
     case serviceError = "service_error"
 }
+
+/// Which quota scope the credits top-up offer rendered for (Q3-C: pro sees it directly at the
+/// monthly cap; free only after at least one Pro-paywall dismissal).
+enum ReceiptCreditsOfferScope: String, CaseIterable, Equatable, Sendable {
+    case freeLifetime = "free_lifetime"
+    case proMonth = "pro_month"
+}
+
+/// Why a credits purchase produced no completed transaction. `cancelled`/`pending` have their
+/// own events (expected outcomes, not failures — the purchase-funnel convention).
+enum ReceiptCreditsPurchaseFailureReason: String, CaseIterable, Equatable, Sendable {
+    /// RC identity was anonymous or diverged from the Firebase uid at the purchase checks.
+    case identityMismatch = "identity_mismatch"
+    case storeError = "store_error"
+    case productUnavailable = "product_unavailable"
+}

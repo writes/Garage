@@ -93,8 +93,13 @@ struct SettingsView: View {
         isDeleting = true
         defer { isDeleting = false }
         do {
+            let deletedUID = appState.currentUserID
             if !AppRuntime.isLocalDemoMode {
                 try await deletionService.deleteAccount()
+            }
+            // Purchase-adjacent local state for a uid that no longer exists — retain nothing.
+            if let deletedUID {
+                ReceiptCreditsMarkerStore.shared.removeAll(uid: deletedUID)
             }
             appState.signOut()
         } catch {

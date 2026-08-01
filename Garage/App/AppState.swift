@@ -59,6 +59,14 @@ final class AppState {
         return authService.isAuthenticated
     }
 
+    /// The signed-in Firebase uid, for surfaces keyed per account (receipt-credits markers,
+    /// the Q3-C paywall-dismissal flag). `authService` is `private` and Swift `private` is
+    /// file-scoped, so sibling extension files read identity through this instead.
+    var currentUserID: String? {
+        _ = authenticationRevision
+        return authService.uid
+    }
+
     var authenticationStateID: Int {
         _ = authenticationRevision
         return authService.authenticationRevision

@@ -25,6 +25,10 @@ enum SubscriptionPlanOrder {
         switch dto.analyticsProduct {
         case .annual: return 0
         case .monthly: return 1
+        // Unreachable in practice: the consumable never enters the offerings pipeline (three
+        // structural gates drop period-less products), so no PackageDTO can carry it. Ranked
+        // last so even a future pipeline change cannot displace the subscription ordering.
+        case .receiptCredits10: return 2
         }
     }
 }
