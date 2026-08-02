@@ -543,7 +543,7 @@ describe("receiptQuickAddRequest model-output handling", () => {
     }, deps);
 
     expect(captured).toBeDefined();
-    expect(captured?.model).toBe("claude-haiku-4-5");
+    expect(captured?.model).toBe("claude-haiku-4-5-20251001");
     expect(captured?.max_tokens).toBe(1024);
     expect(captured?.tool_choice).toEqual({ type: "tool", name: "record_receipt_entry" });
     // The live API rejects array-constraint keywords (maxItems et al.) in a strict tool

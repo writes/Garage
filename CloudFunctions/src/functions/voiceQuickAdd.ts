@@ -348,7 +348,7 @@ async function extractVoiceTypedDetails(args: {
       },
       signal: AbortSignal.timeout(25_000),
       body: JSON.stringify({
-        model: "claude-haiku-4-5",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 512,
         temperature: 0,
         system: TYPED_SYSTEM_PROMPT,
@@ -418,7 +418,7 @@ export async function voiceQuickAddRequest(
       body: JSON.stringify({
         // Unsuffixed, matching claudeProxy. The pinned-date form was the same model reached by a
         // different name, and two conventions for one model invites them drifting apart.
-        model: "claude-haiku-4-5",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 512,
         // Byte-identical to v1 for BOTH schema versions: merging typed fields into this call
         // measurably destroyed common-field extraction (see typedExtraction.ts header). Typed

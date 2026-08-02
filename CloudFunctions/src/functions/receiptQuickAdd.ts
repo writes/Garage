@@ -339,7 +339,8 @@ function hasMagic(value: string, magic: Buffer): boolean {
   return Buffer.from(value.slice(0, 8), "base64").subarray(0, magic.length).equals(magic);
 }
 
-type ReceiptPayload =
+// Exported for the golden eval, which drives the exact prod second-call flow (no drift).
+export type ReceiptPayload =
   | { kind: "images"; images: string[] }
   | { kind: "pdf"; pdfBase64: string };
 
@@ -433,7 +434,8 @@ function sourceBlocks(payload: ReceiptPayload): unknown[] {
  * typed details are an enhancement; a failure here must never sink an already-good proposal or
  * touch its quota/token bookkeeping.
  */
-async function extractReceiptTypedDetails(args: {
+// Exported for the golden eval (imported, never copied — the eval cannot drift from prod).
+export async function extractReceiptTypedDetails(args: {
   apiKey: string;
   fetchImpl: typeof fetch;
   payload: ReceiptPayload;
@@ -454,7 +456,7 @@ async function extractReceiptTypedDetails(args: {
       },
       signal: AbortSignal.timeout(40_000),
       body: JSON.stringify({
-        model: "claude-haiku-4-5",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 512,
         temperature: 0,
         system: TYPED_SYSTEM_PROMPT,
@@ -524,7 +526,7 @@ export async function receiptQuickAddRequest(
       body: JSON.stringify({
         // Unsuffixed, matching both siblings. Escalation to claude-sonnet-4-6 is permitted only
         // by the pre-registered golden-eval gate (plan §7) — never by vibes.
-        model: "claude-haiku-4-5",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 1024,
         // No extended thinking: the API rejects thinking + forced tool_choice (verified live,
         // claudeProxy). The date line lives in the SYSTEM prompt — the documented voice lesson.

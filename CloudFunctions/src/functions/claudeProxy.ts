@@ -542,7 +542,7 @@ export async function parseOilAnalysisRequest(
         // 2026-06-15) and cost 3x for a bounded extraction task.
         // NOTE: `output_config.effort` is NOT supported on Haiku 4.5 — it errors. The
         // low/medium/high/xhigh/max ladder starts at Opus 4.5 / Sonnet 4.6.
-        model: "claude-haiku-4-5",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 4000,
         // Extended thinking was REMOVED here, not forgotten: the API rejects it outright with
         // "Thinking may not be enabled when tool_choice forces tool use" (400, verified against
