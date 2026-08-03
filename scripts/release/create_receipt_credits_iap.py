@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Create the receipt-credits consumable IAP in App Store Connect (operator-run).
+"""Create the receipt-credits consumable IAP in App Store Connect.
 
-One command, idempotent: creates the +10-per-$1 consumable decided 2026-07-29
-(HANDOFF / quota spec), its en-US localization, its $0.99 base price, and its
-availability. Agents cannot run this (the permission classifier blocks App Store
-catalog mutations); the operator runs:
+One command, idempotent PER STEP: creates the +10-per-$1 consumable decided
+2026-07-29 (HANDOFF / quota spec), its en-US localization, its $0.99 base
+price, and its availability — each step is skipped when already present, so a
+partial failure (2026-08-03: the localization 409'd on ASC's 55-char
+description cap after the record was created) resumes instead of stranding a
+half-configured product behind an "already exists" early return.
 
     python3 scripts/release/create_receipt_credits_iap.py
 
@@ -23,7 +25,9 @@ APP_ID = "6794430547"
 PRODUCT_ID = "com.writes.harrysplayhouse.credits.receipts10"
 REFERENCE_NAME = "Receipt Saves 10-Pack"
 DISPLAY_NAME = "10 Receipt Saves"
-DESCRIPTION = "Add 10 more receipt-scan saves to your account. Credits never expire."
+# ASC hard-caps IAP localization descriptions at 55 characters (ENTITY_ERROR
+# ...TOO_LONG); keep the assert so a copy edit fails HERE, not mid-create.
+DESCRIPTION = "Adds 10 receipt-scan saves. Credits never expire."
 USD_PRICE = "0.99"
 REVIEW_NOTE = (
     "Consumable credit pack: grants 10 additional confirmed receipt-scan saves. "
@@ -31,17 +35,19 @@ REVIEW_NOTE = (
 )
 
 
-def main() -> int:
-    ns = argparse.Namespace(key_id=None, issuer_id=None, key_path=None, scope=None)
-    creds = asc.resolve_credentials(ns)
-    client = asc.AppStoreConnectClient(creds, timeout_seconds=60.0, scopes=None)
-
+def find_iap(client: asc.AppStoreConnectClient) -> dict | None:
     existing = client.get(f"/v1/apps/{APP_ID}/inAppPurchasesV2", params={"limit": 200})
-    for item in existing.get("data", []):
-        if item["attributes"].get("productId") == PRODUCT_ID:
-            print(f"already exists: {item['id']} {PRODUCT_ID} ({item['attributes'].get('state')})")
-            return 0
+    return next(
+        (i for i in existing.get("data", []) if i["attributes"].get("productId") == PRODUCT_ID),
+        None,
+    )
 
+
+def ensure_record(client: asc.AppStoreConnectClient) -> str:
+    iap = find_iap(client)
+    if iap is not None:
+        print(f"record exists: {iap['id']} ({iap['attributes'].get('state')})")
+        return iap["id"]
     created = client.post("/v2/inAppPurchases", {
         "data": {
             "type": "inAppPurchases",
@@ -56,7 +62,14 @@ def main() -> int:
     })
     iap_id = created["data"]["id"]
     print(f"created IAP {iap_id} {PRODUCT_ID}")
+    return iap_id
 
+
+def ensure_localization(client: asc.AppStoreConnectClient, iap_id: str) -> None:
+    locs = client.get(f"/v2/inAppPurchases/{iap_id}/inAppPurchaseLocalizations", params={"limit": 20})
+    if any(l["attributes"].get("locale") == "en-US" for l in locs.get("data", [])):
+        print("localization exists")
+        return
     client.post("/v1/inAppPurchaseLocalizations", {
         "data": {
             "type": "inAppPurchaseLocalizations",
@@ -68,6 +81,15 @@ def main() -> int:
     })
     print("localized en-US")
 
+
+def ensure_price(client: asc.AppStoreConnectClient, iap_id: str) -> int:
+    try:
+        schedule = client.get(f"/v2/inAppPurchases/{iap_id}/iapPriceSchedule")
+        if schedule.get("data"):
+            print("price schedule exists")
+            return 0
+    except asc.ASCError:
+        pass
     points = client.get(
         f"/v2/inAppPurchases/{iap_id}/pricePoints",
         params={"filter[territory]": "USA", "limit": 200},
@@ -102,7 +124,17 @@ def main() -> int:
         }],
     })
     print(f"priced at USD {USD_PRICE} (base territory USA)")
+    return 0
 
+
+def ensure_availability(client: asc.AppStoreConnectClient, iap_id: str) -> None:
+    try:
+        avail = client.get(f"/v2/inAppPurchases/{iap_id}/inAppPurchaseAvailability")
+        if avail.get("data"):
+            print("availability exists")
+            return
+    except asc.ASCError:
+        pass
     client.post("/v1/inAppPurchaseAvailabilities", {
         "data": {
             "type": "inAppPurchaseAvailabilities",
@@ -114,6 +146,21 @@ def main() -> int:
         }
     })
     print("availability set (USA + new territories)")
+
+
+def main() -> int:
+    assert len(DESCRIPTION) <= 55, f"description {len(DESCRIPTION)} chars > ASC cap 55"
+    ns = argparse.Namespace(key_id=None, issuer_id=None, key_path=None, scope=None)
+    creds = asc.resolve_credentials(ns)
+    client = asc.AppStoreConnectClient(creds, timeout_seconds=60.0, scopes=None)
+
+    iap_id = ensure_record(client)
+    ensure_localization(client, iap_id)
+    if ensure_price(client, iap_id) != 0:
+        return 1
+    ensure_availability(client, iap_id)
+    final = client.get(f"/v2/inAppPurchases/{iap_id}")
+    print(f"final state: {final['data']['attributes'].get('state')}")
     print("REMAINING MANUAL STEPS: review screenshot upload + submit alongside an app "
           "version; then map the product in RevenueCat if it should grant via RC instead "
           "of the StoreKit-direct webhook path.")

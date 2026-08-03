@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Timestamp } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
 import {
   DocumentReferenceLike,
@@ -459,6 +460,10 @@ export async function consumeReceiptQuota(
         resetAtMillis: configuration.resetAtMillis,
         createdAtMillis: now.getTime(),
         expiresAtMillis: now.getTime() + RECEIPT_TOKEN_TTL_MILLIS,
+        // Duplicate of expiresAtMillis as a real Timestamp: Firestore TTL policies only attach
+        // to Timestamp fields, so this is what lets prod garbage-collect expired tokens. All
+        // reads/queries stay on expiresAtMillis; TTL deletion is best-effort cleanup on top.
+        expiresAt: Timestamp.fromMillis(now.getTime() + RECEIPT_TOKEN_TTL_MILLIS),
         consumed: false,
       });
       return {
@@ -500,6 +505,8 @@ export async function consumeReceiptQuota(
       resetAtMillis: null,
       createdAtMillis: now.getTime(),
       expiresAtMillis: now.getTime() + RECEIPT_TOKEN_TTL_MILLIS,
+      // Same TTL Timestamp duplicate as the base-route token above — see that comment.
+      expiresAt: Timestamp.fromMillis(now.getTime() + RECEIPT_TOKEN_TTL_MILLIS),
       consumed: false,
     });
     return {
