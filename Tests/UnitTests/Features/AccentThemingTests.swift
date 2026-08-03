@@ -26,6 +26,55 @@ struct AccentSchemeTests {
     }
 }
 
+/// Tester feedback was "themes don't do anything": a free user used to see a text-only Pro gate
+/// with no swatches at all. The grid is now shown to everyone — locked for non-subscribers, and
+/// still never applied for them (the client-cosmetic Pro gate is enforcement; the preview is
+/// marketing).
+@MainActor
+struct ThemePickerRowTests {
+    @Test func nonProSeesEverySchemeListedAndEveryOneLocked() {
+        let rows = ThemePickerRow.rows(isPro: false)
+
+        #expect(rows.map(\.scheme) == AccentScheme.allCases)
+        #expect(rows.allSatisfy { $0.isLocked })
+    }
+
+    @Test func proSeesEverySchemeUnlockedInTheSameOrder() {
+        let rows = ThemePickerRow.rows(isPro: true)
+
+        #expect(rows.map(\.scheme) == AccentScheme.allCases)
+        #expect(rows.allSatisfy { !$0.isLocked })
+    }
+
+    /// A locked row is a paywall entry point, not a selectable option, so it must never answer to
+    /// the `theme.option.*` identifier a selection test drives.
+    @Test func lockedAndSelectableRowsUseSeparateIdentifierNamespaces() {
+        let locked = ThemePickerRow.rows(isPro: false)
+        let selectable = ThemePickerRow.rows(isPro: true)
+
+        #expect(locked.map(\.accessibilityIdentifier) == [
+            "themes.locked.row.classic",
+            "themes.locked.row.graphite",
+            "themes.locked.row.marine",
+            "themes.locked.row.plum"
+        ])
+        #expect(selectable.allSatisfy { $0.accessibilityIdentifier == "theme.option.\($0.scheme.rawValue)" })
+    }
+
+    /// Both the gate CTA and every locked row route through the one `.themePicker` source, so the
+    /// surface keeps a single exposure denominator instead of two half-counted funnels.
+    @Test func lockedRowTapPresentsTheThemePickerPaywallAndAddsNoEventOfItsOwn() {
+        let analytics = AnalyticsSpy()
+        analytics.setEnabled(true)
+        let router = AppRouter(hasVehicles: { true }, analytics: analytics)
+
+        router.present(.subscription(.themePicker))
+
+        #expect(router.activeSheet == .subscription(.themePicker))
+        #expect(analytics.events.isEmpty)
+    }
+}
+
 @MainActor
 struct UserProfileThemeBridgeTests {
     @Test func themeIDRoundTripsThroughProfileFields() {

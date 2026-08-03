@@ -14,7 +14,7 @@ final class ReminderConfigViewModel {
     /// is an AttributeGraph cycle.
     @ObservationIgnored private var reportedNotificationDenial = false
 
-    var title = "Oil change"
+    var title = ReminderConfigViewModel.defaultTitle
     var dueMileage = ""
     var dueMonths = ""
     /// Off by default: most reminders here are odometer/repeat-interval only (existing shape).
@@ -28,6 +28,13 @@ final class ReminderConfigViewModel {
     /// to tomorrow 9am local instead, so an untouched "Remind me on a date" save always lands on
     /// a genuinely future instant; save() additionally canonicalizes whatever day is picked.
     var dueDate = ReminderConfigViewModel.defaultDueDate()
+    /// Non-nil while the form is editing an existing reminder instead of creating a new one.
+    /// Holds the WHOLE stored reminder rather than just its id, because `save()` has to carry
+    /// through every field this form does not show (createdAt, completedAt, notes, entryType,
+    /// repeatIntervalMiles) — re-constructing a `Reminder` from the form alone would silently
+    /// blank all five, and the service `save` is an id-keyed upsert, so that loss would be
+    /// written straight over the stored document.
+    private(set) var editingReminder: Reminder?
     private(set) var error: AppError?
     /// Backs the management list above the create form (D: reminders lifecycle) — every
     /// reminder for the vehicle, completed or not, soonest-due first via ReminderService.fetchAll.
@@ -60,20 +67,46 @@ final class ReminderConfigViewModel {
         self.analytics = analytics
     }
 
+    var isEditing: Bool { editingReminder != nil }
+
+    /// Switches the form from create to edit and prefills every field `save()` writes, so what
+    /// the user sees is exactly what is stored. Re-entrant: tapping a second reminder while
+    /// editing a first simply retargets the form.
+    func beginEditing(_ reminder: Reminder) {
+        editingReminder = reminder
+        title = reminder.title
+        dueMileage = reminder.dueMileage.map(String.init) ?? ""
+        dueMonths = reminder.repeatIntervalMonths.map(String.init) ?? ""
+        hasDueDate = reminder.dueDate != nil
+        // A date-less reminder keeps the create-mode default rather than an arbitrary instant,
+        // so turning the toggle ON mid-edit still lands on a genuinely future date.
+        dueDate = reminder.dueDate ?? Self.defaultDueDate()
+    }
+
+    /// Leaves edit mode and returns the form to its create-mode defaults. Also the post-edit-save
+    /// reset: leaving the edited values in place would arm the next Save to create a near
+    /// duplicate of the reminder just updated.
+    func cancelEdit() {
+        editingReminder = nil
+        title = Self.defaultTitle
+        dueMileage = ""
+        dueMonths = ""
+        hasDueDate = false
+        dueDate = Self.defaultDueDate()
+    }
+
     func save(vehicleId: String, vehicleName: String? = nil) async -> Bool {
+        let wasEditing = isEditing
         do {
-            let reminder = Reminder(
-                id: UUID().uuidString,
-                vehicleId: vehicleId,
-                title: title,
-                dueDate: hasDueDate ? Self.canonicalDueInstant(for: dueDate) : nil,
-                dueMileage: Int(dueMileage),
-                repeatIntervalMonths: Int(dueMonths),
-                repeatIntervalMiles: Int(dueMileage),
-                isProFeature: false
-            )
-            try await reminderService.save(reminder, vehicleName: vehicleName)
-            analytics.track(.reminderCreated)
+            try await reminderService.save(reminderToSave(vehicleId: vehicleId), vehicleName: vehicleName)
+            // An edit is not a creation: reporting it as `reminder_created` would inflate that
+            // count with re-saves, and this batch adds no new event names, so edits report
+            // nothing. The create path is unchanged.
+            if !wasEditing {
+                analytics.track(.reminderCreated)
+            } else {
+                cancelEdit()
+            }
             error = nil
             await load(vehicleId: vehicleId)
             return true
@@ -81,6 +114,43 @@ final class ReminderConfigViewModel {
             self.error = AppError(from: error)
             return false
         }
+    }
+
+    /// Edit mode starts from the STORED reminder and overwrites only the four fields this form
+    /// actually shows, which is what preserves its id — the service `save` writes
+    /// `.document(reminder.id)`, so the same id updates in place instead of adding a row.
+    ///
+    /// `repeatIntervalMiles` is deliberately NOT re-derived from the mileage field on edit even
+    /// though create seeds it that way (there is only one mileage input). For a repeat successor
+    /// (`ReminderService.scheduleSuccessorIfRepeating`) or a seeded reminder the two hold
+    /// genuinely different numbers — e.g. due at 20,620 mi, repeating every 2,500 — so copying
+    /// an odometer reading over the interval during an unrelated title edit would quietly
+    /// destroy the repeat cadence.
+    private func reminderToSave(vehicleId: String) -> Reminder {
+        let resolvedDueDate = hasDueDate ? Self.canonicalDueInstant(for: dueDate) : nil
+        guard var edited = editingReminder else {
+            return Reminder(
+                id: UUID().uuidString,
+                vehicleId: vehicleId,
+                title: title,
+                dueDate: resolvedDueDate,
+                dueMileage: Int(dueMileage),
+                repeatIntervalMonths: Int(dueMonths),
+                repeatIntervalMiles: Int(dueMileage),
+                isProFeature: false
+            )
+        }
+        edited.title = title
+        edited.dueDate = resolvedDueDate
+        edited.dueMileage = Int(dueMileage)
+        edited.repeatIntervalMonths = Int(dueMonths)
+        // Clearing the mileage field ends mileage tracking outright, interval included: create
+        // seeds `repeatIntervalMiles` from this same input, so their nil-ness is coupled even
+        // though their VALUES may differ (successors carry a rolled-forward due mileage). Keeping
+        // a hidden interval here would resurface a years-stale cadence the first time a mileage
+        // is re-added and completed.
+        if edited.dueMileage == nil { edited.repeatIntervalMiles = nil }
+        return edited
     }
 
     func load(vehicleId: String) async {
@@ -102,6 +172,12 @@ final class ReminderConfigViewModel {
     func delete(_ reminder: Reminder) async {
         do {
             try await reminderService.delete(reminder)
+            // Deleting the reminder the form is currently editing has to leave edit mode: the
+            // save path is an id-keyed upsert, so a later Save would otherwise resurrect the
+            // document the user just deleted.
+            if editingReminder?.id == reminder.id {
+                cancelEdit()
+            }
             reminders.removeAll { $0.id == reminder.id }
             analytics.track(.reminderDeleted)
             error = nil
@@ -116,6 +192,11 @@ final class ReminderConfigViewModel {
             if let index = reminders.firstIndex(where: { $0.id == reminder.id }) {
                 reminders[index].completedAt = .now
             }
+            // Same staleness trap as delete(): the held copy still says "outstanding", so an
+            // edit saved afterwards would write completedAt back to nil and un-complete it.
+            if editingReminder?.id == reminder.id {
+                editingReminder?.completedAt = .now
+            }
             analytics.track(.reminderCompleted)
             // Attributes this completion to a recent notification open (7-day window), closing
             // the notif_scheduled → opened → task_completed funnel. No-op when the open didn't
@@ -126,6 +207,10 @@ final class ReminderConfigViewModel {
             self.error = AppError(from: error)
         }
     }
+
+    /// The create-mode title placeholder. A single constant so the property default and
+    /// `cancelEdit`'s reset cannot drift apart.
+    static let defaultTitle = "Oil change"
 
     /// Tomorrow at 09:00 local. Internal (not private) and parameterized over `now`/`calendar` —
     /// exposed for direct unit testing, mirroring ReminderNotificationCoordinator.plan's

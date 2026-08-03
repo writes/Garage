@@ -49,6 +49,21 @@ final class PaywallRoutingJourneyTests: JourneyTestCase {
         assertMediaTogglesAreUnavailable(in: app)
     }
 
+    /// The locked theme preview is a Button wired straight to the paywall; the unit seam
+    /// (ThemePickerRowTests) pins the row DATA, but only a journey proves the tap itself routes.
+    /// A free user must see every scheme listed locked — and none selectable.
+    func testFreeThemePickerListsLockedSchemesThatRouteToSubscription() {
+        let app = launchDemo()
+
+        tapTab("Settings", in: app)
+        let theme = app.buttons["settings.theme"]
+        tapWhenHittable(theme)
+        require(app.buttons["themes.locked.row.classic"])
+        require(app.buttons["themes.locked.row.plum"])
+        XCTAssertFalse(app.buttons["theme.option.classic"].exists)
+        routeToSubscription(from: app.buttons["themes.locked.row.classic"], in: app)
+    }
+
     func testSubscriptionOffersRestorePurchasesControl() {
         let app = launchDemo()
 

@@ -43,7 +43,12 @@ struct ReminderConfigView: View {
         // Review finding: this view/VM instance is reused across vehicle switches (the .task
         // above just reloads `reminders` for the new vehicle), so a stale "Reminder saved"/
         // notifications-off hint from the PREVIOUS vehicle stayed visible after switching.
-        .onChange(of: vehicle.id) { _, _ in didSave = false }
+        // An in-progress edit belongs to the PREVIOUS vehicle's reminder; carrying it across a
+        // switch would let Save write that other vehicle's document from this screen.
+        .onChange(of: vehicle.id) { _, _ in
+            didSave = false
+            viewModel.cancelEdit()
+        }
 #if DEBUG
         .task(id: demoStore.revision) { await viewModel.load(vehicleId: vehicle.id) }
 #endif
@@ -52,12 +57,17 @@ struct ReminderConfigView: View {
     private var existingRemindersSection: some View {
         Section("Your Reminders") {
             ForEach(viewModel.reminders) { reminder in
-                ReminderConfigRow(reminder: reminder)
+                editableRow(reminder)
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button("Delete", role: .destructive) {
                             Task { await viewModel.delete(reminder) }
                         }
                         .accessibilityIdentifier("reminder.delete.\(reminder.id)")
+                        // Tapping the row edits too; the swipe action exists because a
+                        // tappable row in a settings list is not self-advertising.
+                        Button("Edit") { beginEditing(reminder) }
+                            .tint(Theme.Colors.primary)
+                            .accessibilityIdentifier("reminder.edit.\(reminder.id)")
                     }
                     .swipeActions(edge: .leading, allowsFullSwipe: true) {
                         if reminder.completedAt == nil {
@@ -70,6 +80,28 @@ struct ReminderConfigView: View {
                     }
             }
         }
+    }
+
+    /// Tap-to-edit. `.plain` keeps the row looking like a list row rather than tinted button
+    /// text, and the button (not an `onTapGesture`) is what gives VoiceOver an activatable
+    /// element with a button trait.
+    private func editableRow(_ reminder: Reminder) -> some View {
+        Button {
+            beginEditing(reminder)
+        } label: {
+            ReminderConfigRow(reminder: reminder)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("reminder.row.edit.\(reminder.id)")
+        .accessibilityHint("Edits this reminder")
+    }
+
+    private func beginEditing(_ reminder: Reminder) {
+        isEditingField = false
+        // A "Reminder saved" line left over from a previous create would otherwise read as if
+        // this edit had already been saved.
+        didSave = false
+        viewModel.beginEditing(reminder)
     }
 
     /// "Due mileage" is the form's first field and the date toggle defaults OFF, so the natural
@@ -103,7 +135,7 @@ struct ReminderConfigView: View {
     }
 
     private func newReminderSection(for vehicle: Vehicle) -> some View {
-        Section("New Reminder") {
+        Section(viewModel.isEditing ? "Edit Reminder" : "New Reminder") {
             TextField("Reminder title", text: $viewModel.title)
                 .accessibilityIdentifier("reminder.form.title")
                 .focused($isEditingField)
@@ -118,11 +150,7 @@ struct ReminderConfigView: View {
             Toggle("Remind me on a date", isOn: $viewModel.hasDueDate)
                 .accessibilityIdentifier("reminder.form.hasDueDate")
             dueDateRow
-            Button("Save Reminder") {
-                isEditingField = false
-                Task { didSave = await viewModel.save(vehicleId: vehicle.id, vehicleName: vehicle.displayName) }
-            }
-            .accessibilityIdentifier("reminder.form.save")
+            saveRow(for: vehicle)
             if didSave {
                 Text("Reminder saved")
                     .font(Theme.Typography.caption)
@@ -135,6 +163,26 @@ struct ReminderConfigView: View {
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .accessibilityIdentifier("reminder.form.notificationsHint")
             }
+        }
+    }
+
+    /// Save keeps its identifier in both modes — it is the same commit action, and the edit
+    /// path routes through the same `viewModel.save` (an id-keyed upsert, so an edit updates
+    /// the existing document rather than adding one).
+    @ViewBuilder
+    private func saveRow(for vehicle: Vehicle) -> some View {
+        Button(viewModel.isEditing ? "Save Changes" : "Save Reminder") {
+            isEditingField = false
+            Task { didSave = await viewModel.save(vehicleId: vehicle.id, vehicleName: vehicle.displayName) }
+        }
+        .accessibilityIdentifier("reminder.form.save")
+        if viewModel.isEditing {
+            Button("Cancel", role: .cancel) {
+                isEditingField = false
+                didSave = false
+                viewModel.cancelEdit()
+            }
+            .accessibilityIdentifier("reminder.form.cancelEdit")
         }
     }
 }

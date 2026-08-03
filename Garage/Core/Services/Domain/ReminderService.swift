@@ -54,9 +54,34 @@ final class ReminderService {
 
         let reference = firestore.db.collection(FirestorePaths.vehicleReminders(vehicleId: reminder.vehicleId))
             .document(reminder.id)
-        firestore.writeLocalFirst(try firestore.encode(reminder), to: reference, context: "reminder")
+        var data = try firestore.encode(reminder)
+        for field in Self.fieldsToClear(in: reminder) {
+            data[field] = FieldValue.delete()
+        }
+        firestore.writeLocalFirst(data, to: reference, context: "reminder")
         VehicleDataRevisionStore.shared.bump(vehicleId: reminder.vehicleId)
         Task { await notificationCoordinator.syncAfterSave(reminder, vehicleName: vehicleName) }
+    }
+
+    /// The reminder-form fields this reminder no longer carries — the ones a merge write has to
+    /// delete EXPLICITLY.
+    ///
+    /// Found while wiring reminder editing: Swift's synthesized `Codable` omits nil optionals, and
+    /// `writeLocalFirst` is a `setData(merge: true)`, which leaves any key it isn't handed exactly
+    /// as it was. So an edit that CLEARS a field — toggling "Remind me on a date" off, emptying
+    /// the mileage — silently kept the old value on the document, and the next fetch brought the
+    /// due date back (with no notification behind it, since the coordinator had already cancelled
+    /// on the nil-dueDate reminder). Only fields the form owns are listed: `notes`, `entryType`,
+    /// `createdAt` and `completedAt` are never cleared through this path, and deleting a key that
+    /// is already absent is a no-op, so a create is unaffected. Pure + `nonisolated` for direct
+    /// unit testing — the Firestore branch itself has no hermetic seam.
+    nonisolated static func fieldsToClear(in reminder: Reminder) -> [String] {
+        var fields: [String] = []
+        if reminder.dueDate == nil { fields.append("dueDate") }
+        if reminder.dueMileage == nil { fields.append("dueMileage") }
+        if reminder.repeatIntervalMonths == nil { fields.append("repeatIntervalMonths") }
+        if reminder.repeatIntervalMiles == nil { fields.append("repeatIntervalMiles") }
+        return fields
     }
 
     /// All reminders for the vehicle, completed or not — backs the management list in

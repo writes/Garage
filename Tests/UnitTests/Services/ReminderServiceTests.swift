@@ -48,6 +48,40 @@ struct ReminderServiceTests {
         #expect(filtered.map(\.id) == ["outstanding"])
     }
 
+    // MARK: - Merge-write field clearing (reminder editing: a `setData(merge: true)` leaves keys
+    // it isn't handed alone, and synthesized Codable omits nil optionals, so a cleared field would
+    // otherwise survive the edit on the stored document)
+
+    @Test func fieldsToClear_listsEveryFormOwnedFieldTheReminderNoLongerCarries() {
+        let mileageOnly = Reminder(id: "r", vehicleId: "v", title: "Rotate tires", dueMileage: 5_000)
+
+        #expect(ReminderService.fieldsToClear(in: mileageOnly) == [
+            "dueDate", "repeatIntervalMonths", "repeatIntervalMiles"
+        ])
+    }
+
+    @Test func fieldsToClear_isEmptyWhenEveryFormOwnedFieldIsPopulated() {
+        let full = Reminder(
+            id: "r", vehicleId: "v", title: "Oil change", dueDate: Date(timeIntervalSince1970: 100),
+            dueMileage: 5_000, repeatIntervalMonths: 6, repeatIntervalMiles: 2_500
+        )
+
+        #expect(ReminderService.fieldsToClear(in: full).isEmpty)
+    }
+
+    /// Never touches fields the reminder form does not own — clearing those is not an edit this
+    /// screen can express, and deleting them would be silent data loss.
+    @Test func fieldsToClear_neverIncludesFieldsTheReminderFormDoesNotOwn() {
+        let bare = Reminder(id: "r", vehicleId: "v", title: "Oil change")
+
+        let fields = ReminderService.fieldsToClear(in: bare)
+
+        #expect(!fields.contains("notes"))
+        #expect(!fields.contains("entryType"))
+        #expect(!fields.contains("createdAt"))
+        #expect(!fields.contains("completedAt"))
+    }
+
     // MARK: - markCompleted repeat-successor (FIX 3: repeats otherwise never reschedule, since
     // UNCalendarNotificationTrigger(repeats:false) fires once)
 
