@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 
 @MainActor
@@ -80,9 +81,9 @@ final class ProfileViewModel {
     }
     @discardableResult
     func save() async -> Bool {
-        // Never write the full profile before a successful load: on a failed/offline/in-flight
-        // load the VM still holds empty defaults, and save() emits the full profileFields dict,
-        // which would wipe the user's name/address/insurance on the server.
+        // Never write before a successful load: on a failed/offline/in-flight load the VM still
+        // holds empty defaults, and save() writes every form-owned field BY VALUE, which would
+        // wipe the user's name/address/insurance on the server.
         guard hasSuccessfullyLoadedProfile else { return false }
         guard let uid = resolvedUserID() else {
             error = .auth("Not authenticated")
@@ -90,7 +91,9 @@ final class ProfileViewModel {
         }
         do {
             let profile = makeProfile(uid: uid)
-            try await store.saveProfile(profile.profileFields, uid: uid)
+            // formOwnedFields, NOT profileFields: the store merges, so fields other surfaces own
+            // (themeID, aiConsent) are preserved by OMISSION — cached copies here can be stale.
+            try await store.saveProfile(profile.formOwnedFields, uid: uid)
             guard resolvedUserID() == uid else {
                 userProfile = nil
                 analytics.setEnabled(false)
@@ -176,12 +179,13 @@ final class ProfileViewModel {
         return UserProfile(id: uid, profileFields: fields)
     }
     private func makeProfile(uid: String) -> UserProfile {
-        // themeID MUST round-trip here: save() writes the full profileFields dict, so omitting it
-        // would silently wipe the user's selected accent back to default.
+        // themeID/aiConsentGrantedAt ride the LOCAL cache only; save() writes formOwnedFields,
+        // which excludes them, so these cached copies never clobber the surfaces that own them.
         UserProfile(
             id: uid, email: nil, name: name, address: address, phone: phone,
             insuranceCompany: insuranceCompany, policyNumber: policyNumber,
-            analyticsOptOut: analyticsOptOut, themeID: themeID, createdAt: nil, updatedAt: nil
+            analyticsOptOut: analyticsOptOut, themeID: themeID,
+            aiConsentGrantedAt: userProfile?.aiConsentGrantedAt, createdAt: nil, updatedAt: nil
         )
     }
     private func apply(_ profile: UserProfile) {

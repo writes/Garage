@@ -87,7 +87,13 @@ protocol VoiceQuickAddCalling {
 final class VoiceQuickAddService: VoiceQuickAddCalling {
     static let shared = VoiceQuickAddService()
 
-    private let functions = Functions.functions(region: Secrets.anthroProxyRegion)
+    // MUST stay lazy (@ObservationIgnored because lazy in @Observable): this singleton is a
+    // default argument on VoiceQuickAddViewModel's init, which SwiftUI evaluates while building
+    // VoiceQuickAddView — in demo/UI-test bootstrap Firebase is never configured, and an eager
+    // Functions.functions() here trapped the moment the mic sheet opened, so the sheet could not
+    // be driven by any journey at all. 5th instance of this crash class in this repo (see the
+    // firebase-preconfigure-crash memory); ReceiptQuickAddService carries the same fix.
+    @ObservationIgnored private lazy var functions = Functions.functions(region: Secrets.anthroProxyRegion)
 
     private init() {}
 

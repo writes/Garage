@@ -64,6 +64,11 @@ struct EntryFormScaffold<Content: View>: View {
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .accessibilityIdentifier("entry.form.receipt.unreadFields")
             }
+            // The persistent half of the consent design: this form IS the confirm step for both
+            // voice and receipt, so whatever the model filled in is labelled where it is reviewed.
+            if viewModel.wasVoiceSeeded || viewModel.wasReceiptSeeded {
+                AIDisclosureCaption(identifier: "entry.form.aiDisclosure")
+            }
             content
             attachmentsSection
                 .disabled(isMutationLocked)

@@ -23,11 +23,13 @@ extension XCTestCase {
 class JourneyTestCase: XCTestCase {
     static let timeout: TimeInterval = 12
 
-    func launchDemo(pro: Bool = false) -> XCUIApplication {
+    /// `extraArguments` exists for state the demo seeds one way and a journey needs the other way
+    /// round (AI consent is seeded GRANTED so the other journeys never meet the first-use gate).
+    func launchDemo(pro: Bool = false, extraArguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = pro
+        app.launchArguments = (pro
             ? ["LOCAL_DEMO_MODE", "UI_TEST_PRO"]
-            : ["LOCAL_DEMO_MODE"]
+            : ["LOCAL_DEMO_MODE"]) + extraArguments
         app.launch()
         require(app.tabBars.buttons["Dashboard"])
         let vehicleSwitcher = app.buttons["vehicle.switcher"]

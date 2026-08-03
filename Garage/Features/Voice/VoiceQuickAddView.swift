@@ -6,6 +6,9 @@ struct VoiceQuickAddView: View {
     @Environment(AppRouter.self) private var router
     @Environment(AppState.self) private var appState
     @State private var viewModel = VoiceQuickAddViewModel()
+    /// First-use AI consent (5.1.2(i)): the transcript leaves the device, so the mic cannot start
+    /// until this account has granted once. Consented users never see it again.
+    @State private var consentGate = AIConsentGate()
 
     var body: some View {
         BottomSheet(title: "Speak an Entry") {
@@ -14,6 +17,9 @@ struct VoiceQuickAddView: View {
             } else {
                 upsell
             }
+        }
+        .aiConsentPrompt(consentGate) {
+            await appState.setAIConsentGranted(true)
         }
         .onChange(of: viewModel.proposal) { _, _ in
             if let ready = viewModel.consumeProposal() {
@@ -38,6 +44,7 @@ struct VoiceQuickAddView: View {
                     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
                     .accessibilityIdentifier("voice.transcript")
             }
+            AIDisclosureCaption(alignment: .center)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, Theme.Spacing.md)
@@ -45,7 +52,13 @@ struct VoiceQuickAddView: View {
 
     private var micButton: some View {
         Button {
-            Task { await viewModel.toggle(vehicle: appState.currentVehicle) }
+            // Only STARTING is gated: while listening the same button is Stop, and a consent
+            // prompt in front of Stop would strand a live mic behind a sheet.
+            Task {
+                await consentGate.run(isGranted: viewModel.isListening || appState.hasGrantedAIConsent) {
+                    await viewModel.toggle(vehicle: appState.currentVehicle)
+                }
+            }
         } label: {
             Image(systemName: viewModel.isListening ? "stop.fill" : "mic.fill")
                 .font(.system(size: 34, weight: .bold))

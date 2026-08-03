@@ -57,6 +57,9 @@ enum AppRuntime {
     static let localDemoLaunchArgument = "LOCAL_DEMO_MODE"
     static let uiTestLaunchArgument = "UI_TEST_MODE"
     static let uiTestProLaunchArgument = "UI_TEST_PRO"
+    /// Demo/UI-test profiles seed AI consent as already granted so the existing journeys never
+    /// meet the first-use gate; this argument seeds the opposite so one journey can drive it.
+    static let uiTestAIConsentUnsetLaunchArgument = "UI_TEST_AI_CONSENT_UNSET"
     static let demoUserId = "debug-user"
 
     static var isLocalDemoMode: Bool {
@@ -70,6 +73,14 @@ enum AppRuntime {
     static var isUITestPro: Bool {
 #if DEBUG
         isLocalDemoMode && ProcessInfo.processInfo.arguments.contains(uiTestProLaunchArgument)
+#else
+        false
+#endif
+    }
+
+    static var isUITestAIConsentUnset: Bool {
+#if DEBUG
+        isLocalDemoMode && ProcessInfo.processInfo.arguments.contains(uiTestAIConsentUnsetLaunchArgument)
 #else
         false
 #endif

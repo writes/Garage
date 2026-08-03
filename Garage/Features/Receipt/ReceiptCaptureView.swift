@@ -17,11 +17,17 @@ struct ReceiptCaptureView: View {
     @State private var showCamera = false
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isImportingPDF = false
+    /// First-use AI consent (5.1.2(i)). Gated on the SEND, not on the picker: staging a photo is
+    /// local, and the pages only leave the device when "Use This" is tapped.
+    @State private var consentGate = AIConsentGate()
 
     var body: some View {
         BottomSheet(title: "Scan a Receipt") {
             content
             disclosureFooter
+        }
+        .aiConsentPrompt(consentGate) {
+            await appState.setAIConsentGranted(true)
         }
         .task {
             // Controller setup + marker repair run BEFORE the quota refresh: the refresh's
@@ -168,7 +174,11 @@ struct ReceiptCaptureView: View {
 
     private var confirmButton: some View {
         PrimaryButton(title: "Use This") {
-            Task { await viewModel.confirmAndParse(vehicle: appState.currentVehicle) }
+            Task {
+                await consentGate.run(isGranted: appState.hasGrantedAIConsent) {
+                    await viewModel.confirmAndParse(vehicle: appState.currentVehicle)
+                }
+            }
         }
         .accessibilityIdentifier("receipt.capture.confirm")
     }
@@ -183,12 +193,11 @@ struct ReceiptCaptureView: View {
                     .frame(maxWidth: .infinity)
                     .accessibilityIdentifier("receipt.capture.quota")
             }
-            Text("Sent to Claude (Anthropic) to draft your entry. AI can make mistakes — "
-                + "you review everything before saving.")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Colors.textSecondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
+            AIDisclosureCaption(
+                message: "Sent to Claude (Anthropic) to draft your entry. AI can make mistakes — "
+                    + "you review everything before saving.",
+                alignment: .center
+            )
         }
     }
 

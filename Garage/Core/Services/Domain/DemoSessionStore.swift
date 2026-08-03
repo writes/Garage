@@ -12,14 +12,26 @@ import Observation
 final class DemoSessionStore {
     static let shared = DemoSessionStore()
 
-    static let profileFields: ProfileFields = [
-        "name": .string("Garage Demo"),
-        "address": .string("123 Service Lane"),
-        "phone": .string("555-0100"),
-        "insuranceCompany": .string("Demo Insurance"),
-        "policyNumber": .string("DEMO-0001"),
-        "analyticsOptOut": .boolean(true)
-    ]
+    /// Computed, not a stored constant, because the AI-consent seed is launch-argument dependent:
+    /// demo and UI-test runs are ALREADY CONSENTED so the existing journeys never meet the
+    /// first-use gate, and UI_TEST_AI_CONSENT_UNSET seeds the ungranted state one journey drives.
+    static var profileFields: ProfileFields {
+        var fields: ProfileFields = [
+            "name": .string("Garage Demo"),
+            "address": .string("123 Service Lane"),
+            "phone": .string("555-0100"),
+            "insuranceCompany": .string("Demo Insurance"),
+            "policyNumber": .string("DEMO-0001"),
+            "analyticsOptOut": .boolean(true)
+        ]
+        if !AppRuntime.isUITestAIConsentUnset {
+            fields[UserProfile.aiConsentFieldKey] = .string(UserProfile.encodeAIConsent(demoAIConsentGrantedAt))
+        }
+        return fields
+    }
+
+    /// Fixed instant — a seeded profile must be identical on every relaunch (see the type doc).
+    static let demoAIConsentGrantedAt = Date(timeIntervalSince1970: 1_700_000_000)
 
     private var entryOverlay: [String: FirestoreEntry] = [:]
     private var vehicleOverlay: [String: Vehicle] = [:]

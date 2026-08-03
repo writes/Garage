@@ -9,7 +9,8 @@ final class AppState {
     let vehicleService: VehicleService
     let purchaseService: PurchaseService
     private let syncService: SyncService
-    private let profileStore: any ProfileStore
+    // `internal` (not `private`): AppState+AIConsent.swift writes the consent field through it.
+    let profileStore: any ProfileStore
     // `internal`: read by AppState+Actions.swift, same file-split precedent as vehicleService.
     let analytics: any AnalyticsTracking
     private let crashReporter: any CrashReporting

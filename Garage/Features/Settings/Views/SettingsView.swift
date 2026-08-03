@@ -8,6 +8,7 @@ struct SettingsView: View {
     @State private var deletionError: AppError?
     @State private var isDeleting = false
     @State private var isShowingManageSubscriptions = false
+    @State private var isWritingConsent = false
     // Computed (not a stored default) so the singleton — which calls Functions.functions() — is
     // constructed only when deletion actually runs, never at tab-build time. In demo/UI-test mode
     // Firebase is not configured, and deleteAccount() never touches it, so it must stay lazy.
@@ -24,6 +25,7 @@ struct SettingsView: View {
                     .accessibilityIdentifier("settings.reminders")
                 NavigationLink("Theme") { ThemePickerView() }
                     .accessibilityIdentifier("settings.theme")
+                aiConsentRow
                 Button("Export History") { router.present(.export) }
                     .accessibilityIdentifier("settings.export")
                 Button(appState.isPro ? "Manage Subscription" : "Upgrade to Pro") {
@@ -75,6 +77,34 @@ struct SettingsView: View {
             }
             .manageSubscriptionsSheet(isPresented: $isShowingManageSubscriptions)
         }
+    }
+
+    /// The revocable half of the consent design (5.1.2(i)): it shows the recorded state, turning
+    /// it off clears the grant so the next voice/receipt use re-asks, and the disclosure plus
+    /// Learn More sit alongside it so the switch is never an unexplained toggle. No analytics —
+    /// the event-name group is frozen and a consent state is not a funnel step.
+    @ViewBuilder
+    private var aiConsentRow: some View {
+        // Read during body evaluation, NOT inside the Binding's getter: @Observable only registers
+        // a dependency on properties touched while the body runs, and a getter that SwiftUI calls
+        // later registers nothing — the row rendered the old state forever after a write landed.
+        let isGranted = appState.hasGrantedAIConsent
+        Toggle("AI Features", isOn: Binding(
+            get: { isGranted },
+            set: { granted in
+                Task {
+                    isWritingConsent = true
+                    await appState.setAIConsentGranted(granted)
+                    isWritingConsent = false
+                }
+            }
+        ))
+        .accessibilityIdentifier("settings.aiConsent")
+        .disabled(isWritingConsent)
+        AIDisclosureCaption(
+            message: "Voice and receipt scans are read by Claude AI (Anthropic).",
+            identifier: "settings.aiDisclosure"
+        )
     }
 
     /// Active Pro subscribers get StoreKit's real management sheet (cancel, change plan, billing

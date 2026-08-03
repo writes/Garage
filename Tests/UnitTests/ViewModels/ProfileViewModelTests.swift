@@ -36,8 +36,12 @@ struct ProfileViewModelTests {
         #expect(second.policyNumber == "POL-42")
         #expect(second.analyticsOptOut)
         #expect(store.savedUIDs == ["user"])
+        // Exactly the form-owned keys, and NOTHING else: themeID and aiConsentGrantedAt are owned
+        // by other surfaces, and the store merges — their absence here is what preserves them.
+        // Including them (by cached value) is how a full save once resurrected a Settings-side
+        // consent revoke.
         #expect(Set(store.savedPayloads[0].keys) == Set([
-            "name", "address", "phone", "insuranceCompany", "policyNumber", "analyticsOptOut", "themeID"
+            "name", "address", "phone", "insuranceCompany", "policyNumber", "analyticsOptOut"
         ]))
     }
 
