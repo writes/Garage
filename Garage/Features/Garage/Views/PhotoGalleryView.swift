@@ -12,7 +12,10 @@ struct PhotoGalleryView: View {
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .accessibilityIdentifier("garage.gallery.notice")
 
-                if let error = viewModel.error {
+                if isAwaitingLoad {
+                    LoadingOverlay()
+                        .accessibilityIdentifier("garage.gallery.loading")
+                } else if let error = viewModel.error {
                     ErrorBanner(error: error) {
                         Task { await load() }
                     }
@@ -47,6 +50,12 @@ struct PhotoGalleryView: View {
 
     private var mainPhotos: [GalleryPhoto] {
         viewModel.photos.filter { $0.section == .main }
+    }
+
+    /// See DetailingLogView.isAwaitingLoad. The error branch already existed here; what was missing
+    /// was the gate BEFORE it, so the first visit flashed "No gallery records yet".
+    private var isAwaitingLoad: Bool {
+        viewModel.isLoading || (appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad)
     }
 
     private func load() async {

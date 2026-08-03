@@ -7,10 +7,25 @@ struct WarrantyRecallView: View {
 
     var body: some View {
         List {
+            if isAwaitingLoad {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .listRowSeparator(.hidden)
+                    .accessibilityIdentifier("garage.warranty.loading")
+            }
+            // One banner above both sections: it carries the load failures this screen used to
+            // swallow AND the `.validation` errors checkForRecalls sets ("Add this vehicle's VIN…"),
+            // which had no rendering path at all — the NHTSA button simply appeared to do nothing.
+            if let error = viewModel.error {
+                ErrorBanner(error: error) {
+                    Task { await load() }
+                }
+                    .listRowSeparator(.hidden)
+                    .accessibilityIdentifier("garage.warranty.error")
+            }
+
             Section("Warranties") {
-                if viewModel.warranties.isEmpty {
-                    Text("No warranty records yet")
-                } else {
+                if !viewModel.warranties.isEmpty {
                     ForEach(viewModel.warranties) { warranty in
                         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                             Text(warranty.warrantyType.displayName).font(Theme.Typography.headline)
@@ -23,6 +38,8 @@ struct WarrantyRecallView: View {
                         }
                         .accessibilityElement(children: .combine)
                     }
+                } else if showsEmptyPlaceholders {
+                    Text("No warranty records yet")
                 }
             }
 
@@ -49,9 +66,7 @@ struct WarrantyRecallView: View {
                         .foregroundStyle(Theme.Colors.textSecondary)
                         .accessibilityIdentifier("recall.checkSummary")
                 }
-                if viewModel.recalls.isEmpty {
-                    Text("No recall records yet")
-                } else {
+                if !viewModel.recalls.isEmpty {
                     ForEach(viewModel.recalls) { recall in
                         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                             Text(recall.title).font(Theme.Typography.headline)
@@ -64,6 +79,8 @@ struct WarrantyRecallView: View {
                         }
                         .accessibilityElement(children: .combine)
                     }
+                } else if showsEmptyPlaceholders {
+                    Text("No recall records yet")
                 }
             }
         }
@@ -101,6 +118,19 @@ struct WarrantyRecallView: View {
         case warranty
         case recall
         var id: String { rawValue }
+    }
+
+    /// See DetailingLogView.isAwaitingLoad: a selected vehicle whose first fetch has not resolved
+    /// is loading, not empty.
+    private var isAwaitingLoad: Bool {
+        viewModel.isLoading || (appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad)
+    }
+
+    /// "No … records yet" is a claim about the account's data, so it is only made once a load has
+    /// resolved cleanly. While one is in flight, or while the banner is reporting a failure, the
+    /// sections stay silent rather than asserting an emptiness nobody has confirmed.
+    private var showsEmptyPlaceholders: Bool {
+        !isAwaitingLoad && viewModel.error == nil
     }
 
     private func load() async {

@@ -7,7 +7,20 @@ struct DetailingLogView: View {
 
     var body: some View {
         List {
-            if viewModel.records.isEmpty {
+            if isAwaitingLoad {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .listRowSeparator(.hidden)
+                    .accessibilityIdentifier("garage.detailing.loading")
+            } else if let error = viewModel.error {
+                // Previously absent: a failed fetch left "No detailing history yet" on screen,
+                // reporting an empty log for a car that may have a full one.
+                ErrorBanner(error: error) {
+                    Task { await load() }
+                }
+                    .listRowSeparator(.hidden)
+                    .accessibilityIdentifier("garage.detailing.error")
+            } else if viewModel.records.isEmpty {
                 EmptyStateView(
                     title: "No detailing history yet",
                     message: """
@@ -38,6 +51,13 @@ struct DetailingLogView: View {
             guard !isPresented else { return }
             Task { await load() }
         }
+    }
+
+    /// A vehicle is selected but its first load has not resolved yet — the frame that used to read
+    /// as "No detailing history yet". Only a screen with NO vehicle skips straight to the empty
+    /// state, because nothing will ever be fetched for it.
+    private var isAwaitingLoad: Bool {
+        viewModel.isLoading || (appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad)
     }
 
     private func load() async {

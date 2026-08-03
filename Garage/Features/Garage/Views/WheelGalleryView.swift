@@ -12,7 +12,10 @@ struct WheelGalleryView: View {
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .accessibilityIdentifier("garage.wheels.notice")
 
-                if let error = viewModel.error {
+                if isAwaitingLoad {
+                    LoadingOverlay()
+                        .accessibilityIdentifier("garage.wheels.loading")
+                } else if let error = viewModel.error {
                     ErrorBanner(error: error) {
                         Task { await load() }
                     }
@@ -45,6 +48,11 @@ struct WheelGalleryView: View {
 
     private var wheelPhotos: [GalleryPhoto] {
         viewModel.photos.filter { $0.section == .wheel }
+    }
+
+    /// See PhotoGalleryView.isAwaitingLoad — same gate, same reason.
+    private var isAwaitingLoad: Bool {
+        viewModel.isLoading || (appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad)
     }
 
     private func load() async {

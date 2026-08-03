@@ -140,7 +140,10 @@ private struct SubscriptionContentView: View {
             )
             .accessibilityIdentifier("subscription.result.reconciliation")
         case .failure(let error):
-            ErrorBanner(error: error, retry: nil)
+            // Inline retry: a failed offerings load leaves the sheet with no plans, and the only
+            // recovery was the "Refresh Plans" button below the fold. Same recovery the receipt
+            // credit flow offers at the point of failure.
+            ErrorBanner(error: error, retry: { Task { await model.refreshTapped() } })
                 .accessibilityIdentifier("subscription.message")
         }
     }

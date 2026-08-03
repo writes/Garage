@@ -75,6 +75,66 @@ struct StatsViewModelTests {
         #expect(viewModel.error != nil)
     }
 
+    /// "Total" is a LIFETIME figure, so it has to be summed over the whole history. The fetch this
+    /// replaced took ONE most-recent-first page of 100 and labelled the sum "Total", so any vehicle
+    /// past its first hundred entries was quoted an understated cost — and the single-argument
+    /// `fetchEntries` overload discards the `hasMore` sentinel, so nothing downstream could detect
+    /// the truncation. Costs here are distinct per entry precisely so a partial walk cannot produce
+    /// the full total by accident.
+    @Test func load_walksEveryPageSoTheTotalCoversTheWholeHistory() async {
+        let entryCount = 120
+        let service = EntryService(testEntries: Self.makeEntries(count: entryCount))
+        let viewModel = StatsViewModel(entryService: service, pageSize: 50, wearFetch: { _ in [] })
+
+        await viewModel.load(vehicleId: "vehicle", isPro: true)
+
+        #expect(viewModel.error == nil)
+        #expect(viewModel.entries.count == entryCount)
+        #expect(Set(viewModel.entries.map(\.id)).count == entryCount)
+        // 1...120 summed: the first 50-entry page alone would be 1275.
+        let expectedTotal = Double(entryCount * (entryCount + 1) / 2)
+        #expect(OwnershipCostCalculator.summary(for: viewModel.entries, now: .now)?.totalCost == expectedTotal)
+    }
+
+    /// The exactly-100 case the deleted "Based on the most recent 100 entries." caption used to
+    /// mislabel. It keyed off `entries.count == 100`, which was wrong in both directions: a false
+    /// positive for a vehicle with exactly a hundred entries, and a false negative whenever a
+    /// corrupt document made a truncated page decode short.
+    @Test func load_withExactlyOneHundredEntries_returnsThemAllUncapped() async {
+        let service = EntryService(testEntries: Self.makeEntries(count: 100))
+        let viewModel = StatsViewModel(entryService: service, wearFetch: { _ in [] })
+
+        await viewModel.load(vehicleId: "vehicle", isPro: true)
+
+        #expect(viewModel.entries.count == 100)
+        #expect(viewModel.error == nil)
+    }
+
+    /// Distinct dates and odometers so the hermetic pager's descending order and cursor tiebreak
+    /// behave exactly as the Firestore path does.
+    private static func makeEntries(count: Int) -> [FirestoreEntry] {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        return (0..<count).map { index in
+            FirestoreEntry(
+                id: String(format: "entry-%04d", index),
+                vehicleId: "vehicle",
+                userId: "user",
+                entryType: .maintenance,
+                entryDate: start.addingTimeInterval(-Double(index) * 3_600),
+                odometerReading: 100_000 - index * 10,
+                cost: Double(index + 1),
+                isDiy: nil,
+                shopName: nil,
+                notes: nil,
+                attachmentPaths: [],
+                isResolved: nil,
+                details: [:],
+                createdAt: nil,
+                updatedAt: nil
+            )
+        }
+    }
+
     private static func makeEntry() -> FirestoreEntry {
         let sampleOdometerReading = 1
         return FirestoreEntry(

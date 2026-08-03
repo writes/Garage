@@ -4,12 +4,25 @@ import Observation
 @MainActor
 @Observable
 final class WarrantyViewModel {
+    struct WarrantyContent: Sendable {
+        var warranties: [Warranty]
+        var recalls: [Recall]
+    }
+
     private let warrantyService: WarrantyService
     private let recallLookup: any RecallLooking
+    /// `WarrantyService(testWarranties:testRecalls:)` covers the happy path but can only ever
+    /// succeed, so the failed load — which used to leave "No warranty records yet" on screen with
+    /// no error and no retry — needs this closure seam. Mirrors `StatsViewModel.contentLoader`.
+    private let contentLoader: ((String) async throws -> WarrantyContent)?
 
     private(set) var warranties: [Warranty] = []
     private(set) var recalls: [Recall] = []
     private(set) var error: AppError?
+    private(set) var isLoading = false
+    /// True once a load has RESOLVED (either way) — see `DetailingViewModel.hasCompletedFirstLoad`.
+    /// Deliberately NOT touched by `checkForRecalls`, which reports through `isCheckingRecalls`.
+    private(set) var hasCompletedFirstLoad = false
     private var reloadToken = 0
 
     private(set) var isCheckingRecalls = false
@@ -19,10 +32,12 @@ final class WarrantyViewModel {
 
     init(
         warrantyService: WarrantyService = .shared,
-        recallLookup: any RecallLooking = RecallLookupService.shared
+        recallLookup: any RecallLooking = RecallLookupService.shared,
+        contentLoader: ((String) async throws -> WarrantyContent)? = nil
     ) {
         self.warrantyService = warrantyService
         self.recallLookup = recallLookup
+        self.contentLoader = contentLoader
     }
 
     /// Looks the vehicle's VIN up against NHTSA and stores anything new.
@@ -58,13 +73,26 @@ final class WarrantyViewModel {
     func load(vehicleId: String) async {
         reloadToken &+= 1
         let token = reloadToken
+        isLoading = true
+        defer {
+            if token == reloadToken {
+                isLoading = false
+                hasCompletedFirstLoad = true
+            }
+        }
         do {
-            async let warrantiesTask = warrantyService.fetchWarranties(vehicleId: vehicleId)
-            async let recallsTask = warrantyService.fetchRecalls(vehicleId: vehicleId)
-            let (fetchedWarranties, fetchedRecalls) = try await (warrantiesTask, recallsTask)
+            let content: WarrantyContent
+            if let contentLoader {
+                content = try await contentLoader(vehicleId)
+            } else {
+                async let warrantiesTask = warrantyService.fetchWarranties(vehicleId: vehicleId)
+                async let recallsTask = warrantyService.fetchRecalls(vehicleId: vehicleId)
+                let (fetchedWarranties, fetchedRecalls) = try await (warrantiesTask, recallsTask)
+                content = WarrantyContent(warranties: fetchedWarranties, recalls: fetchedRecalls)
+            }
             guard token == reloadToken else { return }
-            warranties = fetchedWarranties.sorted { Self.sortKey($0) > Self.sortKey($1) }
-            recalls = fetchedRecalls.sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
+            warranties = content.warranties.sorted { Self.sortKey($0) > Self.sortKey($1) }
+            recalls = content.recalls.sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
             error = nil
         } catch {
             guard token == reloadToken else { return }

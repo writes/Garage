@@ -7,7 +7,20 @@ struct SparePartsView: View {
 
     var body: some View {
         List {
-            if viewModel.parts.isEmpty {
+            if isAwaitingLoad {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .listRowSeparator(.hidden)
+                    .accessibilityIdentifier("garage.parts.loading")
+            } else if let error = viewModel.error {
+                // Previously absent: a failed fetch reported an empty shelf for a vehicle whose
+                // parts inventory may be full, with no way to retry short of leaving the screen.
+                ErrorBanner(error: error) {
+                    Task { await load() }
+                }
+                    .listRowSeparator(.hidden)
+                    .accessibilityIdentifier("garage.parts.error")
+            } else if viewModel.parts.isEmpty {
                 EmptyStateView(
                     title: "No spare parts on hand",
                     message: """
@@ -42,6 +55,12 @@ struct SparePartsView: View {
             guard !isPresented else { return }
             Task { await load() }
         }
+    }
+
+    /// See DetailingLogView.isAwaitingLoad: a selected vehicle whose first fetch has not resolved
+    /// is loading, not empty.
+    private var isAwaitingLoad: Bool {
+        viewModel.isLoading || (appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad)
     }
 
     private func load() async {

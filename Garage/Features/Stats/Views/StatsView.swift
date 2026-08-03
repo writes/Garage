@@ -36,12 +36,6 @@ struct StatsView: View {
                         MPGTrendChart(entries: viewModel.entries)
                         CostBreakdownChart(entries: viewModel.entries)
                         WearHistoryChart(wearItems: viewModel.wearItems)
-                        if viewModel.entries.count == 100 {
-                            Text("Based on the most recent 100 entries.")
-                                .font(Theme.Typography.caption)
-                                .foregroundStyle(Theme.Colors.textSecondary)
-                                .accessibilityIdentifier("stats.recentEntriesCaption")
-                        }
                     }
                 }
                 .padding(Theme.Spacing.md)
