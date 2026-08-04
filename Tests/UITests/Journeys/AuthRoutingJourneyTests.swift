@@ -11,8 +11,11 @@ final class AuthRoutingJourneyTests: JourneyTestCase {
         }
 
         tapTab("Settings", in: app)
+        // Reveal first: Sign Out is the LAST row of the Settings form, and on the smallest canvas
+        // (375x667 — what iPad compatibility mode renders) it sits below the fold, behind the tab
+        // bar. A real user scrolls the form to it; a bare hittable-wait just times out.
         let signOut = app.buttons["settings.signout"]
-        tapWhenHittable(signOut)
+        revealAndTap(signOut, in: app)
 
         require(app.buttons["login.googleButton"])
         XCTAssertFalse(app.tabBars.buttons["Dashboard"].exists)
