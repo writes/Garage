@@ -30,4 +30,20 @@ final class RemindersGateJourneyTests: JourneyTestCase {
         tapTab("Dashboard", in: app)
         require(app.staticTexts["dashboard.reminder.Journey Reminder"])
     }
+
+    /// The calendar hand-off is offered only on a DATED reminder; the demo seeds one
+    /// (`seed-reminder-oil`, due in 75 days). This asserts the swipe affordance is REACHABLE — it
+    /// deliberately never taps it, because the system share sheet is out-of-process and nothing
+    /// past that point belongs in a hermetic journey.
+    func testDatedReminderOffersTheAddToCalendarAffordance() {
+        let app = launchDemo(pro: true)
+        tapTab("Settings", in: app)
+        tapWhenHittable(app.buttons["settings.reminders"])
+
+        let row = app.buttons["reminder.row.edit.seed-reminder-oil"]
+        require(row)
+        row.swipeLeft()
+
+        require(app.buttons["reminder.calendar.seed-reminder-oil"])
+    }
 }

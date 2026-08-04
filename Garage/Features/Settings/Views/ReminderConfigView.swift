@@ -4,6 +4,15 @@ struct ReminderConfigView: View {
     @Environment(AppState.self) private var appState
     @State private var viewModel = ReminderConfigViewModel()
     @State private var didSave = false
+    /// The .ics file built by the most recent "Add to Calendar" tap, if any. View-local rather
+    /// than view-model state: it is a temp file bound to this screen's lifetime, discarded on
+    /// disappear, and never part of the reminder record. `internal` (not `private`) only because
+    /// the calendar affordance lives in ReminderConfigView+Calendar.swift, split out to stay under
+    /// the file cap.
+    @State var calendarArtifact: ReminderCalendarArtifact?
+    /// The reminder whose export failed, so the message appears under THAT row rather than under
+    /// every row in the list.
+    @State var calendarExportFailedID: String?
     @FocusState private var isEditingField: Bool
 #if DEBUG
     @State private var demoStore = DemoSessionStore.shared
@@ -39,7 +48,11 @@ struct ReminderConfigView: View {
                     .accessibilityIdentifier("reminder.error")
             }
         }
-        .task(id: vehicle.id) { await viewModel.load(vehicleId: vehicle.id) }
+        .task(id: vehicle.id) {
+            sweepAbandonedCalendarFiles()
+            await viewModel.load(vehicleId: vehicle.id)
+        }
+        .onDisappear { discardCalendarArtifact() }
         // Review finding: this view/VM instance is reused across vehicle switches (the .task
         // above just reloads `reminders` for the new vehicle), so a stale "Reminder saved"/
         // notifications-off hint from the PREVIOUS vehicle stayed visible after switching.
@@ -48,6 +61,9 @@ struct ReminderConfigView: View {
         .onChange(of: vehicle.id) { _, _ in
             didSave = false
             viewModel.cancelEdit()
+            // The pending .ics belongs to the PREVIOUS vehicle's reminder; leaving it live would
+            // offer the wrong car's event under a row of this one's.
+            discardCalendarArtifact()
         }
 #if DEBUG
         .task(id: demoStore.revision) { await viewModel.load(vehicleId: vehicle.id) }
@@ -60,6 +76,7 @@ struct ReminderConfigView: View {
                 editableRow(reminder)
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button("Delete", role: .destructive) {
+                            discardCalendarArtifact()
                             Task { await viewModel.delete(reminder) }
                         }
                         .accessibilityIdentifier("reminder.delete.\(reminder.id)")
@@ -68,16 +85,19 @@ struct ReminderConfigView: View {
                         Button("Edit") { beginEditing(reminder) }
                             .tint(Theme.Colors.primary)
                             .accessibilityIdentifier("reminder.edit.\(reminder.id)")
+                        calendarButton(for: reminder)
                     }
                     .swipeActions(edge: .leading, allowsFullSwipe: true) {
                         if reminder.completedAt == nil {
                             Button("Mark Done") {
+                                discardCalendarArtifact()
                                 Task { await viewModel.markCompleted(reminder) }
                             }
                             .tint(Theme.Colors.success)
                             .accessibilityIdentifier("reminder.complete.\(reminder.id)")
                         }
                     }
+                calendarShareRow(for: reminder)
             }
         }
     }
@@ -101,6 +121,10 @@ struct ReminderConfigView: View {
         // A "Reminder saved" line left over from a previous create would otherwise read as if
         // this edit had already been saved.
         didSave = false
+        // Any reminder mutation retires the pending .ics: an edit that moves the due date would
+        // otherwise leave a share row handing off the OLD event (cross-check finding). Cheap to
+        // rebuild, impossible to hand off stale.
+        discardCalendarArtifact()
         viewModel.beginEditing(reminder)
     }
 
@@ -173,6 +197,9 @@ struct ReminderConfigView: View {
     private func saveRow(for vehicle: Vehicle) -> some View {
         Button(viewModel.isEditing ? "Save Changes" : "Save Reminder") {
             isEditingField = false
+            // Covers the artifact built WHILE editing (entering edit already discards): a save
+            // that moves the due date must not leave a share row offering the old event.
+            discardCalendarArtifact()
             Task { didSave = await viewModel.save(vehicleId: vehicle.id, vehicleName: vehicle.displayName) }
         }
         .accessibilityIdentifier("reminder.form.save")
@@ -184,49 +211,5 @@ struct ReminderConfigView: View {
             }
             .accessibilityIdentifier("reminder.form.cancelEdit")
         }
-    }
-}
-
-private struct ReminderConfigRow: View {
-    let reminder: Reminder
-
-    private var statusText: String {
-        var parts: [String] = [reminder.completedAt != nil ? "Done" : "Due"]
-        if let dueMileage = reminder.dueMileage {
-            parts.append("at \(dueMileage.formatted()) mi")
-        }
-        if let dueDate = reminder.dueDate {
-            parts.append(dueDate.shortDisplay)
-        }
-        return parts.joined(separator: ", ")
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            HStack {
-                Text(reminder.title)
-                    .font(Theme.Typography.headline)
-                    .strikethrough(reminder.completedAt != nil)
-                if reminder.completedAt != nil {
-                    Text("Done")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.success)
-                }
-            }
-            if let dueMileage = reminder.dueMileage {
-                Text("Due at \(dueMileage.formatted()) mi")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-            }
-            if let dueDate = reminder.dueDate {
-                Text(dueDate.shortDisplay)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(reminder.title)
-        .accessibilityValue(statusText)
-        .accessibilityIdentifier("reminder.row.\(reminder.id)")
     }
 }

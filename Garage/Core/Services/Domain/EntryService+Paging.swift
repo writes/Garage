@@ -151,13 +151,16 @@ extension EntryService {
         }
 #endif
         let limit = excludingEntryID == nil ? 1 : 2
-        // entryType == fuel already needs (and has — Configuration/FirestoreIndexes.json,
-        // vehicleId/entryType/entryDate DESC) a composite index for this order(by: entryDate);
-        // this isLessThan range filter is on that SAME already-indexed entryDate field, so it
-        // doesn't need a different/new index.
+        // The vehicleId equality is data-redundant (the subcollection path already scopes it) but
+        // INDEX-load-bearing: the deployed composite is (vehicleId, entryType, entryDate DESC),
+        // and Firestore only serves a query whose filters cover the index's LEADING fields.
+        // Without it this shape needs an (entryType, entryDate) index that does not exist, so the
+        // query FAILED_PRECONDITIONs — and FuelFormView's `try?` swallowed that, silently killing
+        // MPG auto-fill (found 2026-08-03, same prefix rule as the advisor's narrowed fetch).
         let snapshot = try await firestore.db.collection(
             FirestorePaths.vehicleEntries(vehicleId: vehicleId)
-        ).whereField("entryType", isEqualTo: EntryType.fuel.rawValue)
+        ).whereField("vehicleId", isEqualTo: vehicleId)
+            .whereField("entryType", isEqualTo: EntryType.fuel.rawValue)
             .whereField("entryDate", isLessThan: before)
             .order(by: "entryDate", descending: true).limit(to: limit).getDocuments()
         let entries = try snapshot.documents.map { try firestore.decode(FirestoreEntry.self, from: $0.data()) }

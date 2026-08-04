@@ -2,6 +2,11 @@ import Observation
 
 struct DashboardContent {
     var entries: [FirestoreEntry]
+    /// Service history for the maintenance advisor, fetched separately from `entries` and narrowed
+    /// to `MaintenanceAdvisor.trackedEntryTypes`. Defaults to empty, which makes the advisor fall
+    /// back to `entries` alone — the pre-fix behaviour, and what both the `contentLoader` test seam
+    /// and a failed advisor fetch produce.
+    var advisorEntries: [FirestoreEntry] = []
     var wearItems: [WearItem]
     var reminders: [Reminder]
     var warranties: [Warranty]
@@ -27,10 +32,17 @@ final class DashboardViewModel {
     private let gateEnabled: Bool
     private let contentLoader: ((String) async throws -> DashboardContent)?
 
-    /// How far back the entry fetch reaches. The dashboard displays the newest few, but the
-    /// maintenance advisor needs enough history to find the last oil change — and a fuel-heavy
-    /// owner can log fifty fill-ups between services. One query serves both rather than two.
+    /// How far back the recent-entry fetch reaches. The card renders only
+    /// `Constants.dashboardRecentLimit` of these; the wider slice is what `hasNoHistory` and the
+    /// advisor's odometer baseline read from.
     static let historyDepth = 50
+
+    /// Depth of the advisor's OWN fetch, which is narrowed to the four service types that clear a
+    /// maintenance item. One shared type-agnostic query made the advice hostage to fuel-log volume:
+    /// an owner logging more than `historyDepth` fill-ups between services pushed every oil change
+    /// out of the window, so the advisor reported "never logged" for a car serviced last month.
+    /// Fifty entries OF THOSE TYPES is years of service history.
+    static let advisorHistoryDepth = 50
 
     private(set) var recentEntries: [FirestoreEntry] = []
     private(set) var maintenanceDue: [MaintenanceDue] = []
@@ -85,6 +97,7 @@ final class DashboardViewModel {
                 return
             }
             async let entries = entryService.fetchRecent(vehicleId: vehicleId, limit: Self.historyDepth)
+            async let advisorEntries = advisorHistory(vehicleId: vehicleId)
             async let wear = wearService.fetchDashboard(vehicleId: vehicleId)
             async let reminders = reminderService.fetchUpcoming(vehicleId: vehicleId)
             async let warranties = warrantyService.fetchWarranties(vehicleId: vehicleId)
@@ -92,6 +105,7 @@ final class DashboardViewModel {
 
             let content = DashboardContent(
                 entries: try await entries,
+                advisorEntries: await advisorEntries,
                 wearItems: try await wear,
                 reminders: try await reminders,
                 warranties: try await warranties,
@@ -108,14 +122,38 @@ final class DashboardViewModel {
         }
     }
 
+    /// Non-fatal by design, mirroring ExportViewModel's supplement fetches: this narrowed query is
+    /// an improvement on the recent slice, not a prerequisite for it, so a failure degrades the
+    /// advice to what `entries` alone supports instead of emptying the whole dashboard.
+    ///
+    /// `internal` (not `private`): this is the one part of the load that a test can drive
+    /// hermetically. `loadDashboard`'s other four fetches go through services with no in-memory
+    /// seam (WearService has none at all), so the composed path cannot run without Firebase.
+    func advisorHistory(vehicleId: String) async -> [FirestoreEntry] {
+        do {
+            return try await entryService.fetchEntries(
+                query: EntryQuery(vehicleId: vehicleId, entryTypes: MaintenanceAdvisor.trackedEntryTypes),
+                limit: Self.advisorHistoryDepth
+            )
+        } catch {
+            AppLogger.entries.error("Advisor service history fetch failed: \(error.localizedDescription)")
+            return []
+        }
+    }
+
     private func apply(_ content: DashboardContent) {
-        // The feed shows the newest few; the fetch deliberately reaches further back for the
-        // advisor below, so slice rather than widening what the card renders.
+        // The feed shows the newest few; the fetch reaches further back so `hasNoHistory` and the
+        // odometer baseline are honest, so slice rather than widening what the card renders.
         recentEntries = Array(content.entries.prefix(Constants.dashboardRecentLimit))
         hasNoHistory = content.entries.isEmpty
+        // The UNION of both fetches, not the advisor slice alone: `attentionNeeded` stays silent on
+        // an empty input, and a vehicle whose only history is fuel must still get its four "never
+        // logged" rows. De-duplication keeps a service entry returned by both queries from being
+        // counted twice.
+        let advisorInput = Self.merged(content.entries, content.advisorEntries)
         maintenanceDue = MaintenanceAdvisor.attentionNeeded(
-            entries: content.entries,
-            currentOdometer: content.entries.map(\.odometerReading).max(),
+            entries: advisorInput,
+            currentOdometer: advisorInput.map(\.odometerReading).max(),
             now: .now
         )
         wearItems = content.wearItems
@@ -124,5 +162,12 @@ final class DashboardViewModel {
             ($0.expirationDate ?? $0.coverageEnd ?? .distantPast) >= .now
         })
         openRecalls = content.recalls.filter { $0.status == .outstanding }.count
+    }
+
+    private static func merged(
+        _ recent: [FirestoreEntry], _ advisor: [FirestoreEntry]
+    ) -> [FirestoreEntry] {
+        var seen = Set(recent.map(\.id))
+        return recent + advisor.filter { seen.insert($0.id).inserted }
     }
 }

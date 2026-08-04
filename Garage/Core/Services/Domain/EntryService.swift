@@ -209,7 +209,12 @@ struct EntryCursor { let document: DocumentSnapshot?
         // wasted round-trip when the vehicle's history is an exact multiple of the page size.
         request = request.order(by: "entryDate", descending: true).limit(to: limit + 1)
         if !query.entryTypes.isEmpty && query.entryTypes.count < EntryType.allCases.count {
-            request = request.whereField("entryType", in: query.entryTypes.map(\.rawValue))
+            // The vehicleId equality is redundant with the subcollection path but NOT with the index:
+            // the deployed composite is (vehicleId, entryType, entryDate DESC), and Firestore only
+            // picks an index whose LEADING equality fields the query supplies. `vehicleId` is
+            // non-optional on every entry, so this cannot narrow what the `in` filter returns.
+            request = request.whereField("vehicleId", isEqualTo: query.vehicleId)
+                .whereField("entryType", in: query.entryTypes.map(\.rawValue))
         }
         if let document = cursor?.document { request = request.start(afterDocument: document) }
         let snapshot = try await request.getDocuments()
