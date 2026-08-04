@@ -72,8 +72,14 @@ class JourneyTestCase: XCTestCase {
         )
     }
 
-    func replaceText(in field: XCUIElement, with text: String) {
-        tapWhenHittable(field)
+    /// `app` is defaulted so the ~20 existing call sites stay unchanged; `XCUIApplication()` is a
+    /// proxy for the same target app every journey launches, not a second application.
+    ///
+    /// Reveals before tapping: the keyboard raised by the PREVIOUS field can cover this one on the
+    /// smallest canvas (375x667 — which is exactly what iPad compatibility mode renders), and a
+    /// bare `tapWhenHittable` then times out on a field a real user would simply scroll to.
+    func replaceText(in field: XCUIElement, with text: String, app: XCUIApplication = XCUIApplication()) {
+        revealAndTap(field, in: app)
         if let existing = field.value as? String, !existing.isEmpty {
             field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count))
         }
@@ -84,20 +90,13 @@ class JourneyTestCase: XCTestCase {
 
     func dismissKeyboard(in app: XCUIApplication) {
         guard app.keyboards.firstMatch.exists else { return }
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.05)).tap()
+        // Window-anchored, not app-anchored — same coordinate-space constraint as `scrollStep`.
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.05)).tap()
     }
 
     func tapTab(_ title: String, in app: XCUIApplication) {
         let tab = app.tabBars.buttons[title]
         tapWhenHittable(tab)
-    }
-
-    func revealAndTap(_ element: XCUIElement, in app: XCUIApplication) {
-        require(element)
-        for _ in 0..<3 where !element.isHittable {
-            app.swipeUp()
-        }
-        tapWhenHittable(element)
     }
 
     func returnToGarage(in app: XCUIApplication) {
