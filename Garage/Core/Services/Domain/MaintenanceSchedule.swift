@@ -91,6 +91,12 @@ enum MaintenanceAdvisor {
     /// alignment is 1,200, and both read as "coming up" rather than "act now".
     static let dueSoonFraction = 0.1
 
+    /// The only entry types this advisor reads. Callers fetch exactly these rather than handing
+    /// over a type-agnostic recent slice: every other type is dead weight in the window, and a
+    /// fuel-heavy owner logging fifty fill-ups between services would otherwise push the service
+    /// history that clears each item out of any fixed recent-history limit.
+    static let trackedEntryTypes = Set(MaintenanceItem.allCases.map(\.clearedBy))
+
     static func status(
         for item: MaintenanceItem,
         entries: [FirestoreEntry],
