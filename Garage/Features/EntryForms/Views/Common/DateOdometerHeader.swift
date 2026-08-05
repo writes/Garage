@@ -3,9 +3,9 @@ import SwiftUI
 struct DateOdometerHeader: View {
     @Binding var entryDate: Date
     @Binding var odometerReading: String
-    /// Create: the vehicle's actual last-recorded odometer. Edit: the caller passes
-    /// viewModel.odometerFloor instead (the validation floor, which can differ from the true
-    /// last-recorded value) — `isEditing` switches the label to match what's actually being shown.
+    /// Create: the vehicle's highest recorded odometer, shown as context. It is NOT a minimum —
+    /// a backdated entry below it is legal, so the label must not read like a limit. Edit: the
+    /// caller passes the enforced floor instead — `isEditing` switches the label to match.
     var lastKnownOdometer: Int?
     var isEditing = false
 
@@ -28,7 +28,7 @@ struct DateOdometerHeader: View {
                 if let lastKnownOdometer {
                     Text(isEditing
                         ? "Minimum allowed: \(lastKnownOdometer.formatted()) mi"
-                        : "Last recorded: \(lastKnownOdometer.formatted()) mi")
+                        : "Highest recorded: \(lastKnownOdometer.formatted()) mi")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }

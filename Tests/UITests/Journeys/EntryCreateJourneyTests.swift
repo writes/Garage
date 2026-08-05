@@ -6,7 +6,7 @@ final class EntryCreateJourneyTests: JourneyTestCase {
     func testFuelEntryPersistsToLogAndDashboardWithinDemoSession() {
         let app = launchDemo(pro: true)
         openFuelForm(in: app)
-        require(app.staticTexts["Last recorded: 18,240 mi"])
+        require(app.staticTexts["Highest recorded: 18,240 mi"])
 
         replaceText(in: app.textFields["fuel.form.gallons"], with: "12.4")
         replaceText(in: app.textFields["fuel.form.price"], with: "4.10")
@@ -30,13 +30,13 @@ final class EntryCreateJourneyTests: JourneyTestCase {
     func testRegressiveOdometerShowsValidationAndDoesNotSave() {
         let app = launchDemo(pro: true)
         openFuelForm(in: app)
-        require(app.staticTexts["Last recorded: 18,240 mi"])
+        require(app.staticTexts["Highest recorded: 18,240 mi"])
 
         replaceText(in: app.textFields["entry.form.odometer"], with: "100")
         dismissKeyboard(in: app)
         revealAndTap(app.buttons["entry.form.save"], in: app)
 
-        requireText(containing: "Odometer must be at least 18,240.", in: app)
+        requireText(containing: "Odometer conflicts with the 18,240 mi entry", in: app)
         XCTAssertTrue(app.buttons["entry.form.save"].exists)
         XCTAssertFalse(app.staticTexts["entry.row.odometer.100"].exists)
     }

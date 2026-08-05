@@ -23,18 +23,67 @@ extension EntryFormViewModel {
         pendingCreatedAt = entry.createdAt
         editingEntryID = entry.id
         editingEntryOriginalOdometer = entry.odometerReading
+        editingEntryOriginalDate = entry.entryDate
         editingEntryVehicleId = entry.vehicleId
     }
 
-    /// The validateOdometer() floor: the LOWER of "max among every other entry" (lastKnownOdometer,
-    /// already excludingEntryID-fetched) and the entry's own original reading. Keeping the entry's
-    /// own value unchanged — or lowering it — always validates as long as it doesn't undercut
-    /// another entry; raising it still requires clearing the other-entries max. For create
-    /// (editingEntryOriginalOdometer nil) this collapses to lastKnownOdometer alone, unchanged.
-    var odometerFloor: Int? {
-        guard let editingEntryOriginalOdometer else { return lastKnownOdometer }
-        guard let lastKnownOdometer else { return editingEntryOriginalOdometer }
-        return min(lastKnownOdometer, editingEntryOriginalOdometer)
+    /// The range `validateOdometer()` actually enforces.
+    ///
+    /// Create mode is the raw date-scoped range. Edit mode DROPS a boundary that the entry's own
+    /// SAVED reading already violates: that contradiction predates this edit, so enforcing it would
+    /// make the entry impossible to re-save at all — even to fix the typo that caused it. This is
+    /// the same "an entry never blocks itself" guarantee the old
+    /// `min(lastKnownOdometer, editingEntryOriginalOdometer)` floor gave, now applied in both
+    /// directions rather than only downward. For create (editingEntryOriginalOdometer nil) it
+    /// collapses to the fetched bounds, unchanged.
+    ///
+    /// The relaxation holds ONLY while the entry still sits on its saved date (cross-check
+    /// finding). An entry is grandfathered against the timeline it was already part of, not against
+    /// every timeline it could be moved to: once the date changes the entry is being RE-TIMED, and
+    /// a deliberate re-timing has to fit the target date's history in full or the drop becomes a
+    /// loophole for importing the stale reading into a stretch of history it contradicts.
+    var validationBounds: OdometerBounds {
+        guard let editingEntryOriginalOdometer, entryDate == editingEntryOriginalDate else {
+            return odometerBounds
+        }
+        var bounds = odometerBounds
+        if let earlier = bounds.earlier, editingEntryOriginalOdometer < earlier.reading {
+            bounds.earlier = nil
+        }
+        if let later = bounds.later, editingEntryOriginalOdometer > later.reading {
+            bounds.later = nil
+        }
+        return bounds
+    }
+
+    /// Re-derives the legal range for the CURRENT `entryDate`. The structural half of the
+    /// backdating defect: the range was only ever derived once, inside `prepare()`, so moving the
+    /// date picker left the form validating against the range for whatever date it happened to open
+    /// with. EntryFormScaffold calls this on every date change.
+    ///
+    /// A failed fetch resolves to a permissive range rather than a stale one, and stays off the
+    /// error banner: bounds derived for a DIFFERENT date would reject legal readings while naming an
+    /// entry that is no longer adjacent, and a failed *hint* lookup must not read like a failed
+    /// save. The write path validates independently (EntryService.saveLive's odometer guard).
+    ///
+    /// The staleness check is ONE guard covering both outcomes, deliberately. Cross-check finding:
+    /// as two guards, the success path had one and the catch path did not, so a slow FAILURE from an
+    /// older request wiped the bounds a newer request had already installed — silently disabling
+    /// validation for the date on screen. Resolving the outcome first and gating the single
+    /// assignment makes that divergence unrepresentable rather than merely fixed.
+    func refreshOdometerBounds(vehicleId: String) async {
+        let requestedDate = entryDate
+        let resolved: OdometerBounds
+        do {
+            resolved = try await entryService.fetchOdometerBounds(
+                vehicleId: vehicleId, on: requestedDate, excludingEntryID: editingEntryID
+            )
+        } catch {
+            AppLogger.entries.error("Odometer bounds fetch failed: \(error.localizedDescription)")
+            resolved = OdometerBounds()
+        }
+        guard entryDate == requestedDate else { return }
+        odometerBounds = resolved
     }
 
     /// New currentOdometer = max(entry's own reading, every OTHER entry's reading — freshly

@@ -42,27 +42,22 @@ extension EntryFormViewModel {
         stageReceiptAttachments(package.attachments, isPro: isPro)
     }
 
-    /// Odometer-floor reconciliation (plan §2). `prepare()` loads `odometerFloor` AFTER
-    /// `applyReceiptPrefill` above has already seeded `odometerReading`, so EntryFormScaffold's
-    /// `.task` runs this as a SECOND pass once the floor is known. The flagship use case is
-    /// backfilling an OLD receipt whose mileage sits below the vehicle's current reading — left
-    /// alone, that value hard-blocks Save via `Validators.odometer`.
+    /// Second pass over the receipt seed, run by EntryFormScaffold's `.task` once `prepare()` has
+    /// loaded the odometer bounds — i.e. after every value the user is about to review is in place.
     ///
-    /// Deviation from the plan's literal "clear the odometer field": `Validators.odometer` (via
-    /// `positiveInteger`) rejects an EMPTY field too, so blanking it would still block Save,
-    /// contradicting the plan's own explicit "Save is never blocked" requirement — verified
-    /// against Validators.swift, not assumed. Seeding the floor itself instead is the only value
-    /// that satisfies both: it always passes validation (`number >= lastKnown`), and the field
-    /// no longer carries the stale, sub-floor number the receipt printed. That number survives
-    /// as a note rather than being silently discarded.
-    func reconcileReceiptOdometerFloor() {
+    /// This used to OVERWRITE the receipt's odometer with the validation floor whenever the receipt
+    /// read lower, filing the printed number away in a note. That stored a mileage the vehicle
+    /// never had on that date and skewed every miles-since-service figure MaintenanceAdvisor
+    /// derives from it — the app inventing data about the user's car. It existed only because the
+    /// floor was the vehicle's max-ever reading, which made backfilling an old receipt impossible.
+    /// The floor is date-scoped now (`OdometerBounds`), so the receipt's true mileage validates on
+    /// its own and is kept exactly as printed; the substitution and its note are gone.
+    ///
+    /// What remains is the baseline snapshot `trackReceiptFieldOutcomes` compares against to tell
+    /// an edited field from an untouched one.
+    func captureReceiptPrefillBaseline() {
         guard wasReceiptSeeded else { return }
-        defer { captureReceiptPrefillEffectiveSeed() }
-        guard let floor = odometerFloor, let entered = Int(odometerReading), entered < floor else { return }
-        odometerReading = String(floor)
-        let floorNote = "Odometer on receipt: \(entered) mi"
-        notes = notes.isEmpty ? floorNote : "\(notes)\n\n\(floorNote)"
-        receiptPrefillSeededFields.insert(.notes)
+        captureReceiptPrefillEffectiveSeed()
     }
 
     var unreadReceiptFieldsCaption: String? {

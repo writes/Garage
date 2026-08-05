@@ -14,19 +14,9 @@ private typealias FirstEntryFollowUp = EntryFormViewModel.FirstEntryFollowUp
         #expect(injected.syncServiceIdentity == ObjectIdentifier(injectedSync))
         #expect(injected.syncServiceIdentity != ObjectIdentifier(SyncService.shared))
     }
-    @Test func odometerValidation_rejectsLowerThanLast() {
-        let viewModel = makeValidationViewModel()
-        viewModel.lastKnownOdometer = 50_000
-        viewModel.odometerReading = "49000"
-        #expect(viewModel.validateOdometer() == false)
-        #expect(viewModel.error == .validation("Odometer must be at least 50,000."))
-    }
-    @Test func odometerValidation_acceptsHigherThanLast() {
-        let viewModel = makeValidationViewModel()
-        viewModel.lastKnownOdometer = 50_000
-        viewModel.odometerReading = "50150"
-        #expect(viewModel.validateOdometer())
-    }
+    // Odometer validation lives in OdometerTimelineBoundsTests: the rule is a function of the
+    // entry's DATE, so it is only meaningfully exercised against a real history through
+    // prepare()/refreshOdometerBounds, not by hand-setting one number on the view model.
     @Test func save_encodesFuelDetailsAndPushesOdometerToHermeticVehicle() async throws {
         let vehicle = testVehicle(), entries = EntryService(testEntries: [])
         let vehicles = hermeticVehicleService(vehicles: [vehicle])
@@ -197,9 +187,6 @@ private extension EntryFormViewModelTests {
         gate.resume()
         let didFinish = await eventually { gate.isFinished }
         return didStart && didFinish }
-    func makeValidationViewModel() -> EntryFormViewModel { model(
-            entryService: EntryService(testEntries: []), vehicleService: hermeticVehicleService(vehicles: []),
-            userID: { "test-user" }) }
     func makeSyncService() -> SyncService { SyncService(monitorFactory: { SyncPassiveMonitor() }) }
     func hermeticVehicleService(vehicles: [Vehicle]) -> VehicleService { VehicleService(
         testVehicles: vehicles, purchaseService: PurchaseService(testIsPro: false)) }

@@ -9,7 +9,7 @@ struct EntryFormReceiptConfirmationTests {
         let analytics = enabledAnalytics()
         let viewModel = receiptForm(service: service, analytics: analytics)
         viewModel.applyReceiptPrefill(package(token: "confirm-token"), isPro: false)
-        viewModel.reconcileReceiptOdometerFloor()
+        viewModel.captureReceiptPrefillBaseline()
 
         let firstSaved = await viewModel.save(vehicle: vehicle(), entryType: .maintenance, details: details())
         let secondSaved = await viewModel.save(vehicle: vehicle(), entryType: .maintenance, details: details())
@@ -28,7 +28,7 @@ struct EntryFormReceiptConfirmationTests {
         let analytics = enabledAnalytics()
         let viewModel = receiptForm(service: service, analytics: analytics)
         viewModel.applyReceiptPrefill(package(token: "confirm-token"), isPro: false)
-        viewModel.reconcileReceiptOdometerFloor()
+        viewModel.captureReceiptPrefillBaseline()
 
         let saved = await viewModel.save(vehicle: vehicle(), entryType: .maintenance, details: details())
         await waitForSyncFailure(analytics)

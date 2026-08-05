@@ -9,13 +9,29 @@ struct MaintenanceAdvisorTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
     private let day: TimeInterval = 24 * 60 * 60
 
-    private func entry(_ type: EntryType, odometer: Int, daysAgo: Double) -> FirestoreEntry {
+    private func entry(
+        _ type: EntryType, odometer: Int, daysAgo: Double, details: [String: AnyCodable] = [:]
+    ) -> FirestoreEntry {
         FirestoreEntry(
             id: UUID().uuidString, vehicleId: "v", userId: "u", entryType: type,
             entryDate: now.addingTimeInterval(-daysAgo * day),
             odometerReading: odometer, cost: nil, isDiy: nil, shopName: nil, notes: nil,
-            attachmentPaths: [], isResolved: nil, details: [:], createdAt: nil, updatedAt: nil
+            attachmentPaths: [], isResolved: nil, details: details, createdAt: nil, updatedAt: nil
         )
+    }
+
+    private func tireEntry(
+        _ action: TireActionType, odometer: Int, daysAgo: Double
+    ) -> FirestoreEntry {
+        entry(.tire, odometer: odometer, daysAgo: daysAgo,
+              details: ["actionType": AnyCodable(action.rawValue)])
+    }
+
+    private func maintenanceEntry(
+        _ kind: MaintenanceItemKind, odometer: Int, daysAgo: Double
+    ) -> FirestoreEntry {
+        entry(.maintenance, odometer: odometer, daysAgo: daysAgo,
+              details: ["item": AnyCodable(kind.rawValue)])
     }
 
     private func status(
@@ -90,6 +106,75 @@ struct MaintenanceAdvisorTests {
         let entries = [entry(.tire, odometer: 49_900, daysAgo: 1)]
         #expect(status(.oilAndFilter, entries, odometer: 50_000).status == .neverLogged)
         #expect(status(.tireRotation, entries, odometer: 50_000).status == .upToDate)
+    }
+
+    // MARK: - What a tire entry actually says it did
+
+    /// The defect. Measuring tread depth is a passive reading — it moves no wheel — yet it was a
+    /// `.tire` entry, and the advisor matched on the top-level type alone. Checking your tread
+    /// therefore marked the rotation as done, which is the one thing it definitely was not.
+    @Test func aTreadDepthReadingAloneIsNotARotation() {
+        let entries = [tireEntry(.treadDepthReading, odometer: 49_900, daysAgo: 1)]
+        #expect(status(.tireRotation, entries, odometer: 50_000).status == .neverLogged)
+    }
+
+    /// The harder half: a reading logged AFTER a genuinely overdue rotation must not become the
+    /// new baseline and reset the clock.
+    @Test func aTreadReadingNewerThanAnOverdueRotationDoesNotResetTheClock() {
+        let entries = [
+            tireEntry(.rotation, odometer: 40_000, daysAgo: 20),
+            tireEntry(.treadDepthReading, odometer: 49_900, daysAgo: 1)
+        ]
+        let due = status(.tireRotation, entries, odometer: 50_000)
+        #expect(due.status == .overdue)
+        #expect(due.milesPastDue == 4_000)
+    }
+
+    @Test func fittingNewTiresClearsTheRotationButRemovingThemDoesNot() {
+        let installed = [tireEntry(.newInstall, odometer: 49_900, daysAgo: 1)]
+        #expect(status(.tireRotation, installed, odometer: 50_000).status == .upToDate)
+
+        let removed = [tireEntry(.removed, odometer: 49_900, daysAgo: 1)]
+        #expect(status(.tireRotation, removed, odometer: 50_000).status == .neverLogged)
+    }
+
+    /// FAIL OPEN, pinned deliberately. Tire entries written before the action discriminator
+    /// existed carry nothing to read, and a false "overdue" trains owners to ignore the screen.
+    /// An unrecognized action decodes to nothing and takes the same path.
+    @Test func aTireEntryWithNoReadableActionStillClearsTheRotation() {
+        let empty = [entry(.tire, odometer: 49_900, daysAgo: 1)]
+        #expect(status(.tireRotation, empty, odometer: 50_000).status == .upToDate)
+
+        let unknown = [entry(.tire, odometer: 49_900, daysAgo: 1,
+                             details: ["actionType": AnyCodable("wheel_swap")])]
+        #expect(status(.tireRotation, unknown, odometer: 50_000).status == .upToDate)
+    }
+
+    /// The mirror defect: "Rotate & balance tires" is an option on the MAINTENANCE form, so a
+    /// rotation logged there landed as `.maintenance` and never cleared the item — the advisor
+    /// nagged an owner who had just done the work.
+    @Test func aRotationLoggedFromTheMaintenanceFormClearsTheItem() {
+        let entries = [maintenanceEntry(.rotateBalanceTires, odometer: 49_900, daysAgo: 1)]
+        #expect(status(.tireRotation, entries, odometer: 50_000).status == .upToDate)
+    }
+
+    /// Fails CLOSED in the other direction: an unrelated (or unreadable) maintenance entry is no
+    /// evidence a rotation happened, and it must not clear oil/brake/alignment either.
+    @Test func anUnrelatedMaintenanceEntryClearsNothing() {
+        let entries = [
+            maintenanceEntry(.airFilter, odometer: 49_900, daysAgo: 1),
+            entry(.maintenance, odometer: 49_900, daysAgo: 1)
+        ]
+        for item in MaintenanceItem.allCases {
+            #expect(status(item, entries, odometer: 50_000).status == .neverLogged)
+        }
+    }
+
+    /// The Dashboard fetches exactly `trackedEntryTypes`; omitting `.maintenance` would make the
+    /// mirror fix above invisible on the one screen that shows it.
+    @Test func theTrackedTypesCoverEveryTypeThatCanClearAnItem() {
+        #expect(MaintenanceAdvisor.trackedEntryTypes.isSuperset(of: MaintenanceItem.allCases.map(\.clearedBy)))
+        #expect(MaintenanceAdvisor.trackedEntryTypes.contains(.maintenance))
     }
 
     // MARK: - The list

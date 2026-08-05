@@ -103,6 +103,26 @@ struct EntryServiceQueryTests {
         #expect(ids.count == 1_203 && Set(ids).count == 1_203)
         #expect(ids == expected)
     }
+    /// The odometer-bounds window saturation defect. The live query's page limit is applied by
+    /// Firestore BEFORE the client-side "reading actually recorded" filter, so a contiguous block of
+    /// zero-reading entries longer than one page returned nothing usable — the real floor sitting
+    /// just past the zeros went unseen and a contradictory reading was admitted. A range filter on
+    /// odometerReading cannot fix it server-side (two range fields, plus a composite index that is
+    /// not deployed), so the loop pages past an all-unrecorded page instead. This is that rule.
+    @Test func odometerBoundsPaging_continuesOnlyThroughAFullPageWithNothingRecorded() {
+        let window = EntryService.odometerBoundsWindow
+        let unrecorded: [FirestoreEntry] = []
+        let recorded = [makeEntry(id: "recorded", odometer: 50_000, date: 100)]
+
+        // The regression: a full page that yielded no reading at all must cost another round trip.
+        #expect(EntryService.needsAnotherOdometerPage(recorded: unrecorded, pageCount: window))
+        // A short page means that side's history is exhausted — nothing further to skip past.
+        #expect(!EntryService.needsAnotherOdometerPage(recorded: unrecorded, pageCount: window - 1))
+        #expect(!EntryService.needsAnotherOdometerPage(recorded: unrecorded, pageCount: 0))
+        // Any recorded reading is the bound; the common case stays at exactly one read.
+        #expect(!EntryService.needsAnotherOdometerPage(recorded: recorded, pageCount: window))
+        #expect(!EntryService.needsAnotherOdometerPage(recorded: recorded, pageCount: 1))
+    }
     @Test func fetchEntries_exactMultipleOfPageSizeReportsNoMoreHistory() async throws {
         // The #4 regression case: a vehicle's history is precisely one page. Without the
         // limit+1 sentinel this dangled a nextCursor pointing at an empty next page.
