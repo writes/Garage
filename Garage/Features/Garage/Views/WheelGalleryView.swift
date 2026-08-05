@@ -7,7 +7,9 @@ struct WheelGalleryView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.md) {
-                Text("Record details only. Photo files cannot be added, viewed, saved, or exported in this beta.")
+                // See PhotoGalleryView's notice — same absent write path, same reason the word
+                // "beta" is gone.
+                Text("Photo records aren't available yet.")
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .accessibilityIdentifier("garage.wheels.notice")
@@ -22,8 +24,8 @@ struct WheelGalleryView: View {
                     .accessibilityIdentifier("garage.wheels.error")
                 } else if wheelPhotos.isEmpty {
                     EmptyStateView(
-                        title: "No wheel records yet",
-                        message: "Existing wheel record details appear here when available.",
+                        title: "Wheel photo records are coming soon",
+                        message: "Support for wheel photo records is coming in a future update.",
                         systemImage: "circle.grid.2x2"
                     )
                 } else {

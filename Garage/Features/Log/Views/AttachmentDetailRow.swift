@@ -49,14 +49,29 @@ struct AttachmentDetailRow: View {
         }
         .task {
             guard !isPDF else { return }
+            // Points x scale: the bound is in PIXELS, and 44pt is 132px on a 3x screen.
+            let maxPixelSize = Int((Self.thumbnailSide * displayScale).rounded())
+            // Checked BEFORE downloadURL, not just before the decode: a cache hit skips the signed
+            // URL round trip too. Scrolling a row away and back recreates this @State, so without
+            // the memo every re-appearance paid for both again.
+            if let cached = AttachmentThumbnailCache.shared.image(
+                forPath: path, maxPixelSize: maxPixelSize
+            ) {
+                thumbnailImage = cached
+                return
+            }
             guard let url = try? await entryAttachmentService.downloadURL(for: path) else {
                 didFailThumbnail = true
                 return
             }
-            // Points x scale: the bound is in PIXELS, and 44pt is 132px on a 3x screen.
-            let maxPixelSize = Int((Self.thumbnailSide * displayScale).rounded())
-            thumbnailImage = await Self.loadThumbnail(from: url, maxPixelSize: maxPixelSize)
-            didFailThumbnail = thumbnailImage == nil
+            let image = await Self.loadThumbnail(from: url, maxPixelSize: maxPixelSize)
+            if let image {
+                AttachmentThumbnailCache.shared.store(
+                    image, forPath: path, maxPixelSize: maxPixelSize
+                )
+            }
+            thumbnailImage = image
+            didFailThumbnail = image == nil
         }
     }
 

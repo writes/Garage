@@ -7,7 +7,12 @@ struct PhotoGalleryView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.md) {
-                Text("Record details only. Photo files cannot be added, viewed, saved, or exported in this beta.")
+                // There is no write path for gallery photos (GalleryService.save has no callers and
+                // export hardcodes an empty photo list), so this screen is empty for EVERY user.
+                // The copy says that as an unshipped feature rather than as a limitation of a
+                // "beta" — the word was the app's only one, and Guideline 2.2 rejects builds that
+                // present themselves as trials or demos.
+                Text("Photo records aren't available yet.")
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .accessibilityIdentifier("garage.gallery.notice")
@@ -21,9 +26,11 @@ struct PhotoGalleryView: View {
                     }
                     .accessibilityIdentifier("garage.gallery.error")
                 } else if mainPhotos.isEmpty {
+                    // Not "appear here when available": nothing can ever populate this list on the
+                    // current build, so the old copy promised content that cannot arrive.
                     EmptyStateView(
-                        title: "No gallery records yet",
-                        message: "Existing gallery record details appear here when available.",
+                        title: "Gallery photo records are coming soon",
+                        message: "Support for gallery photo records is coming in a future update.",
                         systemImage: "photo.stack"
                     )
                 } else {
@@ -53,7 +60,7 @@ struct PhotoGalleryView: View {
     }
 
     /// See DetailingLogView.isAwaitingLoad. The error branch already existed here; what was missing
-    /// was the gate BEFORE it, so the first visit flashed "No gallery records yet".
+    /// was the gate BEFORE it, so the first visit flashed the empty state.
     private var isAwaitingLoad: Bool {
         viewModel.isLoading || (appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad)
     }

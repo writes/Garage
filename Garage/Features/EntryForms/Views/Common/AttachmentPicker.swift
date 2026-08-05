@@ -65,6 +65,9 @@ struct AttachmentPicker: View {
             name: (path as NSString).lastPathComponent
         ) {
             Button(role: .destructive) {
+                // Acknowledges a QUEUED removal — nothing is deleted from Storage until the entry
+                // is saved. A light impact is the honest weight for an intent, not a commit.
+                FeedbackCenter.shared.fire(.lightImpact)
                 viewModel.queueAttachmentRemoval(path)
             } label: {
                 Image(systemName: "xmark.circle.fill")
@@ -84,6 +87,7 @@ struct AttachmentPicker: View {
                     .controlSize(.small)
             } else {
                 Button(role: .destructive) {
+                    FeedbackCenter.shared.fire(.lightImpact)
                     viewModel.removePendingAttachment(pending.id)
                 } label: {
                     Image(systemName: "xmark.circle.fill")

@@ -3,6 +3,9 @@ import SwiftUI
 struct ContentView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppRouter.self) private var router
+    /// The app's ONLY haptic observer. It lives here, above the sheet presentation, because every
+    /// event worth confirming dismisses its own host in the same transaction — see FeedbackCenter.
+    @State private var feedback = FeedbackCenter.shared
 
     var body: some View {
         Group {
@@ -35,6 +38,10 @@ struct ContentView: View {
         )) { sheet in
             sheetView(for: sheet)
         }
+        // Counters start at 0 and only ever increase, so nothing fires on first render.
+        .sensoryFeedback(.success, trigger: feedback.successCount)
+        .sensoryFeedback(.warning, trigger: feedback.warningCount)
+        .sensoryFeedback(.impact(weight: .light), trigger: feedback.lightImpactCount)
     }
 
     private var mainTabs: some View {
