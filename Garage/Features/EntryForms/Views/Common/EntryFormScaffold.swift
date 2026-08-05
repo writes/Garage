@@ -138,8 +138,14 @@ struct EntryFormScaffold<Content: View>: View {
             if let vehicleId = appState.currentVehicle?.id {
                 await viewModel.prepare(vehicleId: vehicleId)
             }
-            // odometerFloor is only known once prepare() returns — see reconcileReceiptOdometerFloor.
-            viewModel.reconcileReceiptOdometerFloor()
+            viewModel.captureReceiptPrefillBaseline()
+        }
+        // The odometer's legal range depends on the DATE being logged, so it has to follow the
+        // picker. prepare() derives it once, at open; without this a user who backdates an entry
+        // is still validated against the range for the date the form happened to open with.
+        .onChange(of: viewModel.entryDate) {
+            guard let vehicleId = appState.currentVehicle?.id else { return }
+            Task { await viewModel.refreshOdometerBounds(vehicleId: vehicleId) }
         }
     }
 
@@ -175,10 +181,13 @@ struct EntryFormScaffold<Content: View>: View {
         }
     }
 
-    /// Create shows the true last-recorded odometer; edit shows the validation floor instead
+    /// Create shows the vehicle's highest recorded reading as CONTEXT, not a limit — a backdated
+    /// entry below it is legal. Edit shows the floor the validator will actually enforce
     /// (DateOdometerHeader picks the matching label for whichever this is).
     private var odometerHint: Int? {
-        viewModel.editingEntryID == nil ? viewModel.lastKnownOdometer : viewModel.odometerFloor
+        viewModel.editingEntryID == nil
+            ? viewModel.lastKnownOdometer
+            : viewModel.validationBounds.earlier?.reading
     }
 
     private var canAdmitSave: Bool {

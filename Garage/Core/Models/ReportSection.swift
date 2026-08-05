@@ -17,7 +17,6 @@ enum ReportSection: String, CaseIterable, Codable, Sendable, Identifiable {
     case receipts = "Receipts & invoices"
     case warranties = "Warranty information"
     case recalls = "Recall history"
-    case vehicleHistoryPlaceholder = "Vehicle history placeholder"
 
     var id: String { rawValue }
 }

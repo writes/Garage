@@ -107,43 +107,64 @@ struct EntryFormReceiptPrefillTests {
         #expect(!viewModel.receiptAttachmentNeedsPro)
     }
 
-    // MARK: - Odometer-floor reconciliation (plan §2 — the shipped-defect risk)
+    // MARK: - The receipt's own mileage survives the second pass
 
-    /// Deviation from the plan's literal "clear the odometer field" — verified against
-    /// Validators.swift, an EMPTY field also fails `Validators.odometer`, which would contradict
-    /// the plan's own "Save is never blocked" requirement. Seeding the floor value is the only
-    /// value that satisfies both goals at once (see the doc comment on the implementation).
-    @Test func odometerFloorReconciliation_belowFloorSeedsTheFloorAndNotesTheOriginalReading() {
+    /// The defect this replaces: an OLD receipt reading below the vehicle's current odometer had
+    /// its mileage overwritten with the inflated floor and the true number demoted to a note. The
+    /// app was storing a mileage the car never had on that date — and MaintenanceAdvisor computes
+    /// milesPastDue from exactly that field. With the floor now date-scoped, the printed value
+    /// validates on its own and is left alone.
+    @Test func receiptMileageBelowTheVehiclesCurrentReadingIsKeptExactlyAsPrinted() {
         let viewModel = EntryFormViewModel()
         viewModel.applyReceiptPrefill(package(proposal(odometer: 84_500)), isPro: false)
-        viewModel.lastKnownOdometer = 85_000 // what prepare() would have loaded from other entries
+        // What prepare() loads for a receipt dated before every existing entry: nothing earlier
+        // to contradict it. lastKnownOdometer (85,000) is context for the hint, not a floor.
+        viewModel.lastKnownOdometer = 85_000
+        viewModel.odometerBounds = OdometerBounds()
 
-        viewModel.reconcileReceiptOdometerFloor()
+        viewModel.captureReceiptPrefillBaseline()
 
-        #expect(viewModel.odometerReading == "85000")
-        #expect(viewModel.notes.contains("Odometer on receipt: 84500 mi"))
+        #expect(viewModel.odometerReading == "84500")
+        #expect(viewModel.notes.isEmpty)
+        #expect(!viewModel.receiptPrefillSeededFields.contains(.notes))
         #expect(viewModel.validateOdometer()) // Save is never blocked
     }
 
-    @Test func odometerFloorReconciliation_atOrAboveFloorIsANoOp() {
+    @Test func receiptMileageAboveTheVehiclesCurrentReadingIsAlsoUntouched() {
         let viewModel = EntryFormViewModel()
         viewModel.applyReceiptPrefill(package(proposal(odometer: 85_500)), isPro: false)
         viewModel.lastKnownOdometer = 85_000
 
-        viewModel.reconcileReceiptOdometerFloor()
+        viewModel.captureReceiptPrefillBaseline()
 
         #expect(viewModel.odometerReading == "85500")
-        #expect(!viewModel.notes.contains("Odometer on receipt"))
+        #expect(viewModel.notes.isEmpty)
     }
 
-    @Test func odometerFloorReconciliation_onlyAppliesWhenReceiptSeeded() {
+    /// A receipt whose mileage genuinely contradicts an EARLIER-dated entry is still rejected —
+    /// dropping the substitution did not drop the check, it only stopped it lying about the value.
+    @Test func aReceiptMileageBelowAnEarlierDatedEntryIsStillRejected() {
+        let viewModel = EntryFormViewModel()
+        viewModel.applyReceiptPrefill(package(proposal(odometer: 84_500)), isPro: false)
+        viewModel.odometerBounds = OdometerBounds(
+            earlier: OdometerBoundary(reading: 90_000, entryDate: Date(timeIntervalSince1970: 1_700_000_000))
+        )
+
+        viewModel.captureReceiptPrefillBaseline()
+
+        #expect(viewModel.odometerReading == "84500")
+        #expect(!viewModel.validateOdometer())
+    }
+
+    @Test func theBaselineSnapshotIsOnlyCapturedWhenReceiptSeeded() {
         let viewModel = EntryFormViewModel()
         viewModel.odometerReading = "100"
         viewModel.lastKnownOdometer = 500
 
-        viewModel.reconcileReceiptOdometerFloor()
+        viewModel.captureReceiptPrefillBaseline()
 
         #expect(viewModel.odometerReading == "100")
+        #expect(viewModel.receiptPrefillEffectiveSeed == nil)
     }
 
     // MARK: - Save-confirmed funnel exclusivity

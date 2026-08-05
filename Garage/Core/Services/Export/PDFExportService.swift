@@ -90,10 +90,6 @@ final class PDFExportService {
             }
         }
 
-        if selectedSections.contains(.vehicleHistoryPlaceholder) {
-            document.add(.contentLeft, text: "Vehicle History: Not connected")
-        }
-
         await appendHistory(to: document, entries: entries, selectedSections: selectedSections)
         appendSummaries(
             to: document, entries: entries, selectedSections: selectedSections, supplements: supplements

@@ -399,7 +399,7 @@ No PII in analytics-eligible rows
 Opt-out flag on user record (default: opted in, anonymized only)
 CarFax / external history readiness:
 external_history JSONB column on vehicles table reserved for future API payload
-Report builder includes a placeholder CarFax section that renders "not connected" in v1
+Report builder includes a placeholder CarFax section that renders "not connected" in v1 — REMOVED 2026-08-05 per U4: the stub shipped on by default and printed "Vehicle History: Not connected" inside the paid dossier; the reservation below still stands, the placeholder section does not
 No schema migration needed when the integration is eventually built 16. Claude API Integration (Blackstone PDF Autofill)
 When user uploads a Blackstone (or similar) oil analysis PDF:
 

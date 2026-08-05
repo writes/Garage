@@ -64,26 +64,27 @@ struct ReceiptFunnelAnalyticsTests {
         #expect(parameters.count == 3) // field, edited, schema_version — never a receipt value.
     }
 
-    @Test func fieldOutcomes_captureOdometerFloorAndDerivedNoteAfterReconciliation() {
+    /// The odometer is reported UNEDITED and no notes outcome is emitted at all: the second pass no
+    /// longer substitutes a floor for the receipt's mileage, so there is neither a changed odometer
+    /// nor the derived note that substitution used to leave behind.
+    @Test func fieldOutcomes_reportTheReceiptsOwnMileageUneditedWithNoDerivedNote() {
         let analytics = enabledAnalytics()
         let viewModel = receiptForm(analytics: analytics)
         viewModel.applyReceiptPrefill(package(proposal(odometer: 84_500)), isPro: false)
         viewModel.lastKnownOdometer = 85_000
 
-        viewModel.reconcileReceiptOdometerFloor()
+        viewModel.captureReceiptPrefillBaseline()
         viewModel.finishSaveTracking(vehicleId: "vehicle", entryType: .maintenance, wasEdit: false)
 
-        #expect(outcomes(in: analytics) == [
-            .receiptFieldOutcome(field: .odometer, edited: false),
-            .receiptFieldOutcome(field: .notes, edited: false)
-        ])
+        #expect(viewModel.odometerReading == "84500")
+        #expect(outcomes(in: analytics) == [.receiptFieldOutcome(field: .odometer, edited: false)])
     }
 
     @Test func fieldOutcomes_editThenRevertIsUnedited() {
         let analytics = enabledAnalytics()
         let viewModel = receiptForm(analytics: analytics)
         viewModel.applyReceiptPrefill(package(proposal(cost: 165)), isPro: false)
-        viewModel.reconcileReceiptOdometerFloor()
+        viewModel.captureReceiptPrefillBaseline()
         viewModel.cost = "200"
         viewModel.cost = "165"
 
@@ -96,7 +97,7 @@ struct ReceiptFunnelAnalyticsTests {
         let analytics = enabledAnalytics()
         let viewModel = receiptForm(analytics: analytics)
         viewModel.applyReceiptPrefill(package(proposal(isDiy: false)), isPro: false)
-        viewModel.reconcileReceiptOdometerFloor()
+        viewModel.captureReceiptPrefillBaseline()
 
         viewModel.finishSaveTracking(vehicleId: "vehicle", entryType: .maintenance, wasEdit: false)
 
@@ -107,7 +108,7 @@ struct ReceiptFunnelAnalyticsTests {
         let analytics = enabledAnalytics()
         let viewModel = receiptForm(analytics: analytics)
         viewModel.applyReceiptPrefill(package(proposal(cost: 0, notes: "")), isPro: false)
-        viewModel.reconcileReceiptOdometerFloor()
+        viewModel.captureReceiptPrefillBaseline()
 
         viewModel.finishSaveTracking(vehicleId: "vehicle", entryType: .maintenance, wasEdit: false)
 

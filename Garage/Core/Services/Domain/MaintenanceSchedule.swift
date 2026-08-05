@@ -95,7 +95,51 @@ enum MaintenanceAdvisor {
     /// over a type-agnostic recent slice: every other type is dead weight in the window, and a
     /// fuel-heavy owner logging fifty fill-ups between services would otherwise push the service
     /// history that clears each item out of any fixed recent-history limit.
-    static let trackedEntryTypes = Set(MaintenanceItem.allCases.map(\.clearedBy))
+    ///
+    /// `.maintenance` is here even though no item's `clearedBy` names it: a tire rotation logged
+    /// from the Maintenance form (`MaintenanceItemKind.rotateBalanceTires`) clears `.tireRotation`
+    /// too (see `clears(_:_:)`). Leaving it out would make that fix invisible on the Dashboard,
+    /// whose advisor query is narrowed to exactly this set. The filter shape is unchanged — one
+    /// more value in the existing `entryType in […]` list, served by the same deployed
+    /// (vehicleId, entryType, entryDate DESC) composite.
+    static let trackedEntryTypes = Set(MaintenanceItem.allCases.map(\.clearedBy)).union([.maintenance])
+
+    /// Minimal `details` probes. Decoding the full typed struct would be wrong, not merely
+    /// wasteful: `TireEntry` has four non-optional fields, so any legacy or partial map fails to
+    /// decode and a perfectly good rotation would be silently dropped. Each probe reads exactly
+    /// the one discriminator that decides clearing.
+    private struct TireActionProbe: Decodable { var actionType: TireActionType? }
+    private struct MaintenanceItemProbe: Decodable { var item: MaintenanceItemKind? }
+
+    /// The tire actions that actually reset the rotation clock. `.treadDepthReading` is a passive
+    /// measurement and `.removed` takes tires OFF the car — neither is a rotation, and counting
+    /// them as one silently cleared a due reminder the owner never earned.
+    private static let rotationClearingActions: Set<TireActionType> = [.rotation, .newInstall]
+
+    /// Which entries count as having performed `item`.
+    ///
+    /// Everything except `.tireRotation` is a plain entry-type match, exactly as before — the
+    /// verifier refuted generalizing this to oil/brake/alignment, whose forms carry no equivalent
+    /// "this was only a measurement" action.
+    ///
+    /// `.tire` FAILS OPEN: a missing or undecodable `actionType` counts as clearing. Tire entries
+    /// predating the action discriminator have nothing to read, and a false "overdue" trains
+    /// owners to ignore the whole screen. Only an explicitly non-clearing action is excluded.
+    /// `.maintenance` fails CLOSED for the opposite reason: an unreadable maintenance entry is no
+    /// evidence a rotation happened, and failing open there would let any maintenance entry at all
+    /// clear the item.
+    private static func clears(_ item: MaintenanceItem, _ entry: FirestoreEntry) -> Bool {
+        guard item == .tireRotation else { return entry.entryType == item.clearedBy }
+        switch entry.entryType {
+        case .tire:
+            guard let action = entry.decodedDetails(as: TireActionProbe.self)?.actionType else { return true }
+            return rotationClearingActions.contains(action)
+        case .maintenance:
+            return entry.decodedDetails(as: MaintenanceItemProbe.self)?.item == .rotateBalanceTires
+        default:
+            return false
+        }
+    }
 
     static func status(
         for item: MaintenanceItem,
@@ -104,7 +148,7 @@ enum MaintenanceAdvisor {
         now: Date
     ) -> MaintenanceDue {
         let matching = entries
-            .filter { $0.entryType == item.clearedBy }
+            .filter { clears(item, $0) }
             .sorted { $0.entryDate > $1.entryDate }
 
         guard let last = matching.first else {

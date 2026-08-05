@@ -42,6 +42,11 @@ final class EntryFormViewModel {
     var queuedAttachmentRemovals: [String] = []
     var uploadingAttachmentID: PendingAttachment.ID?
     var lastKnownOdometer: Int?
+    /// Legal odometer range for the CURRENT `entryDate`, re-derived on every date change
+    /// (`refreshOdometerBounds`, +EditPrefill) rather than derived once at open and then frozen,
+    /// which is half of what made backdating impossible. `validationBounds` is what the validator
+    /// reads.
+    var odometerBounds = OdometerBounds()
     private(set) var isSaving = false
     private(set) var error: AppError?
     // `internal`: EntryFormViewModel+EditPrefill.swift's applyExistingEntry sets these four.
@@ -63,8 +68,11 @@ final class EntryFormViewModel {
     var receiptPrefillRawFields: Set<ReceiptPrefillField> = []
     var receiptPrefillSeededFields: Set<ReceiptPrefillField> = []
     var receiptPrefillEffectiveSeed: ReceiptPrefillEffectiveSeed?
-    /// Edited entry's odometer at load time — floors validateOdometer (odometerFloor, +EditPrefill).
+    /// Edited entry's odometer AND date at load time. Together they gate validateOdometer's
+    /// edit-mode relaxation (validationBounds, +EditPrefill): an entry is grandfathered against the
+    /// timeline it was already part of, so moving the date withdraws the relaxation.
     var editingEntryOriginalOdometer: Int?
+    var editingEntryOriginalDate: Date?
     /// Edited entry's original vehicleId — save() rejects a different vehicle.
     var editingEntryVehicleId: String?
 
@@ -105,7 +113,8 @@ final class EntryFormViewModel {
     }
 
     /// In edit mode, excludes the entry being edited so it never floors/ceilings itself;
-    /// lastKnownOdometer becomes "max of every OTHER entry" (updatedVehicle reuses it).
+    /// lastKnownOdometer becomes "max of every OTHER entry" (updatedVehicle reuses it, and the
+    /// create-mode hint shows it). The date-scoped validation range is loaded alongside it.
     func prepare(vehicleId: String) async {
         do {
             lastKnownOdometer = try await entryService
@@ -113,10 +122,11 @@ final class EntryFormViewModel {
         } catch {
             self.error = AppError(from: error)
         }
+        await refreshOdometerBounds(vehicleId: vehicleId)
     }
 
     func validateOdometer() -> Bool {
-        if let validationError = Validators.odometer(odometerReading, lastKnown: odometerFloor) {
+        if let validationError = Validators.odometer(odometerReading, bounds: validationBounds) {
             error = validationError
             return false
         }
@@ -174,6 +184,7 @@ final class EntryFormViewModel {
             pendingCreatedAt = nil
             editingEntryID = nil
             editingEntryOriginalOdometer = nil
+            editingEntryOriginalDate = nil
             editingEntryVehicleId = nil
             error = nil
             await followUp(entryID)
