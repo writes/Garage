@@ -37,6 +37,11 @@ struct VehicleFormView: View {
                 Task {
                     if await viewModel.save() {
                         await appState.refreshVehicles()
+                        // Fired right before dismiss(), AFTER the refresh await: buzzing while
+                        // the sheet visibly sits waiting on the network desyncs touch from
+                        // sight (cross-check). The counter lives on FeedbackCenter, which
+                        // outlives this sheet, so teardown cannot eat it.
+                        FeedbackCenter.shared.fire(.success)
                         dismiss()
                     }
                 }

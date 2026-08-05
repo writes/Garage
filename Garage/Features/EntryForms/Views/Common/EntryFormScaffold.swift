@@ -204,6 +204,9 @@ struct EntryFormScaffold<Content: View>: View {
         guard let mutationGate else {
             let didSave = await onSave()
             if didSave {
+                // Before dismissSheet, and on a counter that outlives this sheet: the confirmation
+                // is for a save that already succeeded, and this view is gone a frame later.
+                FeedbackCenter.shared.fire(.success)
                 router.dismissSheet()
             } else {
                 flagMissingVehicleIfNeeded()
@@ -219,6 +222,8 @@ struct EntryFormScaffold<Content: View>: View {
             flagMissingVehicleIfNeeded()
             return
         }
+        // Gated path: only after the epoch re-check, so a save superseded mid-flight stays silent.
+        FeedbackCenter.shared.fire(.success)
         router.dismissSheet()
     }
 

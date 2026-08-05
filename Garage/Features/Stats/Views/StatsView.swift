@@ -21,7 +21,10 @@ struct StatsView: View {
                     } else if viewModel.isLoading || isAwaitingFirstLoad {
                         LoadingOverlay()
                     } else if let error = viewModel.error {
-                        ErrorBanner(error: error)
+                        // Without a retry this was the app's last dead-end error state: the screen
+                        // reloads only on a vehicle/Pro change, so a transient failure stranded the
+                        // tab until the user switched cars. Every sibling screen passes one.
+                        ErrorBanner(error: error) { Task { await load() } }
                     } else if !viewModel.hasContent {
                         EmptyStateView(
                             title: "No stats data yet",

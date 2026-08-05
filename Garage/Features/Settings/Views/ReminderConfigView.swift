@@ -91,7 +91,12 @@ struct ReminderConfigView: View {
                         if reminder.completedAt == nil {
                             Button("Mark Done") {
                                 discardCalendarArtifact()
-                                Task { await viewModel.markCompleted(reminder) }
+                                Task {
+                                    await viewModel.markCompleted(reminder)
+                                    // markCompleted returns Void and reports through `error`,
+                                    // which it clears on success — so that IS the success signal.
+                                    if viewModel.error == nil { FeedbackCenter.shared.fire(.success) }
+                                }
                             }
                             .tint(Theme.Colors.success)
                             .accessibilityIdentifier("reminder.complete.\(reminder.id)")
@@ -200,7 +205,10 @@ struct ReminderConfigView: View {
             // Covers the artifact built WHILE editing (entering edit already discards): a save
             // that moves the due date must not leave a share row offering the old event.
             discardCalendarArtifact()
-            Task { didSave = await viewModel.save(vehicleId: vehicle.id, vehicleName: vehicle.displayName) }
+            Task {
+                didSave = await viewModel.save(vehicleId: vehicle.id, vehicleName: vehicle.displayName)
+                if didSave { FeedbackCenter.shared.fire(.success) }
+            }
         }
         .accessibilityIdentifier("reminder.form.save")
         if viewModel.isEditing {

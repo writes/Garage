@@ -5,8 +5,8 @@ import Observation
 final class GalleryViewModel {
     private let galleryService: GalleryService
     /// `GalleryService(testPhotos:)` covers the happy path but can only ever succeed, so the failed
-    /// load — the case that used to leave "No gallery records yet" on screen forever — needs this
-    /// closure seam. Mirrors `StatsViewModel.contentLoader`.
+    /// load — the case that used to leave the empty state on screen forever — needs this closure
+    /// seam. Mirrors `StatsViewModel.contentLoader`.
     private let photosLoader: ((String) async throws -> [GalleryPhoto])?
 
     private(set) var photos: [GalleryPhoto] = []

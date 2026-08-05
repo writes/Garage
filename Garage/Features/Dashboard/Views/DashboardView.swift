@@ -147,11 +147,7 @@ struct DashboardView: View {
             Text("Upcoming reminders")
                 .font(Theme.Typography.title)
             if reminders.isEmpty {
-                EmptyStateView(
-                    title: "No reminders set",
-                    message: "Create mileage or date-based reminders from Settings when you're ready.",
-                    systemImage: "bell"
-                )
+                remindersEmptyState
             } else {
                 ForEach(reminders) { reminder in
                     ReminderCard(reminder: reminder)
@@ -159,6 +155,29 @@ struct DashboardView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Pairs an EmptyStateView with a PrimaryButton like firstEntryState and zeroVehicleState — the
+    /// only dashboard empty state that was still pure prose with nothing to tap.
+    ///
+    /// The button switches TABS rather than presenting a form, because there is no reminder route
+    /// to present: AppRouter.Sheet has no reminder case, and ReminderConfigView's single call site
+    /// is SettingsView's "Reminder Settings" NavigationLink. Adding a sheet route would mean a new
+    /// AppRouter case plus a new FormKind (a new analytics value) for a two-tap path that already
+    /// exists — so the copy names the destination instead of the button over-promising a form.
+    private var remindersEmptyState: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            EmptyStateView(
+                title: "No reminders set",
+                message: "Reminders live in Settings → Reminder Settings. "
+                    + "Set one by mileage or date and the next service stops being something you have to remember.",
+                systemImage: "bell"
+            )
+            PrimaryButton(title: "Go to Settings", systemImage: "gearshape") {
+                appState.selectedTab = .settings
+            }
+            .accessibilityIdentifier("dashboard.reminders.cta")
+        }
     }
 
     private var displayedReminders: [Reminder] {
