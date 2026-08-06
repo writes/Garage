@@ -39,6 +39,9 @@ struct StatsView: View {
                         MPGTrendChart(entries: viewModel.entries)
                         CostBreakdownChart(entries: viewModel.entries)
                         WearHistoryChart(wearItems: viewModel.wearItems)
+                        // Below the charts, and absent entirely for a vehicle that has never seen
+                        // a circuit. Stats walks the WHOLE history, so these counts are lifetime.
+                        TrackDaySummaryCard(entries: viewModel.entries)
                     }
                 }
                 .padding(Theme.Spacing.md)

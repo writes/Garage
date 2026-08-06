@@ -104,11 +104,11 @@ enum MaintenanceAdvisor {
     /// (vehicleId, entryType, entryDate DESC) composite.
     static let trackedEntryTypes = Set(MaintenanceItem.allCases.map(\.clearedBy)).union([.maintenance])
 
-    /// Minimal `details` probes. Decoding the full typed struct would be wrong, not merely
-    /// wasteful: `TireEntry` has four non-optional fields, so any legacy or partial map fails to
-    /// decode and a perfectly good rotation would be silently dropped. Each probe reads exactly
-    /// the one discriminator that decides clearing.
-    private struct TireActionProbe: Decodable { var actionType: TireActionType? }
+    /// Minimal `details` probe. Decoding the full typed struct would be wrong, not merely
+    /// wasteful: `MaintenanceEntry` shapes vary, so any legacy or partial map fails to decode and a
+    /// perfectly good rotation would be silently dropped. It reads exactly the one discriminator
+    /// that decides clearing. The tire equivalent is `TireActionProbe`, hoisted next to
+    /// `TireActionType` so `TireAgeAdvisor` reads tire entries through the same shape.
     private struct MaintenanceItemProbe: Decodable { var item: MaintenanceItemKind? }
 
     /// The tire actions that actually reset the rotation clock. `.treadDepthReading` is a passive

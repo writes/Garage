@@ -51,6 +51,14 @@ final class DashboardViewModel {
     /// during loading would flash it at owners who have plenty of history.
     private(set) var hasNoHistory = false
     private(set) var wearItems: [WearItem] = []
+    /// Years since the tires currently fitted went on, once that crosses `TireAgeAdvisor`'s
+    /// threshold. Nil is the normal state — see that type; it understates rather than overstates.
+    private(set) var tireAgeYears: Double?
+    /// A real, sustained drop in fuel economy against the owner's own recent average, or nil.
+    /// Derived from the SAME recent-entry fetch the feed uses, so it is bounded by `historyDepth`:
+    /// an owner who logs a great deal of non-fuel service between fill-ups can hold fewer than
+    /// `FuelEconomyAdvisor.baselineWindow` tanks inside that window and correctly gets silence.
+    private(set) var fuelEconomy: FuelEconomyAdvisor.Verdict?
     private(set) var upcomingReminders: [Reminder] = []
     private(set) var openRecalls = 0
     private(set) var hasActiveWarranty = false
@@ -157,6 +165,14 @@ final class DashboardViewModel {
             now: .now
         )
         wearItems = content.wearItems
+        // Reads the merged input for the same reason the advisor does: a tire installation can
+        // arrive from either fetch, and asking only the narrowed one would date the rubber from
+        // whichever install happened to fall inside it.
+        tireAgeYears = TireAgeAdvisor.yearsSinceNewInstall(entries: advisorInput, now: .now)
+        // The recent feed alone, NOT the merged input: `advisorEntries` is narrowed to the service
+        // types that clear a maintenance item and contains no fuel at all, so merging it in would
+        // add nothing while making the window's composition harder to reason about.
+        fuelEconomy = FuelEconomyAdvisor.degradation(in: content.entries)
         upcomingReminders = content.reminders
         hasActiveWarranty = content.warranties.contains(where: {
             ($0.expirationDate ?? $0.coverageEnd ?? .distantPast) >= .now

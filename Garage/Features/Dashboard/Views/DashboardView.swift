@@ -83,6 +83,9 @@ struct DashboardView: View {
                 items: viewModel.maintenanceDue,
                 historyDepth: DashboardViewModel.historyDepth
             )
+            // Same family as the card above — something derived rather than replayed — so it sits
+            // with it. Renders nothing unless there is a real, sustained drop.
+            FuelEconomyNotice(verdict: viewModel.fuelEconomy)
             wearSection
             remindersSection
             RecentEntryFeed(entries: viewModel.recentEntries)
@@ -133,12 +136,33 @@ struct DashboardView: View {
                 )
             } else {
                 ForEach(viewModel.wearItems) { item in
-                    WearItemBar(label: item.type.label, percentage: item.percentage, rawValue: item.rawValue)
+                    WearItemBar(
+                        label: item.type.label,
+                        percentage: item.percentage,
+                        rawValue: item.rawValue,
+                        notes: notes(for: item)
+                    )
                 }
                 .garageCard()
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The two lines a wear bar cannot carry itself. Both are absent far more often than present.
+    ///
+    /// The age note goes on BOTH tire rows rather than one. There is a single install date and no
+    /// reliable per-axle scoping for it, so putting it only on the front row would leave "Rear
+    /// Tires 61%" reading as unqualified good news about rubber the app believes is six years old.
+    private func notes(for item: WearItem) -> [WearItemNote] {
+        var notes: [WearItemNote] = []
+        if let miles = item.milesToReplacement {
+            notes.append(.projection(milesToReplacement: miles))
+        }
+        if item.type.isTire, let years = viewModel.tireAgeYears {
+            notes.append(.tireAge(years: years))
+        }
+        return notes
     }
 
     private var remindersSection: some View {

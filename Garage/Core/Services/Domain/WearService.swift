@@ -85,13 +85,23 @@ final class WearService {
         VehicleDataRevisionStore.shared.bump(vehicleId: vehicleId)
     }
 
+    /// Collapses the history to one row per item — and, unlike before, keeps the RATE it implies.
+    /// The fetch has always pulled fifty snapshots and this discarded every one but the newest per
+    /// type, throwing away the only thing in the collection the owner cannot read off a bar.
     nonisolated static func latestDashboardItems(from snapshots: [WearSnapshot]) -> [WearItem] {
         let latestByType = Dictionary(grouping: snapshots.sorted(by: { $0.recordedAt > $1.recordedAt }), by: \.wearItem)
             .compactMapValues(\.first)
 
         return WearItemType.allCases.compactMap { type in
             guard let snapshot = latestByType[type], let percentage = snapshot.valuePct else { return nil }
-            return WearItem(type: type, percentage: percentage, rawValue: snapshot.valueRaw)
+            return WearItem(
+                type: type,
+                percentage: percentage,
+                rawValue: snapshot.valueRaw,
+                // Nil far more often than not — every guard in WearProjection is a case where the
+                // honest answer is silence. Callers must render nothing, never a placeholder.
+                milesToReplacement: WearProjection.milesToReplacement(for: type, from: snapshots)
+            )
         }
     }
 }
