@@ -31,7 +31,7 @@ struct StatsViewModelTests {
         // `.tires` does not exist — front and rear axles are tracked separately, because an axle
         // is only as good as its most worn tire. And `percentage` is a 0-100 scale: 0.7 here would
         // have meant 0.7% of the tread remaining, not 70%.
-        let wear = WearItem(type: .frontTires, percentage: 70, rawValue: "7/32")
+        let wear = WearItem(type: .frontTires, percentage: 70, rawValue: "7/32", milesToReplacement: nil)
         let viewModel = StatsViewModel(contentLoader: { _ in
             StatsViewModel.StatsContent(entries: [], wearItems: [wear])
         })

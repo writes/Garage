@@ -174,7 +174,9 @@ struct DossierContentTests {
     }
 
     @Test func theWearSummaryListsEachItemWithItsRemainingLife() {
-        let items = [WearItem(type: .frontBrakePads, percentage: 45, rawValue: "45%")]
+        let items = [
+            WearItem(type: .frontBrakePads, percentage: 45, rawValue: "45%", milesToReplacement: nil)
+        ]
         let lines = text(DossierContent.wearSummaryLines(items))
         #expect(lines.contains("Front Brake Pads"))
         #expect(lines.contains("45%"))

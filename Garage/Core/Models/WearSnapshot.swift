@@ -32,6 +32,11 @@ enum WearItemType: String, Codable, CaseIterable, Sendable {
         case .rearTires: return "Rear Tires"
         }
     }
+
+    /// The two axles are tracked separately because an axle is only as good as its most worn tire —
+    /// but they share one set of rubber-age evidence, since a tire entry carries no reliable
+    /// per-axle scoping for an installation.
+    var isTire: Bool { self == .frontTires || self == .rearTires }
 }
 
 struct WearItem: Identifiable, Sendable, Equatable {
@@ -39,4 +44,8 @@ struct WearItem: Identifiable, Sendable, Equatable {
     let type: WearItemType
     let percentage: Double
     let rawValue: String?
+    /// Miles until this item reaches 0% at the rate its own history implies, or nil whenever the
+    /// history cannot support the claim — see `WearProjection`. Nil is the ordinary case, and no
+    /// caller may substitute a zero or a placeholder for it.
+    let milesToReplacement: Int?
 }
