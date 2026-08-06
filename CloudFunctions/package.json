@@ -9,6 +9,7 @@
     "build": "tsc",
     "deploy": "firebase deploy --only functions",
     "serve": "firebase emulators:start --only functions",
+    "eval:askgarage": "npx --yes tsx scripts/askGarageGoldenEval.ts",
     "test": "vitest run tests/*.test.ts",
     "test:rules": "firebase --config firebase.rules-test.json --project garage-rules-test emulators:exec --only firestore,storage \"vitest run tests/rules\""
   },
