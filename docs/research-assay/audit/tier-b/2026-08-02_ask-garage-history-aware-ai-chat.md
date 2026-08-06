@@ -53,3 +53,31 @@ golden-set eval (~50 real owner questions) shows history-grounded answers
 materially beat an ungrounded baseline on usefulness/safety-of-advice; OR credible
 traction/revenue evidence lands for MyAutoLog/MyGarage+-style in-app advisory
 chat, firming up WTP beyond mere competitor shipping.
+
+## Evidence update 2026-08-06 — revisit trigger MET (both parts)
+
+Status amendment only — no re-assay, no tier change, no score change. Tier B
+stands until a scheduling decision is actually taken (reopening ≠ adopting).
+
+1. **AI-consent UI shipped 2026-08-04** (tri-vote `9674af0cd9208c94`, PR #46).
+   This supersedes the 5.1.2(i) gate note in "Gating constraints" §2.
+2. **Golden-set grounding eval concluded**
+   (`CloudFunctions/reports/askgarage-golden-v1.json` + `v2.json`, merged to
+   main via PR #59, 2026-08-06): 45 questions, 3 synthetic vehicles, pinned
+   `claude-haiku-4-5-20251001`.
+   - Grounded vs ungrounded: **+84.0 points** — grounding decisively beats
+     ungrounded.
+   - Grounded-only Haiku FAILS the quality gate stably: 82% < 90%, with 1–2
+     fabrication leaks per run — all from ONE leading-question-about-aggregates
+     pattern. Retrieval itself 100%; derived arithmetic ~50%.
+   - The gate PASSES under either of two levers:
+     - (a) server-side pre-computed aggregates block on the pinned Haiku —
+       **96%, 0 leaks** (cost: 2 lookup regressions, attention-dilution class);
+     - (b) `claude-sonnet-5` grounded — **100% everything, 0 leaks, zero
+       variance** (tier + regime caveat).
+   - **Unmeasured axis: cost/latency** — named prerequisite before any Law-1
+     scheduling vote.
+
+**Decision state:** revisit trigger MET; next = cost/latency probe on the two
+passing levers, then a Law-1 scheduling tri-vote. Quarter-class build estimate
+unchanged.

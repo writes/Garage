@@ -41,10 +41,20 @@ enum WearProjection {
     /// Snapshots with no `valuePct` are raw-only readings ("8/32 in", "worn on the inner edge").
     /// They carry no value to take a slope from, so they are skipped rather than read as zero,
     /// which would invent a cliff that never happened.
+    /// One total order for every reader of a wear history. `recordedAt` alone is not one: bulk
+    /// imports stamp identical timestamps, and Swift's sort is unstable — the "two most recent"
+    /// could swap between renders, flickering the projection and disagreeing with the bar's own
+    /// pick. Odometer then id break the tie deterministically.
+    static func newestFirst(_ lhs: WearSnapshot, _ rhs: WearSnapshot) -> Bool {
+        if lhs.recordedAt != rhs.recordedAt { return lhs.recordedAt > rhs.recordedAt }
+        if lhs.odometerReading != rhs.odometerReading { return lhs.odometerReading > rhs.odometerReading }
+        return lhs.id > rhs.id
+    }
+
     static func milesToReplacement(for item: WearItemType, from snapshots: [WearSnapshot]) -> Int? {
         let readings = snapshots
             .filter { $0.wearItem == item && $0.valuePct != nil }
-            .sorted { $0.recordedAt > $1.recordedAt }
+            .sorted(by: newestFirst)
         // One reading is a point, not a rate. Nothing to say.
         guard readings.count >= 2,
               let current = readings[0].valuePct,

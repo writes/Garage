@@ -89,7 +89,9 @@ final class WearService {
     /// The fetch has always pulled fifty snapshots and this discarded every one but the newest per
     /// type, throwing away the only thing in the collection the owner cannot read off a bar.
     nonisolated static func latestDashboardItems(from snapshots: [WearSnapshot]) -> [WearItem] {
-        let latestByType = Dictionary(grouping: snapshots.sorted(by: { $0.recordedAt > $1.recordedAt }), by: \.wearItem)
+        // WearProjection's comparator, not a bare recordedAt sort: the bar's pick and the
+        // projection's slice must agree under identical timestamps (bulk imports).
+        let latestByType = Dictionary(grouping: snapshots.sorted(by: WearProjection.newestFirst), by: \.wearItem)
             .compactMapValues(\.first)
 
         return WearItemType.allCases.compactMap { type in

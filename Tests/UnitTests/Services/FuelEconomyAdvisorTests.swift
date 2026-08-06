@@ -157,16 +157,21 @@ struct FuelEconomyAdvisorTests {
     /// Two fill-ups on the same day are ordinary. Swift's sort is not stable, so without the id
     /// tiebreak the window's membership could change between runs on identical data.
     @Test func sameDayFillUpsProduceADeterministicWindow() {
+        // FOUR same-day tanks with DISTINCT values contending for a 3-tank window: identical
+        // fixtures would average the same under any subset, letting an unstable sort pass this
+        // test forever (cross-check finding). With distinct values, dropping the id tiebreak
+        // makes the window's membership — and therefore the average — vary across shuffles.
         var entries = [
-            fuel(mpg: 18, gallons: 10, daysAgo: 0),
-            fuel(mpg: 18, gallons: 10, daysAgo: 0),
-            fuel(mpg: 18, gallons: 10, daysAgo: 0)
+            fuel(mpg: 14, gallons: 12, daysAgo: 0),
+            fuel(mpg: 16, gallons: 10, daysAgo: 0),
+            fuel(mpg: 18, gallons: 8, daysAgo: 0),
+            fuel(mpg: 20, gallons: 14, daysAgo: 0)
         ]
         entries += (0..<7).map { fuel(mpg: 30, gallons: 10, daysAgo: Double(7 + $0 * 7)) }
         let first = FuelEconomyAdvisor.degradation(in: entries)
+        #expect(first != nil)
         for _ in 0..<20 {
             #expect(FuelEconomyAdvisor.degradation(in: entries.shuffled()) == first)
         }
-        #expect(first?.currentAvgMPG == 18)
     }
 }

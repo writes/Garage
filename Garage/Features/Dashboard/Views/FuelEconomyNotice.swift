@@ -31,8 +31,21 @@ struct FuelEconomyNotice: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .garageCard()
             .accessibilityElement(children: .combine)
+            // Spoken form, same rule as WearItemNote.spoken: "~" and "—" read as "tilde" and
+            // "dash" under .combine, so VoiceOver gets clean prose instead of the glyphs.
+            .accessibilityLabel(spoken(for: verdict))
             .accessibilityIdentifier("dashboard.fuelEconomy")
         }
+    }
+
+    /// The VoiceOver rendering of the whole card: approximation and pause expressed in words,
+    /// both denominators included, no glyphs.
+    private func spoken(for verdict: FuelEconomyAdvisor.Verdict) -> String {
+        "Fuel economy is down about \(Int(verdict.dropPct.rounded())) percent versus your recent "
+            + "average. Worth checking tire pressures, brakes, or a stuck thermostat. Last "
+            + "\(FuelEconomyAdvisor.recentWindow) fill-ups averaged \(verdict.currentAvgMPG.mpgText), "
+            + "against \(verdict.baselineAvgMPG.mpgText) across your last "
+            + "\(FuelEconomyAdvisor.baselineWindow)."
     }
 
     /// "~" on the drop, because the figure is a comparison of two small windows and the causes
