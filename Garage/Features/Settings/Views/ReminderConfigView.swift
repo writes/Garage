@@ -163,6 +163,30 @@ struct ReminderConfigView: View {
         }
     }
 
+    /// One-tap due dates, sitting between the toggle and the picker they fill in so the tap and its
+    /// effect stay adjacent. `.bordered` is load-bearing, not cosmetic: several default-style
+    /// buttons in a single Form row make the WHOLE row tappable, and one tap then fires every one.
+    @ViewBuilder
+    private var dueDatePresetRow: some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            ForEach(ReminderDueDatePreset.allCases) { preset in
+                Button(preset.label) {
+                    // The same three retirements beginEditing/save do: the numberpad would cover
+                    // the picker this reveals, a leftover "Reminder saved" would read as covering
+                    // this change, and the pending .ics carries the due date this tap just moved.
+                    isEditingField = false
+                    didSave = false
+                    discardCalendarArtifact()
+                    viewModel.applyDueDatePreset(preset)
+                }
+                .buttonStyle(.bordered)
+                .tint(Theme.Colors.primary)
+                .accessibilityIdentifier("reminder.form.preset.months.\(preset.months)")
+                .accessibilityLabel("Remind me \(preset.label.lowercased())")
+            }
+        }
+    }
+
     private func newReminderSection(for vehicle: Vehicle) -> some View {
         Section(viewModel.isEditing ? "Edit Reminder" : "New Reminder") {
             TextField("Reminder title", text: $viewModel.title)
@@ -178,6 +202,7 @@ struct ReminderConfigView: View {
                 .focused($isEditingField)
             Toggle("Remind me on a date", isOn: $viewModel.hasDueDate)
                 .accessibilityIdentifier("reminder.form.hasDueDate")
+            dueDatePresetRow
             dueDateRow
             saveRow(for: vehicle)
             if didSave {
@@ -206,7 +231,9 @@ struct ReminderConfigView: View {
             // that moves the due date must not leave a share row offering the old event.
             discardCalendarArtifact()
             Task {
-                didSave = await viewModel.save(vehicleId: vehicle.id, vehicleName: vehicle.displayName)
+                didSave = await viewModel.save(
+                    vehicleId: vehicle.id, vehicleName: vehicle.displayName, currentOdometer: vehicle.currentOdometer
+                )
                 if didSave { FeedbackCenter.shared.fire(.success) }
             }
         }
