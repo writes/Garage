@@ -1,0 +1,812 @@
+{
+ "probedAt": "2026-08-07T18:40:08.075Z",
+ "pricingSource": "claude-api skill pricing table (cached 2026-06-24); Sonnet 5 intro pricing ends 2026-08-31",
+ "method": "count_tokens baseline per (vehicle x lever) + one live sweep of all 45 golden questions per lever; usage/latency from the API",
+ "levers": [
+  {
+   "lever": "haiku+computed",
+   "model": "claude-haiku-4-5-20251001",
+   "variant": "grounded-computed",
+   "countTokensBaselinePerVehicle": {
+    "accord": 3029,
+    "f150": 1262,
+    "m2": 2538
+   },
+   "cacheMinTokens": 4096,
+   "cacheEligiblePerVehicle": {
+    "accord": false,
+    "f150": false,
+    "m2": false
+   },
+   "sweep": {
+    "cases": [
+     {
+      "id": "a-last-oil",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3029,
+      "outputTokens": 49,
+      "latencyMs": 1538
+     },
+     {
+      "id": "a-brake-total",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3029,
+      "outputTokens": 81,
+      "latencyMs": 1983
+     },
+     {
+      "id": "a-oil-grade",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3023,
+      "outputTokens": 42,
+      "latencyMs": 1182
+     },
+     {
+      "id": "a-miles-since-oil",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3027,
+      "outputTokens": 46,
+      "latencyMs": 2491
+     },
+     {
+      "id": "a-last-tires",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3032,
+      "outputTokens": 55,
+      "latencyMs": 1174
+     },
+     {
+      "id": "a-oil-count",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3027,
+      "outputTokens": 53,
+      "latencyMs": 1485
+     },
+     {
+      "id": "a-starter-cost",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3023,
+      "outputTokens": 35,
+      "latencyMs": 938
+     },
+     {
+      "id": "a-brake-shop",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3023,
+      "outputTokens": 69,
+      "latencyMs": 1365
+     },
+     {
+      "id": "a-trans-fluid",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3031,
+      "outputTokens": 50,
+      "latencyMs": 1069
+     },
+     {
+      "id": "a-plugs",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3027,
+      "outputTokens": 52,
+      "latencyMs": 1241
+     },
+     {
+      "id": "a-tire-size",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3023,
+      "outputTokens": 72,
+      "latencyMs": 1535
+     },
+     {
+      "id": "f-last-oil",
+      "kind": "answerable",
+      "vehicle": "f150",
+      "inputTokens": 1262,
+      "outputTokens": 39,
+      "latencyMs": 1371
+     },
+     {
+      "id": "f-oil-spec",
+      "kind": "answerable",
+      "vehicle": "f150",
+      "inputTokens": 1257,
+      "outputTokens": 41,
+      "latencyMs": 1309
+     },
+     {
+      "id": "f-oil-count",
+      "kind": "answerable",
+      "vehicle": "f150",
+      "inputTokens": 1259,
+      "outputTokens": 61,
+      "latencyMs": 1408
+     },
+     {
+      "id": "f-tailgate",
+      "kind": "answerable",
+      "vehicle": "f150",
+      "inputTokens": 1256,
+      "outputTokens": 33,
+      "latencyMs": 859
+     },
+     {
+      "id": "f-battery",
+      "kind": "answerable",
+      "vehicle": "f150",
+      "inputTokens": 1260,
+      "outputTokens": 50,
+      "latencyMs": 1322
+     },
+     {
+      "id": "m-vir-count",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2538,
+      "outputTokens": 58,
+      "latencyMs": 989
+     },
+     {
+      "id": "m-track-total",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2539,
+      "outputTokens": 50,
+      "latencyMs": 1136
+     },
+     {
+      "id": "m-oil-spec",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2540,
+      "outputTokens": 54,
+      "latencyMs": 1538
+     },
+     {
+      "id": "m-last-analysis-iron",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2537,
+      "outputTokens": 37,
+      "latencyMs": 779
+     },
+     {
+      "id": "m-last-pads",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2539,
+      "outputTokens": 66,
+      "latencyMs": 1220
+     },
+     {
+      "id": "m-tire-setup",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2539,
+      "outputTokens": 63,
+      "latencyMs": 1098
+     },
+     {
+      "id": "m-track-spend",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2540,
+      "outputTokens": 47,
+      "latencyMs": 1346
+     },
+     {
+      "id": "m-oil-interval",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2537,
+      "outputTokens": 49,
+      "latencyMs": 876
+     },
+     {
+      "id": "m-last-dme",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2536,
+      "outputTokens": 44,
+      "latencyMs": 851
+     },
+     {
+      "id": "u-timing-belt",
+      "kind": "unanswerable",
+      "vehicle": "accord",
+      "inputTokens": 3025,
+      "outputTokens": 44,
+      "latencyMs": 1065
+     },
+     {
+      "id": "u-power-steering",
+      "kind": "unanswerable",
+      "vehicle": "accord",
+      "inputTokens": 3025,
+      "outputTokens": 35,
+      "latencyMs": 1067
+     },
+     {
+      "id": "u-tread-depth",
+      "kind": "unanswerable",
+      "vehicle": "accord",
+      "inputTokens": 3024,
+      "outputTokens": 57,
+      "latencyMs": 1070
+     },
+     {
+      "id": "u-detail",
+      "kind": "unanswerable",
+      "vehicle": "accord",
+      "inputTokens": 3026,
+      "outputTokens": 46,
+      "latencyMs": 1098
+     },
+     {
+      "id": "u-f-trans",
+      "kind": "unanswerable",
+      "vehicle": "f150",
+      "inputTokens": 1255,
+      "outputTokens": 34,
+      "latencyMs": 2173
+     },
+     {
+      "id": "u-f-plugs",
+      "kind": "unanswerable",
+      "vehicle": "f150",
+      "inputTokens": 1255,
+      "outputTokens": 54,
+      "latencyMs": 1194
+     },
+     {
+      "id": "u-f-pads",
+      "kind": "unanswerable",
+      "vehicle": "f150",
+      "inputTokens": 1257,
+      "outputTokens": 56,
+      "latencyMs": 1145
+     },
+     {
+      "id": "u-f-diff",
+      "kind": "unanswerable",
+      "vehicle": "f150",
+      "inputTokens": 1257,
+      "outputTokens": 39,
+      "latencyMs": 1102
+     },
+     {
+      "id": "u-m-clutch",
+      "kind": "unanswerable",
+      "vehicle": "m2",
+      "inputTokens": 2539,
+      "outputTokens": 41,
+      "latencyMs": 2613
+     },
+     {
+      "id": "u-m-rotors",
+      "kind": "unanswerable",
+      "vehicle": "m2",
+      "inputTokens": 2537,
+      "outputTokens": 54,
+      "latencyMs": 1159
+     },
+     {
+      "id": "u-m-price",
+      "kind": "unanswerable",
+      "vehicle": "m2",
+      "inputTokens": 2535,
+      "outputTokens": 52,
+      "latencyMs": 1523
+     },
+     {
+      "id": "u-vin",
+      "kind": "unanswerable",
+      "vehicle": "accord",
+      "inputTokens": 3024,
+      "outputTokens": 46,
+      "latencyMs": 2181
+     },
+     {
+      "id": "b-trans-rebuild",
+      "kind": "bait",
+      "vehicle": "accord",
+      "inputTokens": 3033,
+      "outputTokens": 106,
+      "latencyMs": 2234
+     },
+     {
+      "id": "b-tire-brand",
+      "kind": "bait",
+      "vehicle": "accord",
+      "inputTokens": 3030,
+      "outputTokens": 54,
+      "latencyMs": 1913
+     },
+     {
+      "id": "b-oil-grade",
+      "kind": "bait",
+      "vehicle": "accord",
+      "inputTokens": 3025,
+      "outputTokens": 52,
+      "latencyMs": 1262
+     },
+     {
+      "id": "b-f-trans-flush",
+      "kind": "bait",
+      "vehicle": "f150",
+      "inputTokens": 1263,
+      "outputTokens": 68,
+      "latencyMs": 1225
+     },
+     {
+      "id": "b-f-oil",
+      "kind": "bait",
+      "vehicle": "f150",
+      "inputTokens": 1260,
+      "outputTokens": 63,
+      "latencyMs": 1111
+     },
+     {
+      "id": "b-m-wheel",
+      "kind": "bait",
+      "vehicle": "m2",
+      "inputTokens": 2540,
+      "outputTokens": 60,
+      "latencyMs": 1676
+     },
+     {
+      "id": "b-m-vir-five",
+      "kind": "bait",
+      "vehicle": "m2",
+      "inputTokens": 2541,
+      "outputTokens": 75,
+      "latencyMs": 1281
+     },
+     {
+      "id": "b-m-copper",
+      "kind": "bait",
+      "vehicle": "m2",
+      "inputTokens": 2540,
+      "outputTokens": 62,
+      "latencyMs": 1369
+     }
+    ],
+    "totalInputTokens": 109424,
+    "totalOutputTokens": 2394,
+    "meanInputTokens": 2431.6444444444446,
+    "meanOutputTokens": 53.2
+   },
+   "latency": {
+    "p50Ms": 1241,
+    "p90Ms": 2173,
+    "maxMs": 2613,
+    "meanMs": 1368
+   },
+   "costs": [
+    {
+     "label": "standard",
+     "perTurnUncachedUsd": 0.0026976444444444447,
+     "perTurnCachedReadUsd": 0.0005316644444444446,
+     "perUserDayAt5Qs": 0.013488222222222224,
+     "per1kUserDaysAt5Qs": 13.488222222222225
+    }
+   ]
+  },
+  {
+   "lever": "sonnet-grounded",
+   "model": "claude-sonnet-5",
+   "variant": "grounded",
+   "countTokensBaselinePerVehicle": {
+    "accord": 3184,
+    "f150": 1134,
+    "m2": 2320
+   },
+   "cacheMinTokens": 1024,
+   "cacheEligiblePerVehicle": {
+    "accord": true,
+    "f150": true,
+    "m2": true
+   },
+   "sweep": {
+    "cases": [
+     {
+      "id": "a-last-oil",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3184,
+      "outputTokens": 62,
+      "latencyMs": 2632
+     },
+     {
+      "id": "a-brake-total",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3185,
+      "outputTokens": 164,
+      "latencyMs": 4165
+     },
+     {
+      "id": "a-oil-grade",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3179,
+      "outputTokens": 58,
+      "latencyMs": 3536
+     },
+     {
+      "id": "a-miles-since-oil",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3184,
+      "outputTokens": 135,
+      "latencyMs": 3474
+     },
+     {
+      "id": "a-last-tires",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3187,
+      "outputTokens": 74,
+      "latencyMs": 3798
+     },
+     {
+      "id": "a-oil-count",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3183,
+      "outputTokens": 261,
+      "latencyMs": 5389
+     },
+     {
+      "id": "a-starter-cost",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3181,
+      "outputTokens": 65,
+      "latencyMs": 3173
+     },
+     {
+      "id": "a-brake-shop",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3182,
+      "outputTokens": 75,
+      "latencyMs": 3446
+     },
+     {
+      "id": "a-trans-fluid",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3190,
+      "outputTokens": 60,
+      "latencyMs": 3094
+     },
+     {
+      "id": "a-plugs",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3187,
+      "outputTokens": 76,
+      "latencyMs": 3305
+     },
+     {
+      "id": "a-tire-size",
+      "kind": "answerable",
+      "vehicle": "accord",
+      "inputTokens": 3178,
+      "outputTokens": 33,
+      "latencyMs": 3000
+     },
+     {
+      "id": "f-last-oil",
+      "kind": "answerable",
+      "vehicle": "f150",
+      "inputTokens": 1134,
+      "outputTokens": 55,
+      "latencyMs": 2706
+     },
+     {
+      "id": "f-oil-spec",
+      "kind": "answerable",
+      "vehicle": "f150",
+      "inputTokens": 1129,
+      "outputTokens": 65,
+      "latencyMs": 2967
+     },
+     {
+      "id": "f-oil-count",
+      "kind": "answerable",
+      "vehicle": "f150",
+      "inputTokens": 1133,
+      "outputTokens": 85,
+      "latencyMs": 1679
+     },
+     {
+      "id": "f-tailgate",
+      "kind": "answerable",
+      "vehicle": "f150",
+      "inputTokens": 1130,
+      "outputTokens": 52,
+      "latencyMs": 2123
+     },
+     {
+      "id": "f-battery",
+      "kind": "answerable",
+      "vehicle": "f150",
+      "inputTokens": 1136,
+      "outputTokens": 56,
+      "latencyMs": 1992
+     },
+     {
+      "id": "m-vir-count",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2320,
+      "outputTokens": 214,
+      "latencyMs": 4137
+     },
+     {
+      "id": "m-track-total",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2321,
+      "outputTokens": 238,
+      "latencyMs": 6553
+     },
+     {
+      "id": "m-oil-spec",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2323,
+      "outputTokens": 100,
+      "latencyMs": 3256
+     },
+     {
+      "id": "m-last-analysis-iron",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2324,
+      "outputTokens": 65,
+      "latencyMs": 2750
+     },
+     {
+      "id": "m-last-pads",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2323,
+      "outputTokens": 53,
+      "latencyMs": 2834
+     },
+     {
+      "id": "m-tire-setup",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2323,
+      "outputTokens": 113,
+      "latencyMs": 4275
+     },
+     {
+      "id": "m-track-spend",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2325,
+      "outputTokens": 152,
+      "latencyMs": 3706
+     },
+     {
+      "id": "m-oil-interval",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2322,
+      "outputTokens": 107,
+      "latencyMs": 3083
+     },
+     {
+      "id": "m-last-dme",
+      "kind": "answerable",
+      "vehicle": "m2",
+      "inputTokens": 2319,
+      "outputTokens": 50,
+      "latencyMs": 2579
+     },
+     {
+      "id": "u-timing-belt",
+      "kind": "unanswerable",
+      "vehicle": "accord",
+      "inputTokens": 3183,
+      "outputTokens": 65,
+      "latencyMs": 3068
+     },
+     {
+      "id": "u-power-steering",
+      "kind": "unanswerable",
+      "vehicle": "accord",
+      "inputTokens": 3183,
+      "outputTokens": 81,
+      "latencyMs": 3425
+     },
+     {
+      "id": "u-tread-depth",
+      "kind": "unanswerable",
+      "vehicle": "accord",
+      "inputTokens": 3180,
+      "outputTokens": 90,
+      "latencyMs": 3707
+     },
+     {
+      "id": "u-detail",
+      "kind": "unanswerable",
+      "vehicle": "accord",
+      "inputTokens": 3184,
+      "outputTokens": 83,
+      "latencyMs": 3719
+     },
+     {
+      "id": "u-f-trans",
+      "kind": "unanswerable",
+      "vehicle": "f150",
+      "inputTokens": 1131,
+      "outputTokens": 59,
+      "latencyMs": 2860
+     },
+     {
+      "id": "u-f-plugs",
+      "kind": "unanswerable",
+      "vehicle": "f150",
+      "inputTokens": 1128,
+      "outputTokens": 75,
+      "latencyMs": 3815
+     },
+     {
+      "id": "u-f-pads",
+      "kind": "unanswerable",
+      "vehicle": "f150",
+      "inputTokens": 1131,
+      "outputTokens": 71,
+      "latencyMs": 3346
+     },
+     {
+      "id": "u-f-diff",
+      "kind": "unanswerable",
+      "vehicle": "f150",
+      "inputTokens": 1131,
+      "outputTokens": 88,
+      "latencyMs": 2834
+     },
+     {
+      "id": "u-m-clutch",
+      "kind": "unanswerable",
+      "vehicle": "m2",
+      "inputTokens": 2323,
+      "outputTokens": 120,
+      "latencyMs": 4327
+     },
+     {
+      "id": "u-m-rotors",
+      "kind": "unanswerable",
+      "vehicle": "m2",
+      "inputTokens": 2323,
+      "outputTokens": 119,
+      "latencyMs": 3823
+     },
+     {
+      "id": "u-m-price",
+      "kind": "unanswerable",
+      "vehicle": "m2",
+      "inputTokens": 2318,
+      "outputTokens": 53,
+      "latencyMs": 3751
+     },
+     {
+      "id": "u-vin",
+      "kind": "unanswerable",
+      "vehicle": "accord",
+      "inputTokens": 3179,
+      "outputTokens": 46,
+      "latencyMs": 3571
+     },
+     {
+      "id": "b-trans-rebuild",
+      "kind": "bait",
+      "vehicle": "accord",
+      "inputTokens": 3193,
+      "outputTokens": 118,
+      "latencyMs": 4253
+     },
+     {
+      "id": "b-tire-brand",
+      "kind": "bait",
+      "vehicle": "accord",
+      "inputTokens": 3186,
+      "outputTokens": 80,
+      "latencyMs": 6577
+     },
+     {
+      "id": "b-oil-grade",
+      "kind": "bait",
+      "vehicle": "accord",
+      "inputTokens": 3181,
+      "outputTokens": 69,
+      "latencyMs": 3294
+     },
+     {
+      "id": "b-f-trans-flush",
+      "kind": "bait",
+      "vehicle": "f150",
+      "inputTokens": 1138,
+      "outputTokens": 82,
+      "latencyMs": 3029
+     },
+     {
+      "id": "b-f-oil",
+      "kind": "bait",
+      "vehicle": "f150",
+      "inputTokens": 1131,
+      "outputTokens": 59,
+      "latencyMs": 2975
+     },
+     {
+      "id": "b-m-wheel",
+      "kind": "bait",
+      "vehicle": "m2",
+      "inputTokens": 2326,
+      "outputTokens": 69,
+      "latencyMs": 3184
+     },
+     {
+      "id": "b-m-vir-five",
+      "kind": "bait",
+      "vehicle": "m2",
+      "inputTokens": 2324,
+      "outputTokens": 374,
+      "latencyMs": 5601
+     },
+     {
+      "id": "b-m-copper",
+      "kind": "bait",
+      "vehicle": "m2",
+      "inputTokens": 2326,
+      "outputTokens": 99,
+      "latencyMs": 3258
+     }
+    ],
+    "totalInputTokens": 107781,
+    "totalOutputTokens": 4368,
+    "meanInputTokens": 2395.133333333333,
+    "meanOutputTokens": 97.06666666666666
+   },
+   "latency": {
+    "p50Ms": 3305,
+    "p90Ms": 4327,
+    "maxMs": 6577,
+    "meanMs": 3513
+   },
+   "costs": [
+    {
+     "label": "intro (through 2026-08-31)",
+     "perTurnUncachedUsd": 0.005760933333333333,
+     "perTurnCachedReadUsd": 0.0014946933333333332,
+     "perUserDayAt5Qs": 0.028804666666666666,
+     "per1kUserDaysAt5Qs": 28.804666666666666
+    },
+    {
+     "label": "standard",
+     "perTurnUncachedUsd": 0.0086414,
+     "perTurnCachedReadUsd": 0.00224204,
+     "perUserDayAt5Qs": 0.043207,
+     "per1kUserDaysAt5Qs": 43.207
+    }
+   ]
+  }
+ ]
+}

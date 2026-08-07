@@ -81,3 +81,46 @@ stands until a scheduling decision is actually taken (reopening ≠ adopting).
 **Decision state:** revisit trigger MET; next = cost/latency probe on the two
 passing levers, then a Law-1 scheduling tri-vote. Quarter-class build estimate
 unchanged.
+
+## Evidence update 2026-08-07 — cost/latency probe DONE (prerequisite cleared)
+
+Status amendment only — no re-assay, no tier change. Full data:
+`reports/askgarage-cost-probe.json`; write-up:
+`docs/research/2026-08-07_ASKGARAGE_COST_LATENCY_PROBE.md`.
+
+- **Cost does not differentiate**: Haiku+computed $0.0027/turn; Sonnet-grounded
+  $0.0058 intro / $0.0086 standard (intro pricing ends 2026-08-31). At the 5
+  q/day quota, worst case ≈ $1.30/user-month at 100% utilization — rounding
+  error against Pro revenue for both levers.
+- **Latency**: Haiku p50 1.24s; Sonnet p50 3.31s full-completion (streamed TTFT
+  lower). Both acceptable for a chat surface.
+- **Structural findings**: prompt caching is unavailable on the Haiku lever at
+  typical history sizes (all 3 vehicles below Haiku's 4096-token cache floor;
+  Sonnet's 1024 floor cleared by all); the Haiku lever also requires building
+  and testing a server-side aggregates component that Sonnet does not need.
+- **Probe recommendation** (evidence, not verdict): if scheduled, launch lever =
+  Sonnet-grounded (100%/0-leak/zero-variance, no extra correctness surface,
+  caching headroom); Haiku+computed is the cost-reduction fallback if spend
+  ever becomes material.
+
+**Decision state:** both prerequisites cleared → Law-1 scheduling tri-vote is
+next (same session).
+
+## Scheduling decision 2026-08-07 — Law-1 tri-vote: DEFER (unanimous C)
+
+Vote 2026-08-07T18:42:25Z, ledger group `9674af0cd9208c94` (note: group_key is
+a hash of the winning option letter, shared across C-won votes — cite it with
+the timestamp). Pinned roster, all three live: claude-fable-5 0.72, gpt-5.6-sol
+0.96, Gemini 3.1 Pro (High, resolver-verified) 0.95 — **unanimous C**.
+
+Shared reasoning: feasibility is proven (grounding gate, cost probe) but demand
+is not — zero public users, ~0 external testers; a quarter-class build with a
+permanent eval/model-drift tax and advisory-liability exposure must not consume
+launch-window capacity.
+
+**Superseding revisit trigger (replaces the 2026-08-02 trigger, which is
+spent):** ≥50 external users/testers OR first organic Pro conversions. On
+firing, the build is pre-cleared on quality and cost — the remaining work is a
+spec + implementation cycle with the probe's lever recommendation
+(Sonnet-grounded launch lever; Haiku+computed as the cost fallback) as the
+starting point.

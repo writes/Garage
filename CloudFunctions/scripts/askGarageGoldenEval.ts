@@ -133,7 +133,7 @@ const COMPUTED_RULE =
   "\n- Counts, totals and intervals must be read from the Computed Summary block. Do not add up"
   + " or count the individual rows yourself.";
 
-type VariantName = "grounded" | "ungrounded" | "grounded-computed";
+export type VariantName = "grounded" | "ungrounded" | "grounded-computed";
 
 const ALL_VARIANTS: VariantName[] = ["grounded", "ungrounded", "grounded-computed"];
 
@@ -142,7 +142,7 @@ function isGroundedArm(variant: VariantName): boolean {
   return variant !== "ungrounded";
 }
 
-function systemFor(variant: VariantName, question: GoldenQuestion): string {
+export function systemFor(variant: VariantName, question: GoldenQuestion): string {
   const vehicle = GOLDEN_VEHICLES[question.vehicle];
   if (variant === "ungrounded") return `${RULES}\n\n${vehicleOnly(vehicle)}`;
   if (variant === "grounded") return `${RULES}\n\n${serializeHistory(vehicle, NOW)}`;
@@ -252,7 +252,7 @@ const REQUEST_TIMEOUT_MS = 90_000;
  * (bigger model AND adaptive thinking), not a pure tier swap, and its run-to-run variance should
  * be expected to be higher.
  */
-function isAdaptiveThinkingGeneration(model: string): boolean {
+export function isAdaptiveThinkingGeneration(model: string): boolean {
   return /^claude-(fable-5|mythos-5|opus-5|opus-4-7|opus-4-8|sonnet-5)/.test(model);
 }
 
@@ -556,4 +556,9 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error) => { console.error(error); process.exit(1); });
+// Guarded so the cost/latency probe (askGarageCostProbe.ts) can import systemFor and the
+// model-config rules without triggering an eval run. `require.main` is defined because tsx
+// executes this file in CJS mode (it already relies on __dirname above).
+if (require.main === module) {
+  main().catch((error) => { console.error(error); process.exit(1); });
+}
