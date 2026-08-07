@@ -95,10 +95,14 @@ final class ReminderConfigViewModel {
         dueDate = Self.defaultDueDate()
     }
 
-    func save(vehicleId: String, vehicleName: String? = nil) async -> Bool {
+    /// `currentOdometer` is cheap-only, same contract as `vehicleName`: pass it when the caller
+    /// already holds the `Vehicle`. It is what turns the create form's single mileage input into a
+    /// repeat INTERVAL (see `repeatInterval`); nil simply means no interval is derivable.
+    func save(vehicleId: String, vehicleName: String? = nil, currentOdometer: Int? = nil) async -> Bool {
         let wasEditing = isEditing
         do {
-            try await reminderService.save(reminderToSave(vehicleId: vehicleId), vehicleName: vehicleName)
+            let reminder = reminderToSave(vehicleId: vehicleId, currentOdometer: currentOdometer)
+            try await reminderService.save(reminder, vehicleName: vehicleName)
             // An edit is not a creation: reporting it as `reminder_created` would inflate that
             // count with re-saves, and this batch adds no new event names, so edits report
             // nothing. The create path is unchanged.
@@ -120,13 +124,12 @@ final class ReminderConfigViewModel {
     /// actually shows, which is what preserves its id — the service `save` writes
     /// `.document(reminder.id)`, so the same id updates in place instead of adding a row.
     ///
-    /// `repeatIntervalMiles` is deliberately NOT re-derived from the mileage field on edit even
-    /// though create seeds it that way (there is only one mileage input). For a repeat successor
+    /// `repeatIntervalMiles` is deliberately NOT re-derived on edit even though create derives it
+    /// (there is only one mileage input). For a repeat successor
     /// (`ReminderService.scheduleSuccessorIfRepeating`) or a seeded reminder the two hold
-    /// genuinely different numbers — e.g. due at 20,620 mi, repeating every 2,500 — so copying
-    /// an odometer reading over the interval during an unrelated title edit would quietly
-    /// destroy the repeat cadence.
-    private func reminderToSave(vehicleId: String) -> Reminder {
+    /// genuinely different numbers — e.g. due at 20,620 mi, repeating every 2,500 — so re-deriving
+    /// the interval during an unrelated title edit would quietly destroy the repeat cadence.
+    private func reminderToSave(vehicleId: String, currentOdometer: Int? = nil) -> Reminder {
         let resolvedDueDate = hasDueDate ? Self.canonicalDueInstant(for: dueDate) : nil
         guard var edited = editingReminder else {
             return Reminder(
@@ -136,19 +139,22 @@ final class ReminderConfigViewModel {
                 dueDate: resolvedDueDate,
                 dueMileage: Int(dueMileage),
                 repeatIntervalMonths: Int(dueMonths),
-                repeatIntervalMiles: Int(dueMileage),
+                repeatIntervalMiles: Self.repeatInterval(dueMileage: Int(dueMileage), currentOdometer: currentOdometer),
                 isProFeature: false
             )
         }
         edited.title = title
         edited.dueDate = resolvedDueDate
-        edited.dueMileage = Int(dueMileage)
+        // A non-positive entry is no due mileage at all (cross-check finding): `Int("0")` is 0,
+        // not nil, so without this a "0" typed to un-track mileage would skip the interval
+        // cleanup below and leave a stale repeat cadence alive in the stored document.
+        edited.dueMileage = Int(dueMileage).flatMap { $0 > 0 ? $0 : nil }
         edited.repeatIntervalMonths = Int(dueMonths)
         // Clearing the mileage field ends mileage tracking outright, interval included: create
-        // seeds `repeatIntervalMiles` from this same input, so their nil-ness is coupled even
-        // though their VALUES may differ (successors carry a rolled-forward due mileage). Keeping
-        // a hidden interval here would resurface a years-stale cadence the first time a mileage
-        // is re-added and completed.
+        // derives `repeatIntervalMiles` from this same input, so a nil mileage can never leave a
+        // live interval behind even though their VALUES differ (successors carry a rolled-forward
+        // due mileage). Keeping a hidden interval here would resurface a years-stale cadence the
+        // first time a mileage is re-added and completed.
         if edited.dueMileage == nil { edited.repeatIntervalMiles = nil }
         return edited
     }
@@ -212,35 +218,21 @@ final class ReminderConfigViewModel {
     /// `cancelEdit`'s reset cannot drift apart.
     static let defaultTitle = "Oil change"
 
-    /// Tomorrow at 09:00 local. Internal (not private) and parameterized over `now`/`calendar` —
-    /// exposed for direct unit testing, mirroring ReminderNotificationCoordinator.plan's
-    /// precedent. Falls back to now+24h in the (practically unreachable) case the calendar can't
-    /// produce a startOfDay/9h instant.
-    static func defaultDueDate(now: Date = .now, calendar: Calendar = .current) -> Date {
-        let startOfToday = calendar.startOfDay(for: now)
-        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: startOfToday),
-              let tomorrowAt9 = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow) else {
-            return now.addingTimeInterval(24 * 60 * 60)
-        }
-        return tomorrowAt9
+    /// The mileage the created reminder should REPEAT on: how far its due mileage sits ahead of
+    /// the odometer today. The create form has a single mileage input, and seeding the interval
+    /// with that absolute reading was a live defect — `ReminderService.scheduleSuccessorIfRepeating`
+    /// computes `successor.dueMileage = dueMileage + repeatIntervalMiles`, so completing a
+    /// reminder due at 97,300 minted one due at 194,600.
+    ///
+    /// Nil whenever no interval is derivable: an odometer of 0 means "not recorded" rather than
+    /// mile zero (same rule as `MaintenanceSchedule.status`), and a due mileage at or below the
+    /// current reading has no forward distance. Nil is the safe seed — a successor that keeps the
+    /// same due mileage is stale but visible, one at double the odometer is fabricated. Internal
+    /// and pure, exposed for direct unit testing.
+    static func repeatInterval(dueMileage: Int?, currentOdometer: Int?) -> Int? {
+        guard let dueMileage, let currentOdometer,
+              currentOdometer > 0, dueMileage > currentOdometer else { return nil }
+        return dueMileage - currentOdometer
     }
 
-    /// Canonicalizes whatever DAY the picker landed on to a fixed local time-of-day (09:00), so a
-    /// future day always yields a future instant regardless of what wall-clock time-of-day the
-    /// picker's value happens to carry (BLOCKER fix: an untouched picker previously kept
-    /// `Date.now`'s exact instant, which read as already-past moments later). A TODAY selection
-    /// that still normalizes into the past must not silently skip scheduling — it falls forward
-    /// to now+5min instead. Internal, exposed for direct unit testing.
-    static func canonicalDueInstant(for pickedDate: Date, now: Date = .now, calendar: Calendar = .current) -> Date {
-        let normalized = calendar.date(
-            bySettingHour: 9, minute: 0, second: 0, of: calendar.startOfDay(for: pickedDate)
-        ) ?? pickedDate
-        if normalized > now {
-            return normalized
-        }
-        if calendar.isDate(pickedDate, inSameDayAs: now) {
-            return now.addingTimeInterval(5 * 60)
-        }
-        return normalized
-    }
 }
