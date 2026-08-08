@@ -24,11 +24,17 @@ final class LogViewModel {
     private(set) var entries: [FirestoreEntry] = []
     private(set) var isLoading = false
     private(set) var isLoadingMore = false
-    /// True once a reload has RESOLVED (either way). Distinct from `entries.isEmpty`, which is also
-    /// true before the first fetch lands — and the Log tab is now built on first selection, so that
-    /// frame happens on every first visit. Telling the two apart is what keeps "No log entries yet"
-    /// off the screen of an owner who has plenty (the false-empty-state bug, shipped twice).
-    private(set) var hasCompletedFirstLoad = false
+    /// The vehicle whose reload has RESOLVED (either way); nil until one has. Distinct from
+    /// `entries.isEmpty`, which is also true before the first fetch lands — and the Log tab is now
+    /// built on first selection, so that frame happens on every first visit. Telling the two apart
+    /// is what keeps "No log entries yet" off the screen of an owner who has plenty (the
+    /// false-empty-state bug, shipped twice).
+    ///
+    /// Per-vehicle rather than a Bool, because `allEntries` holds one vehicle at a time: a Bool
+    /// stayed true across a vehicle switch, so the next vehicle's first frame skipped the loading
+    /// state and rendered the PREVIOUS vehicle's rows. Switching back re-shows loading for the same
+    /// reason — nothing here is cached per vehicle.
+    private(set) var firstLoadResolvedVehicleId: String?
     private(set) var error: AppError?
     private var reloadToken = 0
     private var lastLoadedKey: LoadKey?
@@ -37,6 +43,10 @@ final class LogViewModel {
 
     /// Whether older history beyond `allEntries` is still available via loadMore().
     var hasMoreEntries: Bool { nextCursor != nil }
+
+    func hasCompletedFirstLoad(for vehicleId: String) -> Bool {
+        firstLoadResolvedVehicleId == vehicleId
+    }
 
     init(
         entryService: EntryService = .shared,
@@ -69,7 +79,7 @@ final class LogViewModel {
         defer {
             if token == reloadToken {
                 isLoading = false
-                hasCompletedFirstLoad = true
+                firstLoadResolvedVehicleId = vehicleId
             }
         }
 

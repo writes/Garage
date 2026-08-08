@@ -62,7 +62,8 @@ struct StatsView: View {
     /// than loading.
     private var isAwaitingFirstLoad: Bool {
         guard appState.hasCompletedInitialVehicleLoad else { return true }
-        return appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad
+        guard let vehicle = appState.currentVehicle else { return false }
+        return !viewModel.hasCompletedFirstLoad(for: vehicle.id)
     }
 
     private func load() async {

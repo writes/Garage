@@ -8,9 +8,9 @@ import Testing
 /// onEditEntry callback. What's actually risky — and what these tests exercise — is the
 /// encode/decode round-trip that `decodedDetails` and save()'s `makeAnyCodableMap` both go
 /// through, not the trivial 1:1 field copies each form's own `seed(from:)` does after that.
-/// Covers 3 representative forms end to end via the real save() -> fetch -> decode path: OilChange
-/// (plain fields), Repair (a `[String]` array field), and Fuel (a Codable enum field, plus the
-/// MPG-recompute-must-exclude-itself edit case).
+/// Covers 4 representative forms end to end via the real save() -> fetch -> decode path: OilChange
+/// (plain fields), Repair (a `[String]` array field), Fuel (a Codable enum field, plus the
+/// MPG-recompute-must-exclude-itself edit case), and Brake (a Bool field).
 @MainActor
 struct EntryFormDetailsSeedingTests {
     @Test func oilChangeDetails_roundTripThroughSaveAndDecodeExactly() async throws {
@@ -59,6 +59,26 @@ struct EntryFormDetailsSeedingTests {
         let stored = try await entries.fetchRecent(vehicleId: vehicle.id).first
         #expect(saved)
         #expect(stored?.decodedDetails(as: FuelEntry.self) == original)
+    }
+
+    /// The Bool-field case, and a live defect until this test: `JSONSerialization` hands back a
+    /// JSON `true` as an NSNumber that casts cleanly to Int, so `makeAnyCodableMap` stored every
+    /// Bool detail as 1 and the whole struct then failed to decode. Every saved brake job re-opened
+    /// its form blank — the same details-wipe symptom this suite exists for, one layer lower.
+    @Test func brakeDetailsWithABoolField_roundTripThroughSaveAndDecodeExactly() async throws {
+        let vehicle = testVehicle()
+        let entries = EntryService(testEntries: [])
+        let viewModel = model(entryService: entries, vehicleService: hermeticVehicleService(vehicles: [vehicle]))
+        let original = BrakeEntry(
+            action: .padsReplaced, position: .all, padBrand: "G-LOC", padCompound: "R12/R10",
+            fluidFlushed: true
+        )
+
+        let saved = await viewModel.save(vehicle: vehicle, entryType: .brake, details: original)
+
+        let stored = try await entries.fetchRecent(vehicleId: vehicle.id).first
+        #expect(saved)
+        #expect(stored?.decodedDetails(as: BrakeEntry.self) == original)
     }
 
     /// The MPG-edit case (review callout): editing the vehicle's own most-recent fill-up must not

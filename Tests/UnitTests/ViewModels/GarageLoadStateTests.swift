@@ -13,6 +13,9 @@ private struct GarageLoadFailure: Error {}
 /// Detailing, Parts and Warranty a FAILED fetch read the same way forever — no error, no retry.
 /// The third case in each group is the one that matters most: a failure must SETTLE (so the ladder
 /// reaches the error banner) rather than leave the screen spinning.
+///
+/// Settling is a per-vehicle fact. As a plain Bool it stayed true across a vehicle switch, so the
+/// next vehicle's first frame skipped the ladder entirely — the Detailing group covers that below.
 @MainActor
 struct GarageLoadStateTests {
 
@@ -21,7 +24,7 @@ struct GarageLoadStateTests {
     @Test func detailing_beforeAnyLoad_hasNotSettled() {
         let viewModel = DetailingViewModel(recordsLoader: { _ in [] })
 
-        #expect(viewModel.hasCompletedFirstLoad == false)
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle") == false)
         #expect(viewModel.isLoading == false)
     }
 
@@ -30,7 +33,7 @@ struct GarageLoadStateTests {
 
         await viewModel.load(vehicleId: "vehicle")
 
-        #expect(viewModel.hasCompletedFirstLoad == true)
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle") == true)
         #expect(viewModel.isLoading == false)
         #expect(viewModel.records.count == 1)
         #expect(viewModel.error == nil)
@@ -42,7 +45,45 @@ struct GarageLoadStateTests {
         await viewModel.load(vehicleId: "vehicle")
 
         #expect(viewModel.error != nil)
-        #expect(viewModel.hasCompletedFirstLoad == true)
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle") == true)
+        #expect(viewModel.isLoading == false)
+    }
+
+    @Test func detailing_firstLoadResolvesForThatVehicleOnly() async {
+        let viewModel = DetailingViewModel(recordsLoader: { _ in [Self.detailingRecord()] })
+
+        await viewModel.load(vehicleId: "vehicle-a")
+
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle-a"))
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle-b") == false)
+    }
+
+    /// Single-slot on purpose: `records` holds one vehicle at a time, so coming BACK to A must show
+    /// loading again rather than A's rows, which B's load already replaced.
+    @Test func detailing_switchingVehiclesReshowsLoadingUntilTheNewVehicleResolves() async {
+        let viewModel = DetailingViewModel(recordsLoader: { _ in [Self.detailingRecord()] })
+
+        await viewModel.load(vehicleId: "vehicle-a")
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle-b") == false)
+        await viewModel.load(vehicleId: "vehicle-b")
+
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle-b"))
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle-a") == false)
+    }
+
+    /// A load that fails AFTER a switch still has to settle the new vehicle, or the ladder holds a
+    /// skeleton where it owes an error banner.
+    @Test func detailing_aFailedLoadAfterASwitchStillSettlesTheNewVehicle() async {
+        let viewModel = DetailingViewModel(recordsLoader: { vehicleId in
+            guard vehicleId == "vehicle-a" else { throw GarageLoadFailure() }
+            return [Self.detailingRecord()]
+        })
+
+        await viewModel.load(vehicleId: "vehicle-a")
+        await viewModel.load(vehicleId: "vehicle-b")
+
+        #expect(viewModel.error != nil)
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle-b"))
         #expect(viewModel.isLoading == false)
     }
 
@@ -51,7 +92,7 @@ struct GarageLoadStateTests {
     @Test func parts_beforeAnyLoad_hasNotSettled() {
         let viewModel = PartsViewModel(partsLoader: { _ in [] })
 
-        #expect(viewModel.hasCompletedFirstLoad == false)
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle") == false)
         #expect(viewModel.isLoading == false)
     }
 
@@ -60,7 +101,7 @@ struct GarageLoadStateTests {
 
         await viewModel.load(vehicleId: "vehicle")
 
-        #expect(viewModel.hasCompletedFirstLoad == true)
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle") == true)
         #expect(viewModel.isLoading == false)
         #expect(viewModel.parts.count == 1)
         #expect(viewModel.error == nil)
@@ -72,7 +113,7 @@ struct GarageLoadStateTests {
         await viewModel.load(vehicleId: "vehicle")
 
         #expect(viewModel.error != nil)
-        #expect(viewModel.hasCompletedFirstLoad == true)
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle") == true)
         #expect(viewModel.isLoading == false)
     }
 
@@ -81,7 +122,7 @@ struct GarageLoadStateTests {
     @Test func gallery_beforeAnyLoad_hasNotSettled() {
         let viewModel = GalleryViewModel(photosLoader: { _ in [] })
 
-        #expect(viewModel.hasCompletedFirstLoad == false)
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle") == false)
         #expect(viewModel.isLoading == false)
     }
 
@@ -90,7 +131,7 @@ struct GarageLoadStateTests {
 
         await viewModel.load(vehicleId: "vehicle")
 
-        #expect(viewModel.hasCompletedFirstLoad == true)
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle") == true)
         #expect(viewModel.isLoading == false)
         #expect(viewModel.photos.count == 1)
         #expect(viewModel.error == nil)
@@ -102,7 +143,7 @@ struct GarageLoadStateTests {
         await viewModel.load(vehicleId: "vehicle")
 
         #expect(viewModel.error != nil)
-        #expect(viewModel.hasCompletedFirstLoad == true)
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle") == true)
         #expect(viewModel.isLoading == false)
     }
 
@@ -111,7 +152,7 @@ struct GarageLoadStateTests {
     @Test func warranty_beforeAnyLoad_hasNotSettled() {
         let viewModel = WarrantyViewModel(contentLoader: { _ in .init(warranties: [], recalls: []) })
 
-        #expect(viewModel.hasCompletedFirstLoad == false)
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle") == false)
         #expect(viewModel.isLoading == false)
     }
 
@@ -122,7 +163,7 @@ struct GarageLoadStateTests {
 
         await viewModel.load(vehicleId: "vehicle")
 
-        #expect(viewModel.hasCompletedFirstLoad == true)
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle") == true)
         #expect(viewModel.isLoading == false)
         #expect(viewModel.warranties.count == 1)
         #expect(viewModel.recalls.count == 1)
@@ -135,7 +176,7 @@ struct GarageLoadStateTests {
         await viewModel.load(vehicleId: "vehicle")
 
         #expect(viewModel.error != nil)
-        #expect(viewModel.hasCompletedFirstLoad == true)
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle") == true)
         #expect(viewModel.isLoading == false)
     }
 
@@ -150,7 +191,7 @@ struct GarageLoadStateTests {
         await viewModel.checkForRecalls(vehicle: Self.vehicle())
 
         #expect(viewModel.error != nil)
-        #expect(viewModel.hasCompletedFirstLoad == false)
+        #expect(viewModel.hasCompletedFirstLoad(for: "vehicle") == false)
     }
 
     // MARK: - Fixtures

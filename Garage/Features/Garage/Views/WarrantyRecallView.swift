@@ -123,7 +123,8 @@ struct WarrantyRecallView: View {
     /// See DetailingLogView.isAwaitingLoad: a selected vehicle whose first fetch has not resolved
     /// is loading, not empty.
     private var isAwaitingLoad: Bool {
-        viewModel.isLoading || (appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad)
+        guard let vehicle = appState.currentVehicle else { return viewModel.isLoading }
+        return viewModel.isLoading || !viewModel.hasCompletedFirstLoad(for: vehicle.id)
     }
 
     /// "No … records yet" is a claim about the account's data, so it is only made once a load has

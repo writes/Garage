@@ -12,11 +12,19 @@ final class DetailingViewModel {
     private(set) var records: [DetailingRecord] = []
     private(set) var error: AppError?
     private(set) var isLoading = false
-    /// True once a load has RESOLVED (either way). `records.isEmpty` is also true before the first
-    /// fetch lands, so without this the screen greets every owner WITH records — and every owner
-    /// whose fetch is about to fail — with "No detailing history yet".
-    private(set) var hasCompletedFirstLoad = false
+    /// The vehicle whose load has RESOLVED (either way); nil until one has. `records.isEmpty` is
+    /// also true before the first fetch lands, so without this the screen greets every owner WITH
+    /// records — and every owner whose fetch is about to fail — with "No detailing history yet".
+    ///
+    /// Per-vehicle, not a Bool: `records` holds one vehicle at a time, so a Bool stayed true across
+    /// a vehicle switch and let the next vehicle's first frame skip the loading state entirely.
+    /// Switching back re-shows loading — nothing here is cached per vehicle.
+    private(set) var firstLoadResolvedVehicleId: String?
     private var reloadToken = 0
+
+    func hasCompletedFirstLoad(for vehicleId: String) -> Bool {
+        firstLoadResolvedVehicleId == vehicleId
+    }
 
     init(
         detailingService: DetailingService = .shared,
@@ -33,7 +41,7 @@ final class DetailingViewModel {
         defer {
             if token == reloadToken {
                 isLoading = false
-                hasCompletedFirstLoad = true
+                firstLoadResolvedVehicleId = vehicleId
             }
         }
         do {

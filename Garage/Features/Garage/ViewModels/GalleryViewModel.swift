@@ -12,9 +12,14 @@ final class GalleryViewModel {
     private(set) var photos: [GalleryPhoto] = []
     private(set) var error: AppError?
     private(set) var isLoading = false
-    /// True once a load has RESOLVED (either way) — see `DetailingViewModel.hasCompletedFirstLoad`.
-    private(set) var hasCompletedFirstLoad = false
+    /// The vehicle whose load has RESOLVED (either way) — see
+    /// `DetailingViewModel.firstLoadResolvedVehicleId`.
+    private(set) var firstLoadResolvedVehicleId: String?
     private var reloadToken = 0
+
+    func hasCompletedFirstLoad(for vehicleId: String) -> Bool {
+        firstLoadResolvedVehicleId == vehicleId
+    }
 
     init(
         galleryService: GalleryService = .shared,
@@ -31,7 +36,7 @@ final class GalleryViewModel {
         defer {
             if token == reloadToken {
                 isLoading = false
-                hasCompletedFirstLoad = true
+                firstLoadResolvedVehicleId = vehicleId
             }
         }
         do {

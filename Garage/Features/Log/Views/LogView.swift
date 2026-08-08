@@ -140,7 +140,8 @@ struct LogView: View {
     /// empty state is the honest answer.
     private var isAwaitingFirstLoad: Bool {
         guard appState.hasCompletedInitialVehicleLoad else { return true }
-        return appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad
+        guard let vehicle = appState.currentVehicle else { return false }
+        return !viewModel.hasCompletedFirstLoad(for: vehicle.id)
     }
 
     /// A search or type filter narrows `entries` below `allEntries`; the footer caption and

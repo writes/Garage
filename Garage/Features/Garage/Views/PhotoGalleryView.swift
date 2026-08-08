@@ -62,7 +62,8 @@ struct PhotoGalleryView: View {
     /// See DetailingLogView.isAwaitingLoad. The error branch already existed here; what was missing
     /// was the gate BEFORE it, so the first visit flashed the empty state.
     private var isAwaitingLoad: Bool {
-        viewModel.isLoading || (appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad)
+        guard let vehicle = appState.currentVehicle else { return viewModel.isLoading }
+        return viewModel.isLoading || !viewModel.hasCompletedFirstLoad(for: vehicle.id)
     }
 
     private func load() async {

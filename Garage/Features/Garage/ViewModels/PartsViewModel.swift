@@ -11,9 +11,14 @@ final class PartsViewModel {
     private(set) var parts: [SparePart] = []
     private(set) var error: AppError?
     private(set) var isLoading = false
-    /// True once a load has RESOLVED (either way) — see `DetailingViewModel.hasCompletedFirstLoad`.
-    private(set) var hasCompletedFirstLoad = false
+    /// The vehicle whose load has RESOLVED (either way) — see
+    /// `DetailingViewModel.firstLoadResolvedVehicleId`.
+    private(set) var firstLoadResolvedVehicleId: String?
     private var reloadToken = 0
+
+    func hasCompletedFirstLoad(for vehicleId: String) -> Bool {
+        firstLoadResolvedVehicleId == vehicleId
+    }
 
     init(
         partsService: PartsService = .shared,
@@ -30,7 +35,7 @@ final class PartsViewModel {
         defer {
             if token == reloadToken {
                 isLoading = false
-                hasCompletedFirstLoad = true
+                firstLoadResolvedVehicleId = vehicleId
             }
         }
         do {

@@ -57,7 +57,8 @@ struct DetailingLogView: View {
     /// as "No detailing history yet". Only a screen with NO vehicle skips straight to the empty
     /// state, because nothing will ever be fetched for it.
     private var isAwaitingLoad: Bool {
-        viewModel.isLoading || (appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad)
+        guard let vehicle = appState.currentVehicle else { return viewModel.isLoading }
+        return viewModel.isLoading || !viewModel.hasCompletedFirstLoad(for: vehicle.id)
     }
 
     private func load() async {

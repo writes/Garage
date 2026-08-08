@@ -37,12 +37,10 @@ extension SeedData {
             notes: "HPDE shakedown. Car felt stable under braking; front tires picked up one heat cycle.",
             attachmentPaths: [],
             isResolved: nil,
-            details: [
-                "venue": AnyCodable("Willow Springs"),
-                "eventType": AnyCodable("HPDE"),
-                "bestLapTime": AnyCodable("1:34.821"),
-                "conditions": AnyCodable("Dry")
-            ],
+            details: detailsMap(TrackDayEntry(
+                venueName: "Willow Springs", eventType: .hpde, bestLapTime: "1:34.821",
+                conditions: .dry, heatCyclesAdded: 1
+            )),
             createdAt: daysAgo(6),
             updatedAt: daysAgo(6)
         ),
@@ -59,12 +57,9 @@ extension SeedData {
             notes: "Pre-event oil service with Mobil 1 0W-40 and SRT filter.",
             attachmentPaths: [],
             isResolved: nil,
-            details: [
-                "oilBrand": AnyCodable("Mobil 1"),
-                "oilGrade": AnyCodable("0W-40"),
-                "quantityQuarts": AnyCodable(10.5),
-                "filterBrand": AnyCodable("Mopar SRT")
-            ],
+            details: detailsMap(OilChangeEntry(
+                oilBrand: "Mobil 1", oilGrade: "0W-40", quantityQuarts: 10.5, filterBrand: "Mopar SRT"
+            )),
             createdAt: daysAgo(15),
             updatedAt: daysAgo(15)
         ),
@@ -81,12 +76,10 @@ extension SeedData {
             notes: "Installed track pads and flushed with high-temp fluid.",
             attachmentPaths: [],
             isResolved: nil,
-            details: [
-                "action": AnyCodable("Pads replaced / Fluid flush"),
-                "position": AnyCodable("All"),
-                "padBrand": AnyCodable("G-LOC"),
-                "padCompound": AnyCodable("R12/R10")
-            ],
+            details: detailsMap(BrakeEntry(
+                action: .padsReplaced, position: .all, padBrand: "G-LOC", padCompound: "R12/R10",
+                fluidFlushed: true
+            )),
             createdAt: daysAgo(28),
             updatedAt: daysAgo(28)
         ),
@@ -103,12 +96,10 @@ extension SeedData {
             notes: "Premium 91 fill-up.",
             attachmentPaths: [],
             isResolved: nil,
-            details: [
-                "gallons": AnyCodable(18.4),
-                "pricePerGallon": AnyCodable(4.03),
-                "fuelGrade": AnyCodable("Premium 91"),
-                "mpg": AnyCodable(19.6)
-            ],
+            details: detailsMap(FuelEntry(
+                gallons: 18.4, pricePerGallon: 4.03, totalCost: 74.15, fuelGrade: .premium91,
+                calculatedMPG: 19.6
+            )),
             createdAt: daysAgo(3),
             updatedAt: daysAgo(3)
         )
@@ -231,6 +222,18 @@ extension SeedData {
             attachmentPaths: []
         )
     ]
+
+    /// Encodes seed `details` through the exact path the entry forms use at save time
+    /// (`EntryFormViewModel.makeAnyCodableMap`), so demo data cannot drift from the struct
+    /// `decodedDetails(as:)` reads it back into — hand-written maps silently cost the Stats venue,
+    /// the MPG chart and every edit prefill. The throw is unreachable for these literal structs.
+    private static func detailsMap<T: Encodable>(_ details: T) -> [String: AnyCodable] {
+        do {
+            return try EntryFormViewModel.makeAnyCodableMap(from: details)
+        } catch {
+            preconditionFailure("Seed details for \(T.self) are not encodable: \(error)")
+        }
+    }
 
     private static func daysAgo(_ days: Double) -> Date {
         Date(timeIntervalSinceNow: -86_400 * days)

@@ -20,15 +20,20 @@ final class WarrantyViewModel {
     private(set) var recalls: [Recall] = []
     private(set) var error: AppError?
     private(set) var isLoading = false
-    /// True once a load has RESOLVED (either way) — see `DetailingViewModel.hasCompletedFirstLoad`.
+    /// The vehicle whose load has RESOLVED (either way) — see
+    /// `DetailingViewModel.firstLoadResolvedVehicleId`.
     /// Deliberately NOT touched by `checkForRecalls`, which reports through `isCheckingRecalls`.
-    private(set) var hasCompletedFirstLoad = false
+    private(set) var firstLoadResolvedVehicleId: String?
     private var reloadToken = 0
 
     private(set) var isCheckingRecalls = false
     /// Set after a successful check so the screen can report "nothing found" — otherwise a lookup
     /// that legitimately returns zero recalls is indistinguishable from one that did nothing.
     private(set) var lastRecallCheck: String?
+
+    func hasCompletedFirstLoad(for vehicleId: String) -> Bool {
+        firstLoadResolvedVehicleId == vehicleId
+    }
 
     init(
         warrantyService: WarrantyService = .shared,
@@ -77,7 +82,7 @@ final class WarrantyViewModel {
         defer {
             if token == reloadToken {
                 isLoading = false
-                hasCompletedFirstLoad = true
+                firstLoadResolvedVehicleId = vehicleId
             }
         }
         do {

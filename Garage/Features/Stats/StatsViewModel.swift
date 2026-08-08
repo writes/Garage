@@ -39,13 +39,20 @@ final class StatsViewModel {
     private(set) var wearItems: [WearItem] = []
     private(set) var error: AppError?
     private(set) var isLoading = false
-    /// True once a load has RESOLVED (either way). `hasContent` alone is also false before the
-    /// first fetch lands — and Stats is now built on first selection, so that frame happens on
-    /// every first visit; without this the tab would greet a Pro owner with "No stats data yet".
-    private(set) var hasCompletedFirstLoad = false
+    /// The vehicle whose load has RESOLVED (either way); nil until one has. `hasContent` alone is
+    /// also false before the first fetch lands — and Stats is now built on first selection, so that
+    /// frame happens on every first visit; without this the tab would greet a Pro owner with "No
+    /// stats data yet". Per-vehicle because `entries`/`wearItems` hold one vehicle at a time: as a
+    /// Bool it stayed true across a vehicle switch, so the new vehicle's first frame skipped the
+    /// loading state and charted the previous one's history.
+    private(set) var firstLoadResolvedVehicleId: String?
     var hasContent: Bool { !entries.isEmpty || !wearItems.isEmpty }
     private var reloadToken = 0
     private var lastLoadedKey: LoadKey?
+
+    func hasCompletedFirstLoad(for vehicleId: String) -> Bool {
+        firstLoadResolvedVehicleId == vehicleId
+    }
 
     init(
         entryService: EntryService = .shared,
@@ -78,7 +85,7 @@ final class StatsViewModel {
         defer {
             if token == reloadToken {
                 isLoading = false
-                hasCompletedFirstLoad = true
+                firstLoadResolvedVehicleId = vehicleId
             }
         }
         do {

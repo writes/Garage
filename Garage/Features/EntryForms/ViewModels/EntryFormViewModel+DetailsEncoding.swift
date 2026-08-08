@@ -2,10 +2,13 @@ import Foundation
 
 // Split out of EntryFormViewModel.swift to stay under the file cap (matching the
 // +EditPrefill/+Attachments split precedent). `internal`, not `private`, purely because these
-// are called from the main file's makePendingEntry/scheduleFirstEntryFollowUp — nothing outside
-// EntryFormViewModel itself uses them.
+// are called from the main file's makePendingEntry/scheduleFirstEntryFollowUp — plus SeedData,
+// which encodes its demo `details` maps through this same path so they cannot drift.
 extension EntryFormViewModel {
-    static func makeAnyCodableMap<T: Encodable>(from value: T) throws -> [String: AnyCodable] {
+    /// `nonisolated` because it is pure, and SeedData's caller is a static initializer that runs
+    /// off the main actor. Every `details` map in the app is built here, so the one thing that
+    /// reads them back (`FirestoreEntry.decodedDetails(as:)`) has exactly one shape to expect.
+    nonisolated static func makeAnyCodableMap<T: Encodable>(from value: T) throws -> [String: AnyCodable] {
         let data = try JSONEncoder().encode(value)
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return [:]
@@ -98,8 +101,15 @@ extension EntryFormViewModel {
         return String(format: "%.2f", value)
     }
 
-    static func wrap(any: Any) -> AnyCodable {
+    /// The Bool case comes first, and matches on CFTypeID rather than a cast, because
+    /// `JSONSerialization` returns every number as an NSNumber and `NSNumber as? Int` succeeds for
+    /// a JSON `true`. Ordered any other way, a Bool detail field is stored as 1 and its whole
+    /// struct then fails to decode — `BrakeEntry.fluidFlushed` is the one in the app today, and
+    /// that is exactly how brake entries came back to their form blank.
+    nonisolated static func wrap(any: Any) -> AnyCodable {
         switch any {
+        case let value as NSNumber where CFGetTypeID(value) == CFBooleanGetTypeID():
+            return AnyCodable(value.boolValue)
         case let value as String:
             return AnyCodable(value)
         case let value as Int:

@@ -54,7 +54,8 @@ struct WheelGalleryView: View {
 
     /// See PhotoGalleryView.isAwaitingLoad — same gate, same reason.
     private var isAwaitingLoad: Bool {
-        viewModel.isLoading || (appState.currentVehicle != nil && !viewModel.hasCompletedFirstLoad)
+        guard let vehicle = appState.currentVehicle else { return viewModel.isLoading }
+        return viewModel.isLoading || !viewModel.hasCompletedFirstLoad(for: vehicle.id)
     }
 
     private func load() async {
