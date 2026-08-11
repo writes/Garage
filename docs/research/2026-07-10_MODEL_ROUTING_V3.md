@@ -476,3 +476,24 @@ ledger-visible-to-review; Q2 R54 preflight breadth; Q3 artifact Markdown escapin
 Q4 OS-level lane isolation (the standing limitation, if ever worth solving at this layer);
 Q5 per-area review mode in tri_review (scripts-only pathspec) so giant meta-diffs stop
 degrading the Gemini lane.
+
+---
+
+## Addendum 2026-08-11 — Grok advisory lane (RECONSTRUCTED)
+
+> ⚠️ RECONSTRUCTION NOTE: the original uncommitted version of this addendum was destroyed by
+> an agent `git reset --hard` on 2026-08-11 (see PR #70 and machine memory
+> `reset-hard-clobbered-doctrine`). This text was rebuilt from the same-day machine doctrine
+> (the Grok-status block in CLAUDE/AGENTS/GEMINI §5 and `~/.claude/doctrine/MODEL_LANES.md`).
+> Operator: skim and correct if the original said more.
+
+- **`grok` (grok-4.5) is an OPTIONAL advisory CLI on this machine — NOT a Law-1 voter.**
+  The 3-voter roster (`claude` + `codex` + `agy`) is FROZEN pending
+  `~/.claude/doctrine/evals/` intake artifacts; `tri_agent_vote.py`'s majority math assumes
+  exactly 3 voters — never add a 4th by fiat.
+- Grok's owned advisory classes (G1–G5: adversarial critique, extraction, parallel legwork,
+  non-verdict opinions, web sniffs) are specified in `~/.claude/doctrine/MODEL_LANES.md`;
+  its outputs are INPUTS, never verdicts (trust boundary unchanged).
+- Lane invocation for this repo goes through `~/.claude/scripts/delegate.sh grok <spec> <timeout>`
+  with an explicit timeout; process-leak rules (landmine #14) apply to grok spawns like every
+  other lane.

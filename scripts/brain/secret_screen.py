@@ -23,8 +23,13 @@ SECRET_PATTERNS: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
     ("JWT", re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.")),
     ("GitHub token", re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}")),
     ("GitHub fine-grained PAT", re.compile(r"github_pat_[A-Za-z0-9_]{20,}")),
-    ("OpenAI key", re.compile(r"sk-(?!ant-)[A-Za-z0-9_-]{20,}")),
-    ("Anthropic key", re.compile(r"sk-ant-[A-Za-z0-9-]{20,}")),
+    # The lookbehind is load-bearing (RECONSTRUCTED 2026-08-11 after an agent reset --hard
+    # destroyed the original uncommitted fix): without it, "sk-" matches INSIDE ordinary
+    # hyphenated words — the assay slug "ask-garage-history-aware-ai-chat" blocked a Law-1
+    # vote as a false-positive "OpenAI key" on 2026-08-07. A real key is never immediately
+    # preceded by a letter or digit.
+    ("OpenAI key", re.compile(r"(?<![A-Za-z0-9])sk-(?!ant-)[A-Za-z0-9_-]{20,}")),
+    ("Anthropic key", re.compile(r"(?<![A-Za-z0-9])sk-ant-[A-Za-z0-9-]{20,}")),
     ("Stripe secret key", re.compile(r"[rs]k_(?:live|test)_[A-Za-z0-9]{16,}")),
     ("Slack token", re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}")),
     (
@@ -101,6 +106,9 @@ def _selftest() -> int:
     check("anthropic key detected", "Anthropic key" in secret_scan("x sk-ant-" + "a1b2c3d4e5" * 3))
     check("openai key not confused with anthropic",
           secret_scan("sk-ant-" + "a1" * 12) == ["Anthropic key"])
+    check("openai key still detected standalone", "OpenAI key" in secret_scan("key sk-" + "b2" * 12))
+    check("hyphenated words are not keys (ask-garage regression)",
+          secret_scan("assay 2026-08-02_ask-garage-history-aware-ai-chat revisit") == [])
     redacted, labels = redact_secret_content("key: sk-ant-" + "a1b2c3d4e5" * 3 + " end")
     check("redaction removes value", "sk-ant-" not in redacted and "[REDACTED: Anthropic key]" in redacted)
     check("redaction reports label", labels == ["Anthropic key"])
