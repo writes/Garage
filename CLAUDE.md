@@ -140,6 +140,12 @@ validation spec in `docs/research/YYYY-MM-DD_*.md` (with a death condition).
 
 ## 5. Required CLIs & landmines (read before you trip — full catalog in the blueprint §10)
 
+**Grok status (2026-08-11, machine doctrine):** `grok` (grok-4.5) is an OPTIONAL advisory CLI on
+this machine — NOT a Law-1 voter. The 3-voter roster (`claude`+`codex`+`agy`) is FROZEN pending
+`~/.claude/doctrine/evals/` intake; `tri_agent_vote.py` majority math assumes exactly 3 — never
+add a 4th voter by fiat. Grok's owned advisory classes: `~/.claude/doctrine/MODEL_LANES.md`.
+
+
 Voters/tools (all present in this install): `claude` (orchestrator+voter+reviewer),
 `codex` (voter+implementer — **always feed prompt on STDIN; bare `codex exec` HANGS**),
 `agy` (preferred Gemini voter — **never `agy models` (HANGS); always `agy -p "…"

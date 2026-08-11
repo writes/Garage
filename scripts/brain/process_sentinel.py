@@ -192,7 +192,11 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--kill-orphans", action="store_true",
                     help="SIGTERM matched processes whose parent is dead (ppid==1) — true orphans only")
+    ap.add_argument("--session-hook", action="store_true",
+                    help="warn-only mode for SessionStart hooks: print findings, never kill, ALWAYS exit 0")
     args = ap.parse_args()
+    if args.session_hook:
+        args.kill_orphans = False
 
     suspects = evaluate(snapshot())
     killed = []
@@ -218,6 +222,8 @@ def main() -> int:
             if killed:
                 print(f"  reaped orphans: {killed}")
             print("  action: verify each against its owning session (HANDOFF/contention rules) before killing.")
+    if args.session_hook:
+        return 0  # warn-only: a hook must never fail the session-start chain
     return 0 if not suspects else 1
 
 
