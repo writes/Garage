@@ -24,7 +24,8 @@ exactly these weights or a kill — nothing else.
 - **Unit:** the INSTALLATION (install-scoped UUID assignment; `user_pseudo_id` analysis key —
   P0.3, ratified 2026-08-12 UNANIMOUS, ledger group `ea4de5ac0c6fb564` @ the 2026-08-12
   vote-session timestamps — cite timestamp+group).
-- **Eligible binary/build:** `________` (record at enrollment). SQL commit: `________`.
+- **Eligible binary/build:** `________` (record at enrollment). SQL commit: `49ee3b9`
+  (`arm_composite.sql` as merged in PR #74; re-pin here if the SQL changes before enrollment).
 - **Rollout start:** `________` · **Exposure cutoff:** `________` · **Observation cutoff:**
   `________` (7-day maturity) · **Calendar decision date (UTC):** `________` ·
   **Data-lag allowance:** `________` · **Operator:** `________`.
@@ -36,20 +37,44 @@ exactly these weights or a kill — nothing else.
 Components (Beta(1,1) posterior, 20,000 deterministic draws, mean-of-P(best) composite —
 mechanics unchanged): activation rate · D7 return rate · **paywall REACH (intent-to-treat:
 mature exposed installations viewing the paywall / all mature exposed installations —
-replaces the epoch-1 CTR whose denominator was post-treatment; Sol B6)** · purchase rate.
+replaces the epoch-1 CTR whose denominator was post-treatment; Sol B6)**.
 
-**Purchase-rate weight:** retained at equal weight ONLY if the operating-characteristic
-simulation (below) supports it at the chosen sample floor; otherwise demoted to descriptive
-tiebreaker per the 2026-07-30 metrics plan.
+**Purchase-rate weight: DEMOTED to descriptive tiebreaker** — the pre-registered conditional
+fired on evidence (2026-08-12): the checked-in OC simulation
+(`docs/research/2026-08-12_OC_SIMULATION_design_megatest.md`, merged `0984cf1`) shows that at
+purchase baselines 0.02–0.05 a +15% relative lift yields mean P(best) ≈ 0.648 at N=1000
+(~20 conversions/arm; the posterior cannot separate), dragging the expected composite by
+≈ 0.064 points and making 80% detection unreachable at every tested N (71.8% max at 3000).
+The primary composite is therefore the **mean of THREE** per-component P(best) values
+(activation · D7 return · ITT paywall reach), per the 2026-07-30 metrics plan's original
+tiebreaker designation. Purchase rate is still computed, reported, and used descriptively.
+Analytic null false-positive rate of the 3-component rule: ≈ 1.07% per arm (~2.1% either
+arm), independent of N — still far under the 5% bar.
+
+**Interpretation constraint (from the OC simulation):** the composite detects BROAD
+multi-component movement only. A single-component lift plateaus at chance-level detection
+(≈ 1.1%, the Irwin–Hall tail) at every N — the epoch-2 result must never be quoted as a
+verdict on any individual metric. Registered detectable effect class: all components
++15% relative.
 
 ## Sample floor & OC simulation (replaces the unjustified 500)
 
-- **REQUIRED before enrollment:** a checked-in simulation (`scripts/analytics/oc_simulation.py`,
-  to be written in Phase 3) over plausible baseline rates establishing: minimum worthwhile
-  lift per component, expected-loss ceiling, per-arm mature-installation floor, and the
-  power/false-positive characteristics of the P(best) ≥ 0.90 rule at that floor.
-- Per-arm floor: `________ installations` (from the simulation; 500 is the inherited
-  placeholder, not the commitment).
+- **REQUIREMENT MET (2026-08-12):** the checked-in simulation (`scripts/analytics/oc_simulation.py`,
+  PR #78, merged `0984cf1`; selftest-pinned bit-identical to `experiment_report.summarize`;
+  Gemini 3.1 Pro (High) cross-checked) characterizes the frozen rule over 36 plausible baseline
+  points × 14 effect scenarios × 5 per-arm Ns × 400 replicates. Null FPR ≈ 0.2% at every N on
+  the 4-component rule (Irwin–Hall analytic ≈ 0.107%/arm); the floor is detection-driven, not
+  FPR-driven. Note: the frozen rule contains no expected-loss term, so the simulation
+  characterizes threshold power/FPR only — the "expected-loss ceiling" wording in the original
+  requirement is void by construction.
+- **Per-arm floor: 1800 mature installations, with a pre-registered extension rule**
+  (Law-1 vote 2026-08-12T18:06:13Z, group `9674af0cd9208c94`, unanimous 3/3): when each arm
+  reaches 1800 mature installations, compute the POOLED (arms-combined, never arm-split — a
+  nuisance-parameter check, not an outcome peek) observed baseline rates; if pooled activation
+  ≤ 0.30 or pooled D7 return ≤ 0.10 (the unfavourable grid corner), the floor extends to 3000.
+  Power for the registered effect class ("all +15%", 3-component rule): 84.0% pooled at 1800
+  (worst grid point 63.2%); 86.8% worst-point at 3000. The inherited 500 detects the same
+  effect 38.1% of the time and is REJECTED.
 
 ## Guardrails
 
