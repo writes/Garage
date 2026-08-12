@@ -118,6 +118,32 @@ struct ThemeRoutingTests {
         }
     }
 
+    /// The chamfer hook must reproduce the FROZEN concept geometry (tri-review finding): the
+    /// concept's card cuts exactly ONE corner — the top right — so that is the hook's default,
+    /// and the path it draws is point-for-point the concept's clip-path polygon.
+    @Test func theChamferHookDefaultsToTheConceptsSingleTopRightCut() {
+        #expect(DesignCorner(radius: 0, chamfer: 18).chamferedCorners == .topRight)
+
+        let rect = CGRect(x: 0, y: 0, width: 100, height: 100)
+        var concept = Path()
+        concept.move(to: .zero)
+        concept.addLine(to: CGPoint(x: 82, y: 0))
+        concept.addLine(to: CGPoint(x: 100, y: 18))
+        concept.addLine(to: CGPoint(x: 100, y: 100))
+        concept.addLine(to: CGPoint(x: 100, y: 100))
+        concept.addLine(to: CGPoint(x: 0, y: 100))
+        concept.addLine(to: CGPoint(x: 0, y: 100))
+        concept.addLine(to: .zero)
+        concept.closeSubpath()
+        let drawn = ChamferedRectangle(chamfer: 18).path(in: rect)
+        #expect(drawn.description == concept.description)
+
+        // The symmetric all-corner cut stays expressible for a future pack.
+        let symmetric = ChamferedRectangle(chamfer: 18, corners: .all).path(in: rect)
+        #expect(symmetric.description != drawn.description)
+        #expect(symmetric.boundingRect == rect)
+    }
+
     /// The appearance chokepoint's source. Control is nil — no preference, follow the system, the
     /// app's behaviour since launch — and a pack that commits to one world says so here.
     @Test func theAppearanceComesFromTheActivePack() {

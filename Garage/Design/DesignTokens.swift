@@ -96,16 +96,33 @@ struct DesignRadius: Equatable, Sendable {
     let full: CGFloat
 }
 
+/// The corners a chamfer cuts. The adopted concept's card geometry cuts exactly ONE corner —
+/// the top right (`clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%)`,
+/// underhood concept CSS) — so `.topRight` is the DEFAULT: the hook's resting state must be able
+/// to reproduce the frozen design without a call-site opt-in (tri-review finding). `.all` stays
+/// expressible for a future pack that wants the symmetric cut.
+struct DesignCornerSet: OptionSet, Equatable, Sendable {
+    let rawValue: Int
+
+    static let topLeft = DesignCornerSet(rawValue: 1 << 0)
+    static let topRight = DesignCornerSet(rawValue: 1 << 1)
+    static let bottomLeft = DesignCornerSet(rawValue: 1 << 2)
+    static let bottomRight = DesignCornerSet(rawValue: 1 << 3)
+    static let all: DesignCornerSet = [.topLeft, .topRight, .bottomLeft, .bottomRight]
+}
+
 /// Corner geometry for one component class. `chamfer` is the concept-geometry hook: 0 — control
 /// everywhere — is exactly the `RoundedRectangle(cornerRadius:)` every surface clips to today; a
-/// positive value CUTS the corner instead of rounding it.
+/// positive value CUTS the named corners instead of rounding them.
 struct DesignCorner: Equatable, Sendable {
     let radius: CGFloat
     let chamfer: CGFloat
+    let chamferedCorners: DesignCornerSet
 
-    init(radius: CGFloat, chamfer: CGFloat = 0) {
+    init(radius: CGFloat, chamfer: CGFloat = 0, chamferedCorners: DesignCornerSet = .topRight) {
         self.radius = radius
         self.chamfer = chamfer
+        self.chamferedCorners = chamferedCorners
     }
 
     var isChamfered: Bool { chamfer > 0 }
@@ -115,28 +132,37 @@ struct DesignCorner: Equatable, Sendable {
     /// `RoundedRectangle` it replaced.
     var shape: AnyShape {
         isChamfered
-            ? AnyShape(ChamferedRectangle(chamfer: chamfer))
+            ? AnyShape(ChamferedRectangle(chamfer: chamfer, corners: chamferedCorners))
             : AnyShape(RoundedRectangle(cornerRadius: radius))
     }
 }
 
-/// A rectangle whose corners are cut rather than rounded. Unused by control — it exists so the
-/// `chamfer` token is a real hook and not a field nothing can honour.
+/// A rectangle whose named corners are cut rather than rounded. Unused by control — it exists so
+/// the `chamfer` token is a real hook and not a field nothing can honour. With `corners:
+/// .topRight` (the default) and an 18pt cut this is point-for-point the concept's card
+/// `clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%)`.
 struct ChamferedRectangle: Shape {
     let chamfer: CGFloat
+    var corners: DesignCornerSet = .topRight
 
     func path(in rect: CGRect) -> Path {
         // Clamped so an oversized chamfer degrades to a diamond instead of self-intersecting.
         let cut = max(0, min(chamfer, min(rect.width, rect.height) / 2))
+        let topLeft = corners.contains(.topLeft) ? cut : 0
+        let topRight = corners.contains(.topRight) ? cut : 0
+        let bottomRight = corners.contains(.bottomRight) ? cut : 0
+        let bottomLeft = corners.contains(.bottomLeft) ? cut : 0
+        // An un-cut corner contributes coincident points, which a Path renders as the square
+        // corner itself — one code path serves every combination.
         var path = Path()
-        path.move(to: CGPoint(x: rect.minX + cut, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX - cut, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + cut))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - cut))
-        path.addLine(to: CGPoint(x: rect.maxX - cut, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX + cut, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - cut))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + cut))
+        path.move(to: CGPoint(x: rect.minX + topLeft, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - topRight, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + topRight))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - bottomRight))
+        path.addLine(to: CGPoint(x: rect.maxX - bottomRight, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX + bottomLeft, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - bottomLeft))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + topLeft))
         path.closeSubpath()
         return path
     }
