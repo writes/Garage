@@ -100,6 +100,21 @@ shared view hierarchy; no forked screens. DesignPack v2 covers the full `Theme.*
 surface + appearance control + component styles + the manifest's structural chokepoints.
 AccentScheme composes within themes (Underhood default amber, accents allowed).
 
+**Phase 1 engine — where it lives (built, control-identical, no content):**
+`Garage/Design/DesignTokens.swift` (colour/type/spacing/radius/corner value types, incl. the
+chamfer hook) · `DesignComponents.swift` (card, primary/secondary button, FAB, tab bar) ·
+`DesignStructure.swift` (the CLOSED manifest-§2 hooks: tab configuration, Hood trends row,
+settings accessory, framing copy) · `DesignPack.swift` (the pack + `DesignPackStore`) ·
+`DesignPack+Arms.swift` (the per-arm literals — raw values, never `Theme.*` reads).
+`Theme` is now pure routing: every token is a `@MainActor` computed read of the active pack,
+so all ~412 existing call sites resolve through it unchanged and stay live-reactive to a kill
+switch. Consumers wired in Phase 1: the four component chokepoints, the appearance chokepoint
+(`preferredColorScheme` in `ContentView`, control = nil = follow the system) and the tab
+configuration in `ContentView.mainTabs`. The remaining structural hooks ship with control
+values, tested and unconsumed, for waves U1′–U4′. `DesignPackControlPinTests` pins every
+control token to its pre-refactor literal — the control-stability contract until §6.3's pixel
+snapshots land.
+
 **Phase 2 = full Underhood, explicitly (Sol B4)** — re-anchored waves with acceptance
 criteria per wave; every concept feature either implemented or listed as an
 operator-approved cut:

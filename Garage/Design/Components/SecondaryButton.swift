@@ -5,16 +5,17 @@ struct SecondaryButton: View {
     var action: () -> Void
 
     var body: some View {
+        let style = DesignPackStore.shared.pack.components.secondaryButton
         Button(title, action: action)
-            .font(Theme.Typography.headline)
+            .font(style.labelFont)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, Theme.Spacing.md)
+            .padding(.vertical, style.verticalPadding)
             .foregroundStyle(Theme.Colors.primary)
             .background(Theme.Colors.surface)
             .overlay {
-                RoundedRectangle(cornerRadius: Theme.Radius.md)
-                    .stroke(Theme.Colors.primary.opacity(0.15), lineWidth: 1)
+                style.corner.shape
+                    .stroke(Theme.Colors.primary.opacity(style.borderOpacity), lineWidth: style.borderWidth)
             }
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
+            .clipShape(style.corner.shape)
     }
 }

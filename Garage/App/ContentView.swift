@@ -42,6 +42,10 @@ struct ContentView: View {
         .sensoryFeedback(.success, trigger: feedback.successCount)
         .sensoryFeedback(.warning, trigger: feedback.warningCount)
         .sensoryFeedback(.impact(weight: .light), trigger: feedback.lightImpactCount)
+        // The appearance chokepoint: applied ONCE, at the root of the experiment surface, and read
+        // inside a body so a mid-session kill restyles without a relaunch. Control's pack carries
+        // nil — "no preference" — which is exactly today's behaviour, the system appearance.
+        .preferredColorScheme(DesignPackStore.shared.pack.appearance)
     }
 
     private var mainTabs: some View {
@@ -49,14 +53,16 @@ struct ContentView: View {
             get: { appState.selectedTab },
             set: { appState.selectedTab = $0 }
         )) {
+            // The routing chokepoint: labels, symbols and ORDER come from the active pack's
+            // structure (arm manifest §2.1). Control's structure is today's five tabs, in today's
+            // order, with today's labels — the tab bar does not move.
+            //
             // Every tab is built on FIRST SELECTION, not at launch: an eager TabView fired the
             // Dashboard, Log and Stats fetches concurrently before the owner had seen anything but
             // the Dashboard. Content is kept once built, so switching tabs never refetches.
-            lazyTab(.dashboard) { DashboardView() }
-            lazyTab(.log) { LogView() }
-            lazyTab(.garage) { GarageView() }
-            lazyTab(.stats) { StatsView() }
-            lazyTab(.settings) { SettingsView() }
+            ForEach(DesignPackStore.shared.pack.structure.tabs) { item in
+                lazyTab(item)
+            }
         }
         .overlay(alignment: .bottomTrailing) {
             if appState.selectedTab == .dashboard || appState.selectedTab == .log {
@@ -72,12 +78,23 @@ struct ContentView: View {
         .vehicleSyncHost()
     }
 
-    private func lazyTab(
-        _ tab: AppTab, @ViewBuilder content: @escaping () -> some View
-    ) -> some View {
-        LazyTabContent(tab: tab, selection: appState.selectedTab, content: content)
-            .tag(tab)
-            .tabItem { Label(tab.rawValue, systemImage: tab.icon) }
+    private func lazyTab(_ item: DesignTabItem) -> some View {
+        LazyTabContent(tab: item.tab, selection: appState.selectedTab) { root(for: item.tab) }
+            .tag(item.tab)
+            .tabItem { Label(item.title, systemImage: item.systemImage) }
+    }
+
+    /// The shipped root each tab identity hosts. Deliberately NOT part of the pack: every arm
+    /// hosts the same view hierarchy per tab, so only the framing around these is themeable.
+    @ViewBuilder
+    private func root(for tab: AppTab) -> some View {
+        switch tab {
+        case .dashboard: DashboardView()
+        case .log: LogView()
+        case .garage: GarageView()
+        case .stats: StatsView()
+        case .settings: SettingsView()
+        }
     }
 
     @ViewBuilder
