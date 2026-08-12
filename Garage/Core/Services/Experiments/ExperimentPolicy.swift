@@ -13,6 +13,11 @@ enum ExperimentOverrideRejection: String, Equatable, Sendable {
     /// A stale document at an OLDER epoch carrying something other than a kill; rolling the
     /// epoch backwards re-hashes users into a retired roster.
     case rollsBackTheEpoch = "rolls_back_the_epoch"
+    /// A non-kill override at the epoch of a bundled KILL. A bundled kill is a build-level
+    /// verdict (epoch 1 was killed by the operator and the bundle records it); the only way
+    /// forward is a NEW epoch in an enrollment build — a server document cannot resurrect a
+    /// roster this binary considers closed.
+    case revivesAKilledEpoch = "revives_a_killed_epoch"
 }
 
 /// The rules an effective experiment definition must satisfy before this build will run it.
@@ -36,6 +41,9 @@ enum ExperimentPolicy {
         // A kill is always honoured — it is the one change that cannot wait for a build, and
         // it only ever moves users toward control.
         if override.isKilled { return nil }
+        // A killed bundled epoch cannot be re-opened from the server at the same (or a lower)
+        // epoch — re-opening is an epoch bump in an enrollment build, never a document edit.
+        if bundled.isKilled { return .revivesAKilledEpoch }
         if override.epoch < bundled.epoch { return .rollsBackTheEpoch }
         return override.allocations == bundled.allocations ? nil : .reweightsAnOpenEpoch
     }

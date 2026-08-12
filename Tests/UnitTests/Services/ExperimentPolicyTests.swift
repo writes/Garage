@@ -64,6 +64,34 @@ struct ExperimentPolicyTests {
         ) == nil)
     }
 
+    /// The bundled epoch-1 kill (operator, 2026-08-11T19:34Z) is a build-level verdict: a
+    /// server document restating the same epoch open again — even with the exact bundled
+    /// allocation — must not resurrect the closed roster. Re-opening is an epoch bump in an
+    /// enrollment build.
+    @Test func aKilledBundledEpochCannotBeRevivedByADocumentEdit() {
+        let killedBundle = definition(isKilled: true)
+        #expect(ExperimentPolicy.rejection(
+            of: definition(), against: killedBundle
+        ) == .revivesAKilledEpoch)
+        // A lower-epoch non-kill against a killed bundle is a revival too, not a rollback.
+        #expect(ExperimentPolicy.rejection(
+            of: definition(epoch: 0), against: killedBundle
+        ) == .revivesAKilledEpoch)
+        // Restating the kill is fine, and the epoch-bump path stays open for enrollment.
+        #expect(ExperimentPolicy.rejection(
+            of: definition(isKilled: true), against: killedBundle
+        ) == nil)
+        #expect(ExperimentPolicy.rejection(
+            of: definition(epoch: 2), against: killedBundle
+        ) == nil)
+    }
+
+    /// The shipped bundle itself records the epoch-1 kill — a fresh install renders control
+    /// before its first registry fetch, not the retired epoch-1 challenger.
+    @Test func theShippedBundleRecordsTheEpochOneKill() {
+        #expect(ExperimentRegistry.bundled.definition(for: .designMegatest)?.isKilled == true)
+    }
+
     @Test func aStaleLowerEpochMayNotRollTheRosterBack() {
         // Even an exact restatement of the older allocation: adopting it would drag the client
         // back onto a retired epoch and re-expose everyone under it.

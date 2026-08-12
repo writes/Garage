@@ -33,13 +33,14 @@ type SanitizedDefinition = {
 /// clamp below needs the CURRENT epoch and its frozen weights to judge an override; Swift's
 /// ExperimentContractTests parses this file and diffs both against the Swift source, so the
 /// two copies cannot drift apart silently.
-const BUNDLED_REGISTRY: Record<string, { epoch: number; allocations: SanitizedAllocation[] }> = {
+const BUNDLED_REGISTRY: Record<string, { epoch: number; allocations: SanitizedAllocation[]; isKilled: boolean }> = {
   design_megatest: {
     epoch: 1,
     allocations: [
       { arm: "control", weight: 1 },
       { arm: "variant_a", weight: 1 },
     ],
+    isKilled: true,
   },
 };
 
@@ -70,6 +71,9 @@ function overrideRejection(definition: SanitizedDefinition): string | undefined 
   // A kill is always honoured — the one change that cannot wait for a build, and it only ever
   // moves users toward control.
   if (definition.isKilled) return undefined;
+  // A killed bundled epoch cannot be re-opened by a document edit — re-opening is an epoch
+  // bump in an enrollment build (mirrors ExperimentPolicy.revivesAKilledEpoch).
+  if (bundled.isKilled) return "revives_a_killed_epoch";
   if (definition.epoch < bundled.epoch) return "rolls_back_the_epoch";
   const sameWeights =
     definition.allocations.length === bundled.allocations.length &&

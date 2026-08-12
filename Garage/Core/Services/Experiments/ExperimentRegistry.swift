@@ -44,9 +44,13 @@ struct ExperimentRegistry: Equatable, Sendable {
         definitions.first { $0.id == id }
     }
 
-    /// The shipped roster. Wave 1 of the design megatest: control vs variant_a, 50/50,
-    /// epoch 1. Adding a design later = append its allocation AND bump the epoch, per the
-    /// pre-registration doc (docs/research/2026-07-30_EXPERIMENT_design_megatest.md).
+    /// The shipped roster. Epoch 1 of the design megatest was KILLED server-side by the
+    /// operator on 2026-08-11T19:34Z (epoch-2 addendum records it) — the bundle must agree,
+    /// or a fresh install renders the partial epoch-1 challenger between first paint and its
+    /// first registry fetch and logs quarantine-only exposure rows. A killed bundled epoch is
+    /// silent control everywhere (P0.1 semantics: sticky assignments suppressed, surveys
+    /// included). Epoch 2 re-opens ONLY via a deliberate bundle bump in the enrollment build,
+    /// with the allocations the addendum registers.
     static let bundled = ExperimentRegistry(definitions: [
         ExperimentDefinition(
             id: .designMegatest,
@@ -55,7 +59,7 @@ struct ExperimentRegistry: Equatable, Sendable {
                 ArmAllocation(arm: .control, weight: 1),
                 ArmAllocation(arm: .variantA, weight: 1)
             ],
-            isKilled: false
+            isKilled: true
         )
     ])
 }
