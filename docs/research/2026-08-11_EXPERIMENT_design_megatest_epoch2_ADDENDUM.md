@@ -22,7 +22,8 @@ exactly these weights or a kill — nothing else.
   registry, enrolled via the fail-closed gate (control render + no exposure until the
   effective registry resolves; exposure recorded atomically with treatment).
 - **Unit:** the INSTALLATION (install-scoped UUID assignment; `user_pseudo_id` analysis key —
-  P0.3, ratified `____-__-__` ledger `________`).
+  P0.3, ratified 2026-08-12 UNANIMOUS, ledger group `ea4de5ac0c6fb564` @ the 2026-08-12
+  vote-session timestamps — cite timestamp+group).
 - **Eligible binary/build:** `________` (record at enrollment). SQL commit: `________`.
 - **Rollout start:** `________` · **Exposure cutoff:** `________` · **Observation cutoff:**
   `________` (7-day maturity) · **Calendar decision date (UTC):** `________` ·
