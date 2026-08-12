@@ -94,6 +94,30 @@ struct ThemeRoutingTests {
         #expect(Theme.Colors.primary == AccentScheme.marine.tint)
     }
 
+    /// EXPLICIT Classic is a choice, not the absence of one (tri-review B2): a user who
+    /// deliberately picked Classic keeps BrandPrimary inside a pack whose own default differs —
+    /// only "never chose" (nil themeID, sign-out wipe, bad persisted value) takes the pack
+    /// default. Collapsing the two is exactly the defect this pins against.
+    @Test func anExplicitClassicChoiceBeatsThePackDefaultAccent() {
+        AccentStore.shared.apply(themeID: nil)
+        defer { AccentStore.shared.apply(themeID: nil) }
+
+        withProbe { probe in
+            AccentStore.shared.apply(themeID: AccentScheme.classic.rawValue)
+            #expect(Theme.Colors.primary == AccentScheme.classic.tint)
+            #expect(Theme.Colors.primary != probe.colors.accentDefault.color)
+
+            // The wipe restores the pack default — an account switch must not inherit the
+            // previous user's explicitness any more than their accent.
+            AccentStore.shared.apply(themeID: nil)
+            #expect(Theme.Colors.primary == probe.colors.accentDefault.color)
+
+            // An unrecognized persisted value is not a choice either.
+            AccentStore.shared.apply(themeID: "not-a-scheme")
+            #expect(Theme.Colors.primary == probe.colors.accentDefault.color)
+        }
+    }
+
     /// The appearance chokepoint's source. Control is nil — no preference, follow the system, the
     /// app's behaviour since launch — and a pack that commits to one world says so here.
     @Test func theAppearanceComesFromTheActivePack() {

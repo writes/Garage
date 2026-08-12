@@ -43,13 +43,22 @@ enum AccentScheme: String, CaseIterable, Identifiable, Sendable {
 final class AccentStore {
     static let shared = AccentStore()
 
-    var scheme: AccentScheme = .classic
+    /// The scheme the user EXPLICITLY chose (a valid persisted themeID), or nil when no choice is
+    /// on record. The distinction is load-bearing for `Theme.Colors.primary`: an explicit pick —
+    /// including explicit Classic — wins over the active pack's default accent, while "never
+    /// chose" takes the pack default (arm manifest §1, last row). Collapsing both into `.classic`
+    /// would let a pack with a non-Classic default override a user's deliberate Classic.
+    private(set) var explicitScheme: AccentScheme?
+
+    /// The live accent; `.classic` both when Classic was chosen and when nothing was. Use
+    /// `explicitScheme` when that difference matters.
+    var scheme: AccentScheme { explicitScheme ?? .classic }
 
     private init() {}
 
-    /// Maps a persisted theme id to a scheme; nil / empty / unrecognized gracefully downgrade to
-    /// `.classic`, so a bad or missing value can never break the UI or leak across accounts.
+    /// Maps a persisted theme id to a scheme; nil / empty / unrecognized CLEAR the explicit
+    /// choice, so a bad or missing value can never break the UI or leak across accounts.
     func apply(themeID: String?) {
-        scheme = themeID.flatMap(AccentScheme.init(rawValue:)) ?? .classic
+        explicitScheme = themeID.flatMap(AccentScheme.init(rawValue:))
     }
 }

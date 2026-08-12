@@ -218,7 +218,7 @@ extension ProfileViewModel {
             return false
         }
         let previousThemeID = themeID
-        let previousScheme = AccentStore.shared.scheme
+        let previousScheme = AccentStore.shared.explicitScheme
         themeID = id
         AccentStore.shared.apply(themeID: id)
 
@@ -242,9 +242,9 @@ extension ProfileViewModel {
         }
     }
 
-    private func rollBackTheme(_ previousThemeID: String?, _ previousScheme: AccentScheme) -> Bool {
+    private func rollBackTheme(_ previousThemeID: String?, _ previousScheme: AccentScheme?) -> Bool {
         themeID = previousThemeID
-        AccentStore.shared.scheme = previousScheme
+        AccentStore.shared.apply(themeID: previousScheme?.rawValue)
         return false
     }
 }

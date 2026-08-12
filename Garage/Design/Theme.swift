@@ -16,14 +16,13 @@ enum Theme {
 
     enum Colors {
         /// The one themeable accent (Phase-1 in-Pro theming), composed with the active pack: an
-        /// accent the user explicitly picked wins in every pack, and `.classic` — the scheme a
-        /// user who has chosen nothing carries — resolves to the PACK's own accent. For control
-        /// that is the very same `BrandPrimary` asset it has always been, so nothing moves; a pack
-        /// with its own default accent gets it without disturbing the four Pro schemes (arm
-        /// manifest §1, last row).
+        /// accent the user EXPLICITLY picked — including explicit Classic — wins in every pack;
+        /// only a user with no choice on record takes the PACK's own default accent. For control
+        /// that default is the very same `BrandPrimary` asset it has always been, so nothing
+        /// moves; a pack with its own default accent gets it without disturbing the four Pro
+        /// schemes (arm manifest §1, last row).
         @MainActor static var primary: Color {
-            let scheme = AccentStore.shared.scheme
-            return scheme == .classic ? Theme.pack.colors.accentDefault.color : scheme.tint
+            AccentStore.shared.explicitScheme?.tint ?? Theme.pack.colors.accentDefault.color
         }
         /// Foreground for content sitting ON a `primary` fill (filled buttons, the FAB).
         /// It exists because `primary` cannot serve both roles in dark mode: carrying white text
