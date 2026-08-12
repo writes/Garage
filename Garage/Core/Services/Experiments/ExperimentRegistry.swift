@@ -23,6 +23,13 @@ struct ExperimentDefinition: Equatable, Sendable, Codable {
     var activeArms: Set<ExperimentArm> {
         Set(allocations.filter { $0.weight > 0 }.map(\.arm))
     }
+
+    /// The same definition with the emergency stop engaged. Lets a client-side policy failure
+    /// (an arm this build cannot render) ride the EXISTING kill path — control renders, no
+    /// exposure, no assignment churn — instead of adding a parallel suppression branch.
+    func killed() -> ExperimentDefinition {
+        ExperimentDefinition(id: id, epoch: epoch, allocations: allocations, isKilled: true)
+    }
 }
 
 /// The registry every launch consults. v1 is BUNDLED (compiled into the binary): at

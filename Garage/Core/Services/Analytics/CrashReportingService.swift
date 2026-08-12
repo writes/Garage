@@ -14,15 +14,38 @@ protocol CrashReporting {
     /// Appends a line to the Crashlytics in-memory log, which ships ONLY inside a subsequent
     /// crash/non-fatal report. `message` is a short static label — never user content.
     func breadcrumb(_ message: String)
+    /// Stamps the experiment arm/epoch onto every subsequent report so the per-arm crash-free
+    /// guardrail is measurable in the Crashlytics console. Both values are closed-enum /
+    /// bounded-int experiment state, never identity.
+    func setExperimentContext(arm: ExperimentArm, epoch: Int)
 }
 
 @MainActor
 final class FirebaseCrashReporter: CrashReporting {
-    private var isEnabled = false
+    static let armKey = "design_arm"
+    static let epochKey = "experiment_epoch"
+
+    /// Owns the enabled flag: the experiment keys need a hold-until-consent rule that a bare
+    /// bool cannot express, and two copies of "is collection on" would eventually disagree.
+    private var experimentKeys = ExperimentCrashKeyGate()
+
+    private var isEnabled: Bool { experimentKeys.isEnabled }
 
     func setEnabled(_ enabled: Bool) {
-        isEnabled = enabled
         Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(enabled)
+        write(experimentKeys.setEnabled(enabled))
+    }
+
+    func setExperimentContext(arm: ExperimentArm, epoch: Int) {
+        write(experimentKeys.setContext(arm: arm, epoch: epoch))
+    }
+
+    private func write(_ keys: ExperimentCrashKeyGate.Keys?) {
+        guard let keys else { return }
+        // armValue/epochValue, never the raw optionals: see the Keys doc-comment for why a nil
+        // through `setCustomValue`'s Any parameter records garbage instead of clearing.
+        Crashlytics.crashlytics().setCustomValue(keys.armValue, forKey: Self.armKey)
+        Crashlytics.crashlytics().setCustomValue(keys.epochValue, forKey: Self.epochKey)
     }
 
     func record(_ error: Error, context: String) {
@@ -46,6 +69,8 @@ final class NoopCrashReporter: CrashReporting {
     func record(_: Error, context _: String) {}
 
     func breadcrumb(_: String) {}
+
+    func setExperimentContext(arm _: ExperimentArm, epoch _: Int) {}
 }
 
 @MainActor

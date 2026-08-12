@@ -54,23 +54,26 @@ final class ExperimentStore {
     /// The BUNDLED registry compiled into this build.
     private let registry: ExperimentRegistry
     private let analytics: any AnalyticsTracking
+    private let crashReporter: any CrashReporting
+    /// Fires when a definition is refused. The production default traps in DEBUG and is a
+    /// no-op in release — a bad server override must be impossible to miss on a debug build
+    /// and impossible to crash on in the field. Tests substitute a recorder because the
+    /// refusal paths are exactly what they assert.
+    private let onPolicyViolation: (String) -> Void
     private var state: State
 
-    /// The registry actually consulted: per-experiment, a cached server override wins over
-    /// the bundled definition. Override is definition-granular so a server doc naming only
-    /// one experiment leaves every other bundled experiment untouched.
-    private var activeRegistry: ExperimentRegistry {
-        guard let overrides = state.overrideDefinitions, !overrides.isEmpty else { return registry }
-        var byID: [ExperimentID: ExperimentDefinition] = [:]
-        for definition in registry.definitions { byID[definition.id] = definition }
-        for definition in overrides { byID[definition.id] = definition }
-        return ExperimentRegistry(definitions: ExperimentID.allCases.compactMap { byID[$0] })
-    }
-
-    init(defaults: UserDefaults?, registry: ExperimentRegistry, analytics: any AnalyticsTracking) {
+    init(
+        defaults: UserDefaults?,
+        registry: ExperimentRegistry,
+        analytics: any AnalyticsTracking,
+        crashReporter: any CrashReporting = CrashReporter.shared,
+        onPolicyViolation: @escaping (String) -> Void = { assertionFailure($0) }
+    ) {
         self.defaults = defaults
         self.registry = registry
         self.analytics = analytics
+        self.crashReporter = crashReporter
+        self.onPolicyViolation = onPolicyViolation
         if let data = defaults?.data(forKey: Self.storageKey),
            let decoded = try? JSONDecoder().decode(State.self, from: data) {
             state = decoded
@@ -78,6 +81,46 @@ final class ExperimentStore {
             state = State()
             persist()
         }
+    }
+
+    /// The definition this session must obey: the bundled definition, replaced by a cached
+    /// server override only when the override passes the allocation clamp, and forced to
+    /// KILLED when the surviving roster allocates an arm this build cannot render. Override
+    /// resolution is definition-granular so a server doc naming one experiment leaves every
+    /// other bundled experiment untouched.
+    private func effectiveDefinition(for id: ExperimentID) -> ExperimentDefinition? {
+        guard let bundled = registry.definition(for: id) else { return nil }
+        var definition = bundled
+        if let override = state.overrideDefinitions?.first(where: { $0.id == id }) {
+            if let rejection = ExperimentPolicy.rejection(of: override, against: bundled) {
+                onPolicyViolation("experiment override \(id.rawValue) refused: \(rejection.rawValue)")
+            } else {
+                definition = override
+            }
+        }
+        let unrenderable = ExperimentPolicy.unrenderableArms(in: definition)
+        guard unrenderable.isEmpty else {
+            let arms = unrenderable.map(\.rawValue).joined(separator: ",")
+            onPolicyViolation("experiment \(id.rawValue) killed: build cannot render \(arms)")
+            return definition.killed()
+        }
+        return definition
+    }
+
+    /// The definition + arm this session actually renders, or nil when the experiment is
+    /// suppressed (absent, killed, clamped away, or holding an arm this build cannot render).
+    /// Suppressed means control renders and NOTHING is emitted: an exposure labelling an arm
+    /// the user never saw corrupts the analysis more quietly than a missing one.
+    private func liveAssignment(for id: ExperimentID) -> (definition: ExperimentDefinition, arm: ExperimentArm)? {
+        guard let definition = effectiveDefinition(for: id), !definition.isKilled else { return nil }
+        let resolved = lockedArm(for: id, definition: definition)
+        // A sticky assignment written by an earlier build can name an arm this one dropped;
+        // the roster check above cannot see it.
+        guard ExperimentPolicy.canRender(resolved, for: id) else {
+            onPolicyViolation("experiment \(id.rawValue) suppressed: stored arm \(resolved.rawValue) is unrenderable")
+            return nil
+        }
+        return (definition, resolved)
     }
 
     var unitID: String { state.unitID }
@@ -98,9 +141,10 @@ final class ExperimentStore {
             return forcedArm
         }
 #endif
-        guard let definition = activeRegistry.definition(for: id) else { return .control }
-        if definition.isKilled { return .control }
+        return liveAssignment(for: id)?.arm ?? .control
+    }
 
+    private func lockedArm(for id: ExperimentID, definition: ExperimentDefinition) -> ExperimentArm {
         if var existing = state.assignments[id.rawValue] {
             if existing.epoch != definition.epoch {
                 if !definition.activeArms.contains(existing.arm) {
@@ -129,8 +173,7 @@ final class ExperimentStore {
     /// emission goes through `analytics.track`/`setUserProperty`, so the consent gate buffers
     /// pre-consent exactly like the sign-in funnel.
     func recordExposureIfNeeded(for id: ExperimentID) {
-        let arm = arm(for: id)
-        guard let definition = activeRegistry.definition(for: id), !definition.isKilled else { return }
+        guard let (definition, arm) = liveAssignment(for: id) else { return }
         guard var assignment = state.assignments[id.rawValue] else { return }
 
         // Properties are idempotent STATE and re-emit on every call: an identity discarded
@@ -140,6 +183,9 @@ final class ExperimentStore {
         analytics.setUserProperty(.designArm(arm))
         analytics.setUserProperty(.experimentEpoch(definition.epoch))
         analytics.setUserProperty(.notifHoldout(isInNotificationHoldout))
+        // Same arm/epoch onto the crash keys: the 99.5% per-arm crash-free guardrail cannot be
+        // read without them. The facade holds them until consent enables collection.
+        crashReporter.setExperimentContext(arm: arm, epoch: definition.epoch)
 
         guard !assignment.exposedEpochs.contains(definition.epoch) else { return }
         assignment.exposedEpochs.append(definition.epoch)
@@ -151,14 +197,17 @@ final class ExperimentStore {
     /// Whether the design survey should be offered: exposed to an active experiment this epoch
     /// and not yet submitted for it.
     func isSurveyAvailable(for id: ExperimentID) -> Bool {
-        guard let definition = activeRegistry.definition(for: id), !definition.isKilled else { return false }
+        // liveAssignment, not effectiveDefinition: a sticky assignment this build suppresses
+        // (P0.1) renders control and records nothing, so it must not be surveyed as an
+        // experiment participant either (cross-check finding).
+        guard let (definition, _) = liveAssignment(for: id) else { return false }
         guard let assignment = state.assignments[id.rawValue] else { return false }
         return assignment.exposedEpochs.contains(definition.epoch)
             && !assignment.surveySubmittedEpochs.contains(definition.epoch)
     }
 
     func markSurveySubmitted(for id: ExperimentID) {
-        guard let definition = activeRegistry.definition(for: id) else { return }
+        guard let (definition, _) = liveAssignment(for: id) else { return }
         guard var assignment = state.assignments[id.rawValue] else { return }
         guard !assignment.surveySubmittedEpochs.contains(definition.epoch) else { return }
         assignment.surveySubmittedEpochs.append(definition.epoch)

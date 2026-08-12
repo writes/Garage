@@ -116,9 +116,14 @@ struct ExperimentationAnalyticsTests {
         #expect(control.primaryButtonWeight == .semibold)
         #expect(control.fabIsCircular)
         #expect(DesignPack.pack(for: .control) == control)
-        // Undesigned spare slots render control — defense in depth, not routing.
+        // Undesigned spare slots render control — defense in depth, not routing. They must also
+        // REPORT themselves undesigned, or ExperimentStore cannot refuse to label users with them.
         #expect(DesignPack.pack(for: .variantB) == control)
         #expect(DesignPack.pack(for: .variantC) == control)
+        #expect(!DesignPack.isImplemented(.variantB))
+        #expect(!DesignPack.isImplemented(.variantC))
+        #expect(DesignPack.isImplemented(.control))
+        #expect(DesignPack.isImplemented(.variantA))
         #expect(DesignPack.pack(for: .variantA) != control)
     }
 }

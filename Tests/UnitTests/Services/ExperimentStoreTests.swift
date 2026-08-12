@@ -56,15 +56,22 @@ struct ExperimentStoreTests {
 
     @Test func epochBumpRehashesARetiredArm() {
         let defaults = makeDefaults()
-        let first = ExperimentStore(defaults: defaults, registry: registry(), analytics: AnalyticsSpy())
-        _ = first.arm(for: .designMegatest)
-        // Retire BOTH original arms; only variantB survives — every user must land there.
-        let retired = ExperimentStore(
+        // Everyone starts on control, then control is retired — the only surviving arm is
+        // variantA, so a re-hash is the ONLY way to reach it. (Rosters here stay inside the
+        // implemented arms: allocating a spare slot now kills the experiment — see
+        // ExperimentStoreHardeningTests.)
+        let first = ExperimentStore(
             defaults: defaults,
-            registry: registry(epoch: 2, arms: [(.variantB, 1)]),
+            registry: registry(arms: [(.control, 1)]),
             analytics: AnalyticsSpy()
         )
-        #expect(retired.arm(for: .designMegatest) == .variantB)
+        #expect(first.arm(for: .designMegatest) == .control)
+        let retired = ExperimentStore(
+            defaults: defaults,
+            registry: registry(epoch: 2, arms: [(.variantA, 1)]),
+            analytics: AnalyticsSpy()
+        )
+        #expect(retired.arm(for: .designMegatest) == .variantA)
     }
 
     @Test func killSwitchForcesControlButPreservesTheStoredAssignment() {
@@ -172,14 +179,16 @@ struct ExperimentStoreTests {
             analytics: AnalyticsSpy()
         )
         #expect(store.arm(for: .designMegatest) == .variantA)
+        // A HIGHER epoch may carry a new roster; variantA is retired, so every user re-hashes
+        // onto the only remaining arm.
         let retiring = ExperimentDefinition(
             id: .designMegatest,
             epoch: 2,
-            allocations: [ArmAllocation(arm: .variantB, weight: 1)],
+            allocations: [ArmAllocation(arm: .control, weight: 1)],
             isKilled: false
         )
         store.applyServerOverride([retiring])
-        #expect(store.arm(for: .designMegatest) == .variantB)
+        #expect(store.arm(for: .designMegatest) == .control)
     }
 
     @Test func surveyAvailabilityRequiresExposureAndFlipsOffOnSubmission() {

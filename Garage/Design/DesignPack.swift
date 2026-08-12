@@ -45,14 +45,29 @@ struct DesignPack: Equatable, Sendable {
         fabIsCircular: false
     )
 
-    static func pack(for arm: ExperimentArm) -> DesignPack {
+    /// The pack a wave has DESIGNED for `arm`, or nil for a spare slot. Single source of truth
+    /// for both `pack(for:)` and `isImplemented(_:)` — a second switch would let a new wave add
+    /// a design in one place and leave the other claiming the arm is undesigned.
+    private static func designedPack(for arm: ExperimentArm) -> DesignPack? {
         switch arm {
         case .control: return .control
         case .variantA: return .variantA
-        // Spare slots render control until a wave defines them (registry never allocates an
-        // undesigned arm; this is defense in depth, not routing).
-        case .variantB, .variantC: return .control
+        case .variantB, .variantC: return nil
         }
+    }
+
+    /// Whether this BUILD renders `arm` as its own design. ExperimentStore refuses to run an
+    /// experiment that allocates an unimplemented arm: rendering control while assignment and
+    /// exposure label the user `variant_b` corrupts the analysis silently, without a build.
+    static func isImplemented(_ arm: ExperimentArm) -> Bool {
+        designedPack(for: arm) != nil
+    }
+
+    /// Spare slots render control. Unreachable in practice — ExperimentPolicy kills any
+    /// experiment naming one before an arm is assigned — so this is defense in depth, not
+    /// routing.
+    static func pack(for arm: ExperimentArm) -> DesignPack {
+        designedPack(for: arm) ?? .control
     }
 }
 
