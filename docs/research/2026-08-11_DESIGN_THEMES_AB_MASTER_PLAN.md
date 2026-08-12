@@ -184,9 +184,19 @@ Generic taxonomy sliced by `design_arm` covers everything else; no other new eve
 
 ## 8. Law-1 vote points (consolidated)
 
-1. Pre-build session (§4): Q1 challenger scope + P0.3 unit ratification + Q2 entitlement/
-   precedence + Stats/Settings disposition (D2).
-2. Post-decision: trust-wedge schema vote (restored D1) before that feature ships.
+1. Pre-build session (§4): Q1 challenger scope + P0.3 unit ratification + Stats/Settings
+   disposition (D2). *(This line originally also bundled Q2 into the pre-build session,
+   contradicting §4's own "Q2 — moved PRE-ENROLLMENT (Sol B15)". §4 is the controlling text:
+   Q2's hazard is deciding entitlement AFTER exposure, and the Phase-1 engine carries no
+   entitlement behavior. Reconciled 2026-08-12 when the tri-review flagged the conflict.)*
+2. Q2 entitlement/grandfathering/precedence: PRE-ENROLLMENT gate (§4). **Run 2026-08-12T19:42Z
+   — resolved C by 2/3** (winner default free for all · post-epoch theme picker Pro-gated ·
+   no grandfathering, losing-arm free users snap to the winner at epoch close · explicit
+   choice — including explicit Classic — beats any pack/winner default; the engine enforces
+   the precedence rule via `AccentStore.explicitScheme`). Sequencing fact recorded plainly:
+   the vote ran after Phase-1 engine code existed and before enrollment, satisfying §4's gate;
+   it does not retroactively satisfy the withdrawn §8 pre-build bundling.
+3. Post-decision: trust-wedge schema vote (restored D1) before that feature ships.
 
 ## 9. Sequencing
 
