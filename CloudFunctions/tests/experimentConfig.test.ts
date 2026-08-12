@@ -111,11 +111,11 @@ describe("sanitizedExperimentConfig allocation clamp", () => {
     })).toEqual([]);
   });
 
-  it("accepts a same-epoch override that exactly restates the bundled allocation", () => {
-    expect(definition({})).toHaveLength(1);
+  it("rejects a same-epoch non-kill even when it restates the bundled allocation — the bundled epoch-1 kill cannot be revived by a document edit", () => {
+    expect(definition({})).toEqual([]);
   });
 
-  it("accepts a kill at the open epoch, whatever weights it carries", () => {
+  it("accepts a kill at the bundled epoch, whatever weights it carries", () => {
     const killed = definition({
       isKilled: true,
       allocations: [{ arm: "variant_a", weight: 7 }],

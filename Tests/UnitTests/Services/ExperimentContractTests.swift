@@ -71,7 +71,7 @@ struct ExperimentContractTests {
         }
 
         let entries = try captures(
-            #"([a-z_]+):\s*\{\s*epoch:\s*(\d+),\s*allocations:\s*\[(.*?)\],\s*\},"#,
+            #"([a-z_]+):\s*\{\s*epoch:\s*(\d+),\s*allocations:\s*\[(.*?)\],\s*isKilled:\s*(true|false),\s*\},"#,
             in: block,
             options: [.dotMatchesLineSeparators]
         )
@@ -80,14 +80,17 @@ struct ExperimentContractTests {
         }
 
         return try entries.map { entry in
-            guard entry.count == 4, let id = ExperimentID(rawValue: entry[1]), let epoch = Int(entry[2]) else {
+            guard entry.count == 5, let id = ExperimentID(rawValue: entry[1]), let epoch = Int(entry[2]) else {
                 throw ContractParseFailure(description: "BUNDLED_REGISTRY entry is unparsable: \(entry)")
             }
+            // The kill bit is part of the mirror: a bundle-killed epoch must be bundle-killed
+            // on the server too, or the two sides disagree about whether a same-epoch non-kill
+            // override is a revival.
             return ExperimentDefinition(
                 id: id,
                 epoch: epoch,
                 allocations: try allocations(in: entry[3]),
-                isKilled: false
+                isKilled: entry[4] == "true"
             )
         }
     }
