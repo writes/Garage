@@ -97,6 +97,50 @@ continued fraction, selected by the usual numerical-stability boundary). The
 report warns when `p < 0.001`; investigate assignment/exposure instrumentation
 before interpreting outcomes.
 
+## Operating-characteristic simulation
+
+`oc_simulation.py` answers the question `experiment_report.py` cannot: **how much sample
+does the frozen decision rule actually need, and what does it do when there is nothing
+to find?** It replays the exact rule `experiment_report.py` implements — Beta(1, 1)
+posteriors, 20,000 `random.Random(42)` draws, per-component P(best), composite = the
+mean of the four, fire at `>= 0.90` — against simulated two-arm experiments whose truth
+is known, over a grid of plausible baseline rates, effect scenarios and per-arm sample
+sizes. For each cell it reports how often the rule fires for the variant, how often it
+falsely flips to control, how often it reaches no decision, and the expected composite.
+
+It shares no code path with the reporting program by accident: the `--selftest` fixture
+asserts that its per-component scorer is bit-identical to `experiment_report.summarize`,
+so a change to the scoring machinery fails the simulation rather than silently
+invalidating a sample floor derived from it.
+
+```sh
+# Pin the frozen rule: scorer equivalence, composite arithmetic, decision boundaries.
+python3 scripts/analytics/oc_simulation.py --selftest
+
+# Smoke/CI run: 100 replicates per cell (~1.5 minutes on 16 cores).
+python3 scripts/analytics/oc_simulation.py --fast --no-write
+
+# Full grid: 400 replicates per cell. Writes the generated research document.
+python3 scripts/analytics/oc_simulation.py
+```
+
+The full run regenerates `docs/research/2026-08-12_OC_SIMULATION_design_megatest.md`,
+which is a GENERATED file — change the simulation and rerun it, never hand-edit the
+document. Both the document and stdout carry the measured wall clock.
+
+**The epoch-2 sample-floor blank MUST be filled from this output.** The pre-registration
+addendum `docs/research/2026-08-11_EXPERIMENT_design_megatest_epoch2_ADDENDUM.md`
+inherited a 500-per-arm floor and the `P(best) >= 0.90` rule from epoch 1 without
+justifying either (Sol finding B13), and it requires this simulation to be checked in
+before enrollment begins. Two of its blanks are filled from the SUMMARY section: the
+**per-arm mature-installation floor**, and the **purchase-rate weight** clause, which
+retains purchase at equal weight only if the operating characteristics support it and
+otherwise demotes it to a descriptive tiebreaker.
+
+The baseline rates are pre-launch guesses — Garage has never measured a real cohort on
+these metrics. Rerun the simulation with observed rates as soon as epoch 2 produces a
+mature cohort, and treat any floor quoted before that as provisional.
+
 ### Metric definitions and attribution limits
 
 - Activation is all of `first_vehicle_added`, `first_entry_added`, and the
