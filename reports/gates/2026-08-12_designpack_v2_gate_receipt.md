@@ -5,8 +5,28 @@ account-wide on a billing failure, operator-owed). Commands run from a clean tre
 captured as the script's own `$?` (never a pipeline tail's), per the 2026-08-11 false-green
 lesson.
 
-## HEAD `2d218e5` (reviewed head; code identical to `da0b861` — subsequent commits are
-docs/ledger/brief files only)
+## FINAL CODE HEAD `6dd07af` (the chamfer corner-set fix; amended once to satisfy strict lint
+in the new test — the amend touched ONLY `Tests/.../ThemeRoutingTests.swift`, so the app
+target is bit-identical to the `0603038` build the visual coverage matrix captured. Every
+commit after `6dd07af` on this branch is docs-only — verify with
+`git diff --stat 6dd07af..HEAD`, which must touch only `reports/`.)
+
+Run 2026-08-12 ~21:30–22:00Z:
+
+| gate | command | exit |
+|---|---|---|
+| policy | `./scripts/ci/policy-checks.sh` | **0** |
+| security | `./scripts/ci/security-checks.sh` | **0** |
+| verify-ios | `./scripts/ci/verify-ios.sh` | **0** |
+
+verify-ios tallies: swiftlint --strict `0 violations in 1167 files` · unit target
+**1114/1114** (includes `theChamferHookDefaultsToTheConceptsSingleTopRightCut`) · journeys
+`Executed 30 tests, with 0 failures` (912s) · pbxproj regen-equality inside the gate.
+The prior run at `0603038` failed ONLY on 2 strict-lint `prefer_zero_over_explicit_init`
+violations in the new test (real exit 2, honestly captured) — fixed as `.zero`, no
+test-semantics change.
+
+## HEAD `2d218e5` (prior reviewed head; code identical to `da0b861` + rebase onto a86808e)
 
 Run 2026-08-12 ~20:20–20:45Z:
 

@@ -40,6 +40,32 @@ on both builds — also byte-identical.
   (accent surfaces: FAB, tab selection, badges). A genuine restyle registers 3.6× above the
   noise floor, so a zero here is meaningful.
 
+## Coverage matrix — §6.3's full grid (iPhone+iPad × light+dark)
+
+Second pass, same instrument: Build A `76e1033` vs Build B `0603038` (the final CODE head —
+adds the corner-set chamfer hook and the explicit-accent fix, and, via rebase, main's #82
+bundle-kill). Six core screens per configuration; installed-binary hash verified per run.
+
+| configuration | A-vs-B differing px | verdict |
+|---|---|---|
+| iPhone 17 Pro — light | 189,476 (all in 05-settings) | identical except the #82 row (below) |
+| iPhone 17 Pro — dark | 189,454 (all in 05-settings) | identical except the #82 row |
+| iPad Pro 13" — light | 223,467 (222,834 in 05-settings) | identical except the #82 row + ±1-LSB iPad jitter |
+| iPad Pro 13" — dark | 222,722 (all in 05-settings) | identical except the #82 row |
+
+**The single differing region is NOT the engine.** Build B's rebase carries main's `a86808e`
+(#82: the bundle records the operator's epoch-1 kill), and `ExperimentStore.isSurveyAvailable`
+correctly returns false for a killed definition — Settings' "Design Feedback" survey row drops
+out and the rows below shift up. Proof by isolation: the pre-rebase engine head `da0b861`
+(same engine code, no #82) is **byte-identical to `76e1033` on every screen in every
+configuration**. The engine deltas (chamfer hook, explicit-accent fix) produce zero pixels of
+change — the chamfer's `RoundedRectangle` branch is what control renders (chamfer 0).
+
+Per-device noise floors: iPhone same-build rerun = exactly 0 px; iPad same-build rerun = ≤620
+px/screen at max channel delta 1 (compatibility-mode compositing jitter — the app is
+iPhone-family and renders scaled on iPad), with identical bboxes to the matrix's non-Settings
+sprinkle, fully accounting for it.
+
 ## Carried finding (Phase-3 input)
 
 `DesignPackStore.apply(arm:)` is called only on the `.production` bootstrap branch
