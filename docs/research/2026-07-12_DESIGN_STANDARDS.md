@@ -67,7 +67,7 @@ hardening, App Check + server entitlements (post Wave-1).
 
 | # | Gap | Sev | Evidence |
 |---|---|---|---|
-| G1 | All 10 brand colorsets define ONE universal appearance — **dark mode broken by construction**; `garageShadow` fixed black | **P0** | `Assets.xcassets/*/Contents.json`; `Color+Extensions.swift:4` |
+| G1 | ~~dark mode broken by construction~~ **FIXED on main (verified 2026-08-11):** system appearance, 23/23 dual-appearance colorsets, WCAG AA asserted in BOTH appearances by `Tests/UnitTests/Services/ColorContrastTests.swift` | ~~P0~~ DONE | `Assets.xcassets/*/Contents.json`; `Color+Extensions.swift:4` |
 | G2 | **Zero-vehicle first launch is not an activation surface** — new user lands in a blank 5-tab UI (directly harms Blueprint Buyer-Ready-7/time-to-first-import) | **P0** | `ContentView.swift:8-14`, `AppState.swift:97-105` |
 | G3 | Five Garage sub-screens (Parts, Photo/Wheel galleries, Detailing, Warranty) have **no error branch**; ViewModels have no `isLoading`; failures render as silent fake-empty | **P0/P1** | `SparePartsView.swift:9-30` et al.; grep `isLoading` = 0 in those VMs |
 | G4 | StatsView: no loading state; ErrorBanner without retry; charts render blank axes with no data + no accessibility labels | P1/P2 | `StatsViewModel.swift`, `StatsView.swift:20-21`, chart files |

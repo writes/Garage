@@ -50,7 +50,7 @@ the experiment tooling and will not appear in pre-instrumentation data:
 | Design assignment | user properties `design_arm`, `experiment_epoch` | string arm and epoch |
 | Experiment enrollment | `experiment_exposure` | `experiment`, `arm`, `epoch` |
 | Upsell funnel | `upsell_exposure` | `source` |
-| Feature matrix | `feature_used` | `feature` in `gallery`, `warranty`, `wear`, `dossier`, `theming` |
+| Feature matrix | `feature_used` | `feature` in `gallery`, `warranty`, `theming` — `wear` and `dossier` were considered and EXCLUDED from the closed enum (already covered by `entry_saved`/`export_pdf` + `screen_viewed`; rows for them can never appear) |
 | Notification funnel | `notif_scheduled`, `notif_opened`, `notif_task_completed` | `category`; user property `notif_holdout` |
 
 Do not retrofit historical data or rename the existing event contract. Query

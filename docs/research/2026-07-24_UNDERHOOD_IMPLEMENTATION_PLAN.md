@@ -1,5 +1,12 @@
 # Underhood Transformation — Implementation Plan (UH-IMPL-1)
 
+> **STALE — superseded for execution (2026-08-11).** Code anchors below predate main's current
+> state (U1's `.preferredColorScheme(.light) -> .dark` swap references a lock that was never in
+> code; the app follows system appearance with dual-appearance colorsets). ZERO waves have
+> shipped. Execution now follows `2026-08-11_DESIGN_THEMES_AB_MASTER_PLAN.md` (waves U1'-U4',
+> trust-wedge EXCLUDED from the theme arm per Sol B11). This file remains the wave-content
+> reference only.
+
 **Date:** 2026-07-24 · **Author:** Fable 5 (orchestrator) · **Status:** DRAFT → Sol co-review
 **Authority:** operator directive 2026-07-24 ("implement the underhood transformation", artifact
 39383192) + tri-vote (DECISION_LEDGER group per HANDOFF 2026-07-24): design direction ADOPTED,

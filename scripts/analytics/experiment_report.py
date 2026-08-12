@@ -16,7 +16,7 @@ RNG_SEED = 42
 BINARY_METRICS = (
     ("activation_rate", "activation_numerator", "activation_denominator"),
     ("d7_return_rate", "d7_return_numerator", "d7_return_denominator"),
-    ("paywall_ctr", "paywall_ctr_numerator", "paywall_ctr_denominator"),
+    ("paywall_reach", "paywall_reach_numerator", "paywall_reach_denominator"),
     ("purchase_rate", "purchase_numerator", "purchase_denominator"),
 )
 CORE_METRIC = ("core_actions_per_active_day", "core_actions_numerator", "core_actions_denominator")
@@ -216,7 +216,7 @@ def print_table(report):
             f"{ratio(arm['observed_rate'])}"
         )
     print()
-    print("Composite = mean P(best) across activation, D7 return, paywall CTR, and purchase rate")
+    print("Composite = mean P(best) across activation, D7 return, paywall reach (ITT), and purchase rate")
     for arm in report["composite_probability_best"]:
         print(f"  {arm['arm']:<19} {percent(arm['mean_probability_best'])}")
 
@@ -243,7 +243,7 @@ def run_bq(sql_path, timeout_seconds):
 
 
 def selftest():
-    fixture = """design_arm,n_exposed,activation_numerator,activation_denominator,d7_return_numerator,d7_return_denominator,core_actions_numerator,core_actions_denominator,paywall_ctr_numerator,paywall_ctr_denominator,purchase_numerator,purchase_denominator
+    fixture = """design_arm,n_exposed,activation_numerator,activation_denominator,d7_return_numerator,d7_return_denominator,core_actions_numerator,core_actions_denominator,paywall_reach_numerator,paywall_reach_denominator,purchase_numerator,purchase_denominator
 control,100,20,100,30,100,130,100,10,40,5,100
 variant_a,100,60,100,65,100,180,100,28,40,30,100
 """

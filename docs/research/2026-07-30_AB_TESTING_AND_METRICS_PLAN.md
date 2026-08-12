@@ -79,7 +79,10 @@ foundation, not in it.
 
 ## 3. Group splitting — the delegated design decisions (Fable's answers)
 
-**Unit of assignment: the Firebase uid** (not device, not session). Stable across
+**Unit of assignment: the persisted install-scoped UUID** — CORRECTED 2026-08-11: the shipped
+implementation (`ExperimentStore.swift`) assigns per-install, not per-uid, and the analysis SQL
+is keyed to `user_pseudo_id` to match (Sol B5; Law-1 ratification queued in the design-plan vote
+session). ~~the Firebase uid~~ (not device, not session). Stable across
 reinstalls, joins cleanly to RC and Firestore.
 
 **Mechanism: deterministic hashing.** `bucket = sha256(experimentId + ":" + uid)`

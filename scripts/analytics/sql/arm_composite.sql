@@ -13,7 +13,11 @@ WITH raw_events AS (
   SELECT
     event_date,
     event_timestamp,
-    COALESCE(NULLIF(user_id, ''), user_pseudo_id) AS analysis_user_id,
+    -- P0.3 (Sol B5): the experimental unit is the INSTALLATION. Assignment is keyed to an
+    -- install-scoped UUID (ExperimentStore), so analysis must key on user_pseudo_id alone —
+    -- coalescing to Firebase uid merges a multi-device user's two installs (two arms) into
+    -- one unit attributed to the first arm: cross-arm contamination + a wrong SRM population.
+    user_pseudo_id AS analysis_user_id,
     event_name,
     NULLIF((
       SELECT value.string_value FROM UNNEST(user_properties) WHERE key = 'design_arm'
@@ -162,12 +166,17 @@ SELECT
     SUM(IF(is_mature, core_actions, 0)),
     SUM(IF(is_mature, active_user_days, 0))
   ) AS core_actions_per_active_day,
-  COUNTIF(is_mature AND had_upsell_exposure AND viewed_paywall) AS paywall_ctr_numerator,
-  COUNTIF(is_mature AND had_upsell_exposure) AS paywall_ctr_denominator,
+  -- P0.4 (Sol B6): intent-to-treat paywall REACH over all mature exposed installations.
+  -- The previous CTR denominator (had_upsell_exposure) was itself a post-treatment outcome the
+  -- design can change, and the numerator never required the view to follow the exposure — an arm
+  -- exposing fewer, more-selected users would score an artificially high CTR. Reach is causally
+  -- comparable; the exposure-conditioned CTR remains available descriptively from the same columns.
+  COUNTIF(is_mature AND viewed_paywall) AS paywall_reach_numerator,
+  COUNTIF(is_mature) AS paywall_reach_denominator,
   SAFE_DIVIDE(
-    COUNTIF(is_mature AND had_upsell_exposure AND viewed_paywall),
-    COUNTIF(is_mature AND had_upsell_exposure)
-  ) AS paywall_ctr,
+    COUNTIF(is_mature AND viewed_paywall),
+    COUNTIF(is_mature)
+  ) AS paywall_reach,
   COUNTIF(is_mature AND converted) AS purchase_numerator,
   COUNTIF(is_mature) AS purchase_denominator,
   SAFE_DIVIDE(COUNTIF(is_mature AND converted), COUNTIF(is_mature)) AS purchase_rate
