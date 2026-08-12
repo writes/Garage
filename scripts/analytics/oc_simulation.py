@@ -710,11 +710,20 @@ def selftest():
     #    changes these.
     assert reproduced == [0.97145, 0.6855, 0.7504, 0.6245], reproduced
 
-    # 3. The composite is the arithmetic mean of the four component P(best) values, and the
-    #    decision fires at 0.90 for the variant / 0.10 for the control.
+    # 3. The composite summarize reports is the arithmetic mean over the REGISTERED primary
+    #    components — purchase_rate is demoted to a descriptive tiebreaker (epoch-2 addendum,
+    #    the conditional the OC evidence fired). This simulation's grid still scores the
+    #    historical 4-way rule alongside the registered 3-way counterfactual, so its tables
+    #    remain valid for both; only this equivalence pin follows the executable rule.
     composite = report["composite_probability_best"][1]["mean_probability_best"]
-    assert composite == sum(reproduced) / 4.0, composite
-    assert abs(composite - 0.7579625) < 1e-12, composite
+    labels = [metric["metric"] for metric in report["metrics"]]
+    primary = [
+        value for label, value in zip(labels, reproduced)
+        if label in experiment_report.PRIMARY_COMPOSITE_METRICS
+    ]
+    assert len(primary) == 3, labels
+    assert composite == sum(primary) / 3.0, composite
+    assert abs(composite - 0.80245) < 1e-12, composite
     assert composite < DECISION_THRESHOLD
 
     def wins_of(*probabilities):
@@ -756,9 +765,9 @@ def selftest():
 
     print(
         "SELFTEST PASS: per-component scorer is bit-identical to experiment_report.summarize "
-        "(Beta(1,1), 20,000 draws, seed 42, tie-split P(best)), the composite is the mean of the "
-        "four components, the 0.90/0.10 decision boundaries are exact, and replicate seeding is "
-        "reproducible."
+        "(Beta(1,1), 20,000 draws, seed 42, tie-split P(best)), the reported composite is the "
+        "mean of the registered 3 primary components (purchase demoted), the 0.90/0.10 decision "
+        "boundaries are exact, and replicate seeding is reproducible."
     )
 
 

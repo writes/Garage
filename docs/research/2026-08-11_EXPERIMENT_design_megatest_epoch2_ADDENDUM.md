@@ -47,15 +47,20 @@ purchase baselines 0.02–0.05 a +15% relative lift yields mean P(best) ≈ 0.64
 ≈ 0.064 points and making 80% detection unreachable at every tested N (71.8% max at 3000).
 The primary composite is therefore the **mean of THREE** per-component P(best) values
 (activation · D7 return · ITT paywall reach), per the 2026-07-30 metrics plan's original
-tiebreaker designation. Purchase rate is still computed, reported, and used descriptively.
-Analytic null false-positive rate of the 3-component rule: ≈ 1.07% per arm (~2.1% either
-arm), independent of N — still far under the 5% bar.
+tiebreaker designation. Purchase rate is still computed, reported, and used descriptively;
+`experiment_report.py` implements exactly this rule (`PRIMARY_COMPOSITE_METRICS`,
+selftest-pinned — aligned in the same PR as this correction). Analytic null false-positive
+rate of the 3-component rule (Irwin–Hall, P(sum of three uniforms ≥ 2.7) = 0.3³/3!):
+**≈ 0.45% per arm (~0.9% either arm)**, independent of N — far under the 5% bar.
+*(Correction 2026-08-12, tri-review finding: an earlier fill of this blank misquoted the
+4-component tail figures — 1.07%/2.1% — for the 3-component rule.)*
 
 **Interpretation constraint (from the OC simulation):** the composite detects BROAD
-multi-component movement only. A single-component lift plateaus at chance-level detection
-(≈ 1.1%, the Irwin–Hall tail) at every N — the epoch-2 result must never be quoted as a
-verdict on any individual metric. Registered detectable effect class: all components
-+15% relative.
+multi-component movement only. Even a single-component lift detected with CERTAINTY fires
+the 3-component rule at only P(sum of two uniforms ≥ 1.7) = 0.3²/2! = **4.5%** — near the
+rule's chance level at every N (the OC counterfactual's activation +20% row plateaus at
+3.3–5.2%, matching) — so the epoch-2 result must never be quoted as a verdict on any
+individual metric. Registered detectable effect class: all components +15% relative.
 
 ## Sample floor & OC simulation (replaces the unjustified 500)
 

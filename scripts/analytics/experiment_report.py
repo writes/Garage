@@ -19,6 +19,11 @@ BINARY_METRICS = (
     ("paywall_reach", "paywall_reach_numerator", "paywall_reach_denominator"),
     ("purchase_rate", "purchase_numerator", "purchase_denominator"),
 )
+# The epoch-2 registered PRIMARY composite (addendum amendment merged 76e1033, evidence PR #78):
+# purchase_rate is computed and reported in full above but DEMOTED to a descriptive tiebreaker —
+# at plausible purchase baselines its posterior is too wide to move at feasible sample sizes and
+# it only drags the composite (OC simulation §3). Everything else about the rule is unchanged.
+PRIMARY_COMPOSITE_METRICS = frozenset({"activation_rate", "d7_return_rate", "paywall_reach"})
 CORE_METRIC = ("core_actions_per_active_day", "core_actions_numerator", "core_actions_denominator")
 
 
@@ -136,7 +141,8 @@ def summarize(rows, draws=DRAW_COUNT, seed=RNG_SEED):
             arms, numerators, denominators, wins, losses
         ):
             p_best = win_count / draws
-            composite[arm].append(p_best)
+            if label in PRIMARY_COMPOSITE_METRICS:
+                composite[arm].append(p_best)
             arm_results.append({
                 "arm": arm,
                 "numerator": numerator,
@@ -216,7 +222,8 @@ def print_table(report):
             f"{ratio(arm['observed_rate'])}"
         )
     print()
-    print("Composite = mean P(best) across activation, D7 return, paywall reach (ITT), and purchase rate")
+    print("Composite = mean P(best) across activation, D7 return, and paywall reach (ITT)")
+    print("(purchase rate: reported above in full; descriptive TIEBREAKER only — epoch-2 addendum)")
     for arm in report["composite_probability_best"]:
         print(f"  {arm['arm']:<19} {percent(arm['mean_probability_best'])}")
 
@@ -256,7 +263,20 @@ variant_a,100,60,100,65,100,180,100,28,40,30,100
     assert abs(regularized_gamma_q(0.5, 5.0) - 0.001565402258) < 1e-9
     assert report["core_actions_per_active_day"][1]["observed_rate"] == 1.8
     assert report["composite_probability_best"][1]["mean_probability_best"] > 0.99
-    print("SELFTEST PASS: Beta posteriors, Monte Carlo P(best)/loss, composite, and chi-square SRM gamma math verified.")
+    # The registered composite averages exactly the three primary metrics: purchase_rate is
+    # reported (four metric blocks) but must not move the composite. The fixture's variant
+    # purchase P(best) is high, so an accidental 4-way mean would differ measurably from the
+    # 3-way mean; equality to the hand-derived 3-way mean pins the demotion.
+    assert len(report["metrics"]) == 4
+    purchase = report["metrics"][3]
+    assert purchase["metric"] == "purchase_rate"
+    three_way = sum(
+        metric["arms"][1]["probability_best"]
+        for metric in report["metrics"]
+        if metric["metric"] in PRIMARY_COMPOSITE_METRICS
+    ) / 3
+    assert abs(report["composite_probability_best"][1]["mean_probability_best"] - three_way) < 1e-12
+    print("SELFTEST PASS: Beta posteriors, Monte Carlo P(best)/loss, 3-component composite (purchase demoted), and chi-square SRM gamma math verified.")
 
 
 def parse_args():
