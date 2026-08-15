@@ -12,10 +12,9 @@ struct SecondaryButton: View {
             .padding(.vertical, style.verticalPadding)
             .foregroundStyle(Theme.Colors.primary)
             .background(Theme.Colors.surface)
-            .overlay {
-                style.corner.shape
-                    .stroke(Theme.Colors.primary.opacity(style.borderOpacity), lineWidth: style.borderWidth)
-            }
+            // Same expression as before, now read from the style so both buttons share ONE
+            // definition of what a pack's border is.
+            .overlay { style.corner.shape.stroke(style.borderColor, lineWidth: style.borderWidth) }
             .clipShape(style.corner.shape)
     }
 }

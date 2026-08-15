@@ -65,6 +65,11 @@ struct DesignPackControlPinTests {
         #expect(!card.corner.isChamfered)
         #expect(card.shadowRadius == 10)
         #expect(card.shadowOffset == 6)
+        // The hairline hook wave U1′ added and `CardModifier` now strokes unconditionally. Zero
+        // width paints nothing, which is the whole reason the consumer needs no `if` — so this pin
+        // IS the proof that consuming it left control alone.
+        #expect(card.borderWidth == 0)
+        #expect(card.borderOpacity == 0)
     }
 
     @Test func bothButtonsKeepTheirShippedGeometry() {
@@ -102,6 +107,12 @@ struct DesignPackControlPinTests {
         #expect(control.components.tabBar == DesignTabBarStyle(background: nil, selectedTint: nil, unselectedTint: nil))
     }
 
+    /// The login screen's Sign-in-with-Apple button, which was a hardcoded `.black` before wave U1′
+    /// routed it through the pack. Control's answer is that same black button.
+    @Test func theSignInWithAppleButtonKeepsItsShippedStyle() {
+        #expect(control.components.signInWithApple == .black)
+    }
+
     @Test func theStructureIsExactlyTodaysFiveTabsInTodaysOrder() {
         #expect(control.structure.tabs.map(\.tab) == [.dashboard, .log, .garage, .stats, .settings])
         #expect(control.structure.tabs.map(\.title) == ["Dashboard", "Log", "Garage", "Stats", "Settings"])
@@ -127,25 +138,7 @@ struct DesignPackControlPinTests {
         ))
     }
 
-    /// variant_a is the partial PR-#23 "bold" pack, carried forward unchanged (epoch 1 is killed;
-    /// the full Underhood treatment lands in waves U1′–U4′). Pinning it to exactly those deltas is
-    /// what keeps "everything else mirrors control" true — a further difference appearing here
-    /// would be an unregistered treatment.
-    @Test func variantACarriesOnlyThePartialBoldDeltas() {
-        let variant = DesignPack.variantA
-        #expect(variant.appearance == control.appearance)
-        #expect(variant.colors == control.colors)
-        #expect(variant.typography == control.typography)
-        #expect(variant.spacing == control.spacing)
-        #expect(variant.radius == control.radius)
-        #expect(variant.structure == control.structure)
-        #expect(variant.components.secondaryButton == control.components.secondaryButton)
-        #expect(variant.components.tabBar == control.components.tabBar)
-
-        #expect(variant.components.card.corner.radius == 8)
-        #expect(variant.components.card.shadowRadius == 0)
-        #expect(variant.components.primaryButton.corner.radius == 8)
-        #expect(variant.components.primaryButton.labelWeight == .bold)
-        #expect(variant.components.floatingButton.corner.radius == 16)
-    }
+    // variant_a's own pin moved to `UnderhoodPackTests` in wave U1′: the partial PR-#23 "bold" pack
+    // this file used to pin no longer exists (epoch 1 is killed), and the pack that replaced it is
+    // large enough to own its contract. This file stays what its name says — the CONTROL contract.
 }

@@ -1,6 +1,19 @@
 import AuthenticationServices
 import SwiftUI
 
+extension DesignSignInWithAppleStyle {
+    /// The AuthenticationServices button this token renders. The mapping lives HERE, beside its one
+    /// consumer, so the design layer never has to import AuthenticationServices — and so a pack
+    /// that commits to a dark world cannot be defeated by a hardcoded `.black` in the view.
+    var buttonStyle: SignInWithAppleButton.Style {
+        switch self {
+        case .black: return .black
+        case .white: return .white
+        case .whiteOutline: return .whiteOutline
+        }
+    }
+}
+
 struct LoginView: View {
     @State private var viewModel = AuthViewModel()
 
@@ -24,7 +37,9 @@ struct LoginView: View {
                     await viewModel.handleAppleCompletion(result)
                 }
             }
-            .signInWithAppleButtonStyle(.black)
+            .signInWithAppleButtonStyle(
+                DesignPackStore.shared.pack.components.signInWithApple.buttonStyle
+            )
             .frame(height: 54)
             .disabled(viewModel.isLoading)
 

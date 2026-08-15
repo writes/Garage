@@ -1,5 +1,6 @@
 import Observation
 import SwiftUI
+import UIKit
 
 /// One coherent presentation variant for the design megatest — the FULL token surface plus the
 /// closed set of structural chokepoints the arm manifest freezes. `Theme` reads nothing but the
@@ -71,5 +72,14 @@ final class DesignPackStore {
     /// the per-arm previews wave U1′ needs).
     func apply(_ pack: DesignPack) {
         self.pack = pack
+        // The ONE tab-bar field SwiftUI cannot express on iOS 17. It runs from here — the single
+        // funnel every pack passes, and the point at bootstrap BEFORE the tab bar is built — rather
+        // than from a view body, which would be too late for the proxy to take.
+        //
+        // Assigned unconditionally, control's nil included: nil IS the platform default, so
+        // control's write is a provable no-op, and a kill switch flipping a styled pack back to
+        // control has to be able to CLEAR what the styled pack set.
+        UITabBar.appearance().unselectedItemTintColor = pack.components.tabBar.unselectedTint
+            .map { UIColor($0.color) }
     }
 }

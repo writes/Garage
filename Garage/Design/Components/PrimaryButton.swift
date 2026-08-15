@@ -22,6 +22,10 @@ struct PrimaryButton: View {
         .buttonStyle(.plain)
         .foregroundStyle(Theme.Colors.onPrimary)
         .background(Theme.Colors.primary)
+        // The style's two border fields used to be read by the secondary button only — this one
+        // ignored them, so a pack could not give the filled control an edge. Control's width is 0
+        // and paints nothing, so honouring them here moves no shipped pixel.
+        .overlay { style.corner.shape.stroke(style.borderColor, lineWidth: style.borderWidth) }
         .clipShape(style.corner.shape)
     }
 }

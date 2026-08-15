@@ -71,6 +71,9 @@ struct ContentView: View {
                     .padding(.bottom, Theme.Spacing.xl)
             }
         }
+        // The tab-bar token group (arm manifest §1). Control's fields are all nil, so this applies
+        // nothing at all and the platform bar stays the platform bar.
+        .garageTabBarChrome(DesignPackStore.shared.pack.components.tabBar)
         // Tab SWITCHES report via selectedTab's didSet; only the launch impression needs this.
         .onAppear { appState.reportInitialScreen() }
         // The app's ONE live vehicles listener. Hosted here, not in VehicleSwitcher (five screens

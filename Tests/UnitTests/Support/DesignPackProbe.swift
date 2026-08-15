@@ -46,7 +46,9 @@ extension DesignPack {
                 padding: 301,
                 corner: DesignCorner(radius: 302, chamfer: 303),
                 shadowRadius: 304,
-                shadowOffset: 305
+                shadowOffset: 305,
+                borderWidth: 306,
+                borderOpacity: 0.31
             ),
             primaryButton: DesignButtonStyle(
                 corner: DesignCorner(radius: 401, chamfer: 402),
@@ -74,7 +76,9 @@ extension DesignPack {
                 background: probeColor(16),
                 selectedTint: probeColor(17),
                 unselectedTint: probeColor(18)
-            )
+            ),
+            // Not control's `.black`, so a login screen that hardcodes the style fails routing.
+            signInWithApple: .whiteOutline
         ),
         structure: DesignStructure(
             tabs: [DesignTabItem(tab: .garage, title: "Bay", systemImage: "wrench.fill")],
