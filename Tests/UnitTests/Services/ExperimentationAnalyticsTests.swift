@@ -107,14 +107,12 @@ struct ExperimentationAnalyticsTests {
 
     // MARK: - DesignPack
 
+    /// Arm → pack ROUTING only. Control's token values are pinned literal-by-literal in
+    /// `DesignPackControlPinTests`, which is the control-stability contract; this asserts the
+    /// routing that decides which pack an arm gets at all.
     @MainActor
-    @Test func controlPackIsByteIdenticalToTheShippedDesign() {
+    @Test func everyArmRoutesToThePackThisBuildCanActuallyRender() {
         let control = DesignPack.control
-        #expect(control.cardRadius == Theme.Radius.lg)
-        #expect(control.cardShadowRadius == 10)
-        #expect(control.controlRadius == Theme.Radius.md)
-        #expect(control.primaryButtonWeight == .semibold)
-        #expect(control.fabIsCircular)
         #expect(DesignPack.pack(for: .control) == control)
         // Undesigned spare slots render control — defense in depth, not routing. They must also
         // REPORT themselves undesigned, or ExperimentStore cannot refuse to label users with them.

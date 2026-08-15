@@ -1,53 +1,35 @@
 import Observation
 import SwiftUI
 
-/// One coherent presentation variant for the design megatest. A pack modulates the shared
-/// chokepoints every card and primary control flows through (CardModifier, PrimaryButton,
-/// FloatingAddButton) — so every screen inherits the variant with zero per-view edits, and
-/// business logic, ViewModels, and services stay ARM-INVARIANT by construction.
+/// One coherent presentation variant for the design megatest — the FULL token surface plus the
+/// closed set of structural chokepoints the arm manifest freezes. `Theme` reads nothing but the
+/// active pack, so a variant restyles every screen with zero per-view edits, and business logic,
+/// ViewModels, and services stay ARM-INVARIANT by construction.
 ///
-/// `control` MUST remain byte-identical to the shipped design: control users are the baseline
-/// and must see zero change. DesignPackEqualityTests pins its values to the Theme constants.
+/// `control` MUST remain byte-identical to the shipped design: control users are the baseline and
+/// must see zero change. `DesignPackControlPinTests` pins every one of its tokens to the literal
+/// the app shipped before the pack existed — that pin is the control-stability contract until
+/// pixel snapshots arrive in Phase 3.
 ///
 /// Packs are EXPERIMENT state (device-level, sticky, assigned by ExperimentStore), NOT account
-/// personalization — so unlike AccentStore they deliberately do NOT reset on sign-out or
-/// account switch: the assignment must survive both, and the accent a user picked in Pro
-/// theming still layers on top via Theme.Colors.primary independently.
+/// personalization — so unlike AccentStore they deliberately do NOT reset on sign-out or account
+/// switch: the assignment must survive both, and the accent a user picked in Pro theming still
+/// layers on top via `Theme.Colors.primary` independently.
 struct DesignPack: Equatable, Sendable {
-    /// Corner radius for cards (`.garageCard()`).
-    let cardRadius: CGFloat
-    /// Card drop shadow radius; 0 renders flat.
-    let cardShadowRadius: CGFloat
-    /// Corner radius for primary buttons.
-    let controlRadius: CGFloat
-    /// Primary-button label weight.
-    let primaryButtonWeight: Font.Weight
-    /// The floating add button's silhouette: circle (control) vs rounded square.
-    let fabIsCircular: Bool
+    /// The appearance this pack commits to, applied ONCE at the experiment surface's root.
+    /// `nil` — control — is "no preference", i.e. follow the system, which is what the app has
+    /// always done: there is no other `preferredColorScheme` call anywhere.
+    let appearance: ColorScheme?
+    let colors: DesignColors
+    let typography: DesignTypography
+    let spacing: DesignSpacing
+    let radius: DesignRadius
+    let components: DesignComponents
+    let structure: DesignStructure
 
-    /// The shipped design, exactly. Values mirror Theme.Radius/Typography — pinned by test.
-    static let control = DesignPack(
-        cardRadius: Theme.Radius.lg,
-        cardShadowRadius: 10,
-        controlRadius: Theme.Radius.md,
-        primaryButtonWeight: .semibold,
-        fabIsCircular: true
-    )
-
-    /// Wave-1 challenger: "bold" — flatter, squarer, heavier. Deltas are deliberately visible
-    /// (an indistinguishable variant measures nothing) while staying inside the HIG and the
-    /// AA-contrast guarantees (colors are untouched — contrast tests keep applying to both).
-    static let variantA = DesignPack(
-        cardRadius: Theme.Radius.sm,
-        cardShadowRadius: 0,
-        controlRadius: Theme.Radius.sm,
-        primaryButtonWeight: .bold,
-        fabIsCircular: false
-    )
-
-    /// The pack a wave has DESIGNED for `arm`, or nil for a spare slot. Single source of truth
-    /// for both `pack(for:)` and `isImplemented(_:)` — a second switch would let a new wave add
-    /// a design in one place and leave the other claiming the arm is undesigned.
+    /// The pack a wave has DESIGNED for `arm`, or nil for a spare slot. Single source of truth for
+    /// both `pack(for:)` and `isImplemented(_:)` — a second switch would let a new wave add a
+    /// design in one place and leave the other claiming the arm is undesigned.
     private static func designedPack(for arm: ExperimentArm) -> DesignPack? {
         switch arm {
         case .control: return .control
@@ -63,18 +45,16 @@ struct DesignPack: Equatable, Sendable {
         designedPack(for: arm) != nil
     }
 
-    /// Spare slots render control. Unreachable in practice — ExperimentPolicy kills any
-    /// experiment naming one before an arm is assigned — so this is defense in depth, not
-    /// routing.
+    /// Spare slots render control. Unreachable in practice — ExperimentPolicy kills any experiment
+    /// naming one before an arm is assigned — so this is defense in depth, not routing.
     static func pack(for arm: ExperimentArm) -> DesignPack {
         designedPack(for: arm) ?? .control
     }
 }
 
-/// The one observable the design chokepoints read. Mirrors AccentStore's singleton-read
-/// pattern (`Theme.Colors.primary`): reads inside a SwiftUI body register an Observation
-/// dependency, so an emergency kill switch flipping the pack back to control live-restyles
-/// without a relaunch.
+/// The one observable every token read resolves through. Mirrors AccentStore's singleton-read
+/// pattern: reads inside a SwiftUI body register an Observation dependency, so an emergency kill
+/// switch flipping the pack back to control live-restyles without a relaunch.
 @MainActor
 @Observable
 final class DesignPackStore {
@@ -83,6 +63,13 @@ final class DesignPackStore {
     private(set) var pack: DesignPack = .control
 
     func apply(arm: ExperimentArm) {
-        pack = DesignPack.pack(for: arm)
+        apply(DesignPack.pack(for: arm))
+    }
+
+    /// Applies a pack directly. Kept narrow on purpose — arm resolution is ExperimentStore's job,
+    /// and this exists so a pack can be exercised without an experiment (token routing tests, and
+    /// the per-arm previews wave U1′ needs).
+    func apply(_ pack: DesignPack) {
+        self.pack = pack
     }
 }

@@ -116,7 +116,7 @@ final class AppState {
             currentVehicle = nil
             hasCompletedInitialVehicleLoad = false
             // Defense-in-depth: an account switch must not carry the prior user's accent.
-            AccentStore.shared.scheme = .classic
+            AccentStore.shared.apply(themeID: nil)
         }
 
         await loadProfile(uid: uid, expectedAuthenticationRevision: expectedAuthenticationRevision)
@@ -209,7 +209,7 @@ final class AppState {
             userProfile = nil
             analytics.setEnabled(false)
             crashReporter.setEnabled(false)
-            AccentStore.shared.scheme = .classic
+            AccentStore.shared.apply(themeID: nil)
             AppLogger.shared.error("Profile bootstrap failed: \(error.localizedDescription)")
         }
     }
@@ -228,7 +228,7 @@ final class AppState {
             vehicles = []
             currentVehicle = nil
             hasCompletedInitialVehicleLoad = false
-            AccentStore.shared.scheme = .classic
+            AccentStore.shared.apply(themeID: nil)
             // Review findings: neither scheduled local reminder notifications nor QuickLook
             // preview temp-file residue were ever cleared here — the next person on this device
             // (a plain re-sign-in, OR account deletion, which funnels through this same

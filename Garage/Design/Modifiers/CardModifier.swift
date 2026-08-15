@@ -4,11 +4,11 @@ struct CardModifier: ViewModifier {
     func body(content: Content) -> some View {
         // Reading the pack inside body keeps this reactive to a mid-session kill-switch
         // restyle, same mechanism as Theme.Colors.primary.
-        let pack = DesignPackStore.shared.pack
+        let card = DesignPackStore.shared.pack.components.card
         content
-            .padding(Theme.Spacing.md)
+            .padding(card.padding)
             .background(Theme.Colors.surface)
-            .clipShape(RoundedRectangle(cornerRadius: pack.cardRadius))
-            .shadow(color: .garageShadow, radius: pack.cardShadowRadius, x: 0, y: pack.cardShadowRadius > 0 ? 6 : 0)
+            .clipShape(card.corner.shape)
+            .shadow(color: .garageShadow, radius: card.shadowRadius, x: 0, y: card.shadowOffset)
     }
 }

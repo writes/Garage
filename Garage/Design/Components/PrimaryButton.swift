@@ -6,22 +6,22 @@ struct PrimaryButton: View {
     var action: () -> Void
 
     var body: some View {
-        let pack = DesignPackStore.shared.pack
+        let style = DesignPackStore.shared.pack.components.primaryButton
         Button(action: action) {
             Label {
                 Text(title)
-                    .font(Theme.Typography.headline.weight(pack.primaryButtonWeight))
+                    .font(style.labelFont)
             } icon: {
                 if let systemImage {
                     Image(systemName: systemImage)
                 }
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, Theme.Spacing.md)
+            .padding(.vertical, style.verticalPadding)
         }
         .buttonStyle(.plain)
         .foregroundStyle(Theme.Colors.onPrimary)
         .background(Theme.Colors.primary)
-        .clipShape(RoundedRectangle(cornerRadius: pack.controlRadius))
+        .clipShape(style.corner.shape)
     }
 }
