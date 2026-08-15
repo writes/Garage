@@ -168,7 +168,7 @@ secrets, data-loss, App Check, privacy manifest).
 | V | `docs/research-assay/audit/{REGISTRY.md,index.jsonl,index.schema.json,tier-*}` | ✅ schema | Idea graveyard; search-before-evaluating DB |
 | V | `.claude/workflows/async-commit-review.js` | ◐ adapt | Post-commit finder→refuter on capital/critical-path files |
 | V | `.claude/workflows/instrument-audit.js` | ◐ adapt | Pre-release 4-lens finder→refuter GO/NO-GO brief |
-| V | `scripts/brain/tri_review.py` | ✅ copy | Pre-main tri-provider merge-readiness review (Fable 5 `--effort high` + GPT-5.6 Sol + Gemini 3.1 Pro High) → advisory GO/NO-GO brief; SHA-bound, fail-closed secret screen |
+| V | `scripts/brain/tri_review.py` | ✅ copy | Pre-main tri-provider merge-readiness review (Fable 5 `--effort high` + GPT-5.6 Sol + Gemini 3.1 Pro High) → advisory GO/NO-GO brief; SHA-bound, fail-closed secret screen; prior briefs (`reports/tri-review/`) excluded from evidence by default (anti-spiral, 2026-08-15) |
 
 `✅ copy` = portable as-is · `◐ adapt` = portable structure, swap content · `✗ domain` = rebuild
 the pattern for your domain.
@@ -241,6 +241,17 @@ never an auto-edit beyond appending rows the human confirms (Law 5).
 | 19 | Model routing v3 (lane-split collective) | IV | `docs/research/2026-07-10_MODEL_ROUTING_V3.md` + doctrine §2 + `BRAIN_*` pins in `scripts/brain/*` | §4 | LIVE | 2026-07-10 |
 
 ### 5.4 Changelog (append-only; newest first)
+
+- **2026-08-15** — **tri_review anti-spiral: prior briefs excluded from review evidence by
+  default.** The PR #80 review demonstrated a structural non-convergence: each rerun commits its
+  brief to `reports/tri-review/`, the next rerun's diff carries every prior brief, and past
+  ~185KB the run is either truncated (DEGRADED: incomplete evidence) or breaches the agy
+  ~190KB payload ceiling (invalid Gemini verdict) — five rounds could never reach a full-
+  evidence verdict. Fix: the three evidence surfaces (`--name-status` manifest, full diff,
+  `--stat`) now carry `:(exclude)reports/tri-review/`; the exclusion is disclosed as a comment
+  line on the manifest every reviewer and the brief see; `--include-review-briefs` restores the
+  old behavior. Measured on the exact #80 range: 6 files / ~987 lines of brief-noise removed.
+  Selftests 62/62. Memory: `tri-review-nonconvergence`.
 
 - **2026-07-21** — **Scope-guard root-cause fix: generated `Garage.xcodeproj/` reclassified
   PROTECTED→ALLOWED; `project.yml` stays PROTECTED; CI regenerate-equality gate added.** The app

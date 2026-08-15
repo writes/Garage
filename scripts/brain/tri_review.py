@@ -1109,6 +1109,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         action="store_true",
         help="Allow effective BRAIN_* model overrides that differ from the pinned roster; record them prominently in the brief.",
     )
+    ap.add_argument(
+        "--include-review-briefs",
+        action="store_true",
+        help=(
+            "Include reports/tri-review/ in the reviewed diff. Excluded by default: prior "
+            "briefs are artifacts OF review rounds, and carrying them re-inflates every rerun "
+            "until the payload breaches provider ceilings (the PR #80 non-convergence spiral)."
+        ),
+    )
     ap.add_argument("--selftest", action="store_true", help="Run pure deterministic tests; no subprocesses.")
     args = ap.parse_args(argv)
 
@@ -1153,7 +1162,17 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("dirty tree: commit or stash first", file=sys.stderr)
             return 2
 
-        manifest = _git(repo, "diff", "--name-status", "--find-renames", merge_base_sha, head_sha)
+        # Prior review briefs are evidence ABOUT review rounds, not reviewable change: carrying
+        # them makes each rerun's payload strictly larger than the last (the non-convergence
+        # spiral), so they are excluded from every evidence surface unless explicitly included.
+        evidence_pathspec: List[str] = []
+        if not args.include_review_briefs:
+            evidence_pathspec = ["--", ".", ":(exclude)reports/tri-review/"]
+
+        manifest = _git(
+            repo, "diff", "--name-status", "--find-renames", merge_base_sha, head_sha,
+            *evidence_pathspec,
+        )
         manifest_entries = _parse_name_status(manifest)
         protected_paths = [
             path
@@ -1167,10 +1186,23 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print(f"  - {path}", file=sys.stderr)
             return 3
 
+        if evidence_pathspec:
+            # Disclose the exclusion on every evidence surface the reviewers and the brief see
+            # (appended AFTER _parse_name_status so it can never masquerade as a change row).
+            manifest = (manifest.rstrip("\n") + "\n" if manifest.strip() else "") + (
+                "# excluded from evidence: reports/tri-review/ (prior review briefs; "
+                "pass --include-review-briefs to include)"
+            )
+
         # LANDMINE #8: screen all prompt-bound review evidence before any provider sees a byte of it.
-        full_diff = _git(repo, "diff", "--find-renames", merge_base_sha, head_sha)
+        full_diff = _git(
+            repo, "diff", "--find-renames", merge_base_sha, head_sha, *evidence_pathspec
+        )
         commit_log = _git(repo, "log", "--oneline", f"{merge_base_sha}..{head_sha}")
-        diff_stat = _git(repo, "diff", "--stat", "--find-renames", merge_base_sha, head_sha)
+        diff_stat = _git(
+            repo, "diff", "--stat", "--find-renames", merge_base_sha, head_sha,
+            *evidence_pathspec,
+        )
         manifest_display = "\n".join(entry["display"] for entry in manifest_entries)
         secret_hits = secret_scan("\n".join((full_diff, commit_log, manifest_display, diff_stat)))
         if secret_hits:
