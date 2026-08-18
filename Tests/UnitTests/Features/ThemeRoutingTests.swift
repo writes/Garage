@@ -161,7 +161,7 @@ struct ThemeRoutingTests {
     /// so a pack re-labelling or re-ordering tabs moves the tab bar with no call-site edit. Control
     /// answers with the shipped five, which is why the journeys still find "Dashboard".
     @Test func theTabConfigurationComesFromTheActivePack() {
-        #expect(DesignPackStore.shared.pack.structure.tabs.map(\.tab) == AppTab.allCases)
+        #expect(DesignPackStore.shared.pack.structure.tabs.map(\.tab) == AppTab.controlTabs)
 
         withProbe { probe in
             #expect(DesignPackStore.shared.pack.structure.tabs == probe.structure.tabs)

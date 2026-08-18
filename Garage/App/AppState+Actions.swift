@@ -42,11 +42,11 @@ extension AppState {
 extension AppTab {
     var analyticsScreen: ScreenKind {
         switch self {
-        case .dashboard: return .dashboard
+        case .dashboard, .record: return .dashboard
         case .log: return .log
         case .garage: return .garage
         case .stats: return .stats
-        case .settings: return .settings
+        case .settings, .handover: return .settings
         }
     }
 }

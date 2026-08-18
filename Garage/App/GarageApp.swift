@@ -26,6 +26,12 @@ struct GarageApp: App {
 
         switch bootstrapMode {
         case .uiTest, .localDemo, .localSetupRequired:
+            // The arm-forcing lever (EXPERIMENT_FORCE_DESIGN_ARM, DEBUG-only) must reach the
+            // pack in these bootstraps too — the per-arm journey lane launches the demo forced
+            // into a variant. Pure local work, no Firebase dependency (see the production-branch
+            // comment on the same call); without the env var the bundled registry's killed
+            // epoch-1 definition resolves .control, which is exactly the pack already applied.
+            DesignPackStore.shared.apply(arm: ExperimentStore.shared.arm(for: .designMegatest))
             let appState = Self.makeNonProductionAppState(for: bootstrapMode)
             _appState = State(initialValue: appState)
             // Review finding: "not yet loaded" must never read as "confirmed zero vehicles" — an

@@ -3,8 +3,18 @@ import SwiftUI
 struct EntryTypePicker: View {
     @Environment(AppRouter.self) private var router
 
+    private var framing: DesignFraming {
+        DesignPackStore.shared.pack.structure.framing
+    }
+
     var body: some View {
-        BottomSheet(title: "New Entry") {
+        BottomSheet(title: framing.recordTitle ?? "New Entry") {
+            if let subtitle = framing.recordSubtitle {
+                Text(subtitle)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .padding(.bottom, Theme.Spacing.sm)
+            }
             Button {
                 router.present(.voiceQuickAdd)
             } label: {

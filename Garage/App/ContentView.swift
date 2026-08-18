@@ -6,6 +6,9 @@ struct ContentView: View {
     /// The app's ONLY haptic observer. It lives here, above the sheet presentation, because every
     /// event worth confirming dismisses its own host in the same transaction — see FeedbackCenter.
     @State private var feedback = FeedbackCenter.shared
+    /// Held as @State so `.onChange(of:)` below observes pack swaps from EVERY path (server kill,
+    /// bootstrap force, future levers) — not just the one server-override task in this file.
+    @State private var designPackStore = DesignPackStore.shared
 
     var body: some View {
         Group {
@@ -46,12 +49,34 @@ struct ContentView: View {
         // inside a body so a mid-session kill restyles without a relaunch. Control's pack carries
         // nil — "no preference" — which is exactly today's behaviour, the system appearance.
         .preferredColorScheme(DesignPackStore.shared.pack.appearance)
+        // A pack can drop the tab the user is standing on (Underhood surfaces no Stats/Settings
+        // tab; the kill switch swaps back the other way). Normalizing here — once at appear for
+        // the bootstrap-applied pack, and on EVERY subsequent swap — keeps `selectedTab` inside
+        // the active structure no matter which path applied the pack.
+        .onAppear { normalizeSelectedTab() }
+        .onChange(of: designPackStore.pack) { normalizeSelectedTab() }
+        // Sign-out/account-deletion swap the Group below to LoginView, but a router sheet
+        // (Underhood's Settings, a paywall, an export) presents from THIS host and would stay
+        // modal over the login screen until manually dismissed. No sheet belongs to a
+        // signed-out session, in either arm.
+        .onChange(of: appState.isAuthenticated) {
+            if !appState.isAuthenticated {
+                router.dismissSheet()
+            }
+        }
     }
 
     private var mainTabs: some View {
-        TabView(selection: Binding(
+        let structure = DesignPackStore.shared.pack.structure
+        return TabView(selection: Binding(
             get: { appState.selectedTab },
-            set: { appState.selectedTab = $0 }
+            set: { newTab in
+                if newTab == .record {
+                    router.present(.entryPicker)
+                    return
+                }
+                appState.selectedTab = newTab
+            }
         )) {
             // The routing chokepoint: labels, symbols and ORDER come from the active pack's
             // structure (arm manifest §2.1). Control's structure is today's five tabs, in today's
@@ -60,12 +85,12 @@ struct ContentView: View {
             // Every tab is built on FIRST SELECTION, not at launch: an eager TabView fired the
             // Dashboard, Log and Stats fetches concurrently before the owner had seen anything but
             // the Dashboard. Content is kept once built, so switching tabs never refetches.
-            ForEach(DesignPackStore.shared.pack.structure.tabs) { item in
+            ForEach(structure.tabs) { item in
                 lazyTab(item)
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            if appState.selectedTab == .dashboard || appState.selectedTab == .log {
+            if showsFloatingAddButton {
                 FloatingAddButton()
                     .padding(.trailing, Theme.Spacing.lg)
                     .padding(.bottom, Theme.Spacing.xl)
@@ -81,6 +106,20 @@ struct ContentView: View {
         .vehicleSyncHost()
     }
 
+    /// Control keeps the overlay FAB on Dashboard/Log; Underhood moves Record into the tab bar.
+    private var showsFloatingAddButton: Bool {
+        let structure = DesignPackStore.shared.pack.structure
+        guard !structure.visibleTabs.contains(.record) else { return false }
+        return appState.selectedTab == .dashboard || appState.selectedTab == .log
+    }
+
+    private func normalizeSelectedTab() {
+        let normalized = DesignPackStore.shared.pack.structure.normalizedTab(appState.selectedTab)
+        if appState.selectedTab != normalized {
+            appState.selectedTab = normalized
+        }
+    }
+
     private func lazyTab(_ item: DesignTabItem) -> some View {
         LazyTabContent(tab: item.tab, selection: appState.selectedTab) { root(for: item.tab) }
             .tag(item.tab)
@@ -89,14 +128,26 @@ struct ContentView: View {
 
     /// The shipped root each tab identity hosts. Deliberately NOT part of the pack: every arm
     /// hosts the same view hierarchy per tab, so only the framing around these is themeable.
+    /// Pack-driven titles and the settings accessory are applied INSIDE each root's own
+    /// NavigationStack (`.designTabRootChrome`) — navigation chrome set from out here, above the
+    /// stack, is silently ignored by SwiftUI.
     @ViewBuilder
     private func root(for tab: AppTab) -> some View {
         switch tab {
-        case .dashboard: DashboardView()
-        case .log: LogView()
-        case .garage: GarageView()
-        case .stats: StatsView()
-        case .settings: SettingsView()
+        case .dashboard:
+            DashboardView()
+        case .log:
+            LogView()
+        case .garage:
+            GarageView()
+        case .stats:
+            StatsView()
+        case .settings:
+            SettingsView()
+        case .record:
+            RecordTabPlaceholder()
+        case .handover:
+            HandoverTabView()
         }
     }
 
@@ -119,6 +170,15 @@ struct ContentView: View {
             SubscriptionView(source: source)
         case .designSurvey:
             DesignSurveyView()
+        case .settings:
+            // Event parity with control (§3 identical streams): a control user reaches Settings
+            // by tab switch, which fires screenViewed via selectedTab.didSet. The Underhood
+            // accessory presents it instead, so the SAME semantic event fires here. Control
+            // never presents this sheet, so control's stream is untouched.
+            SettingsView()
+                .onAppear {
+                    AnalyticsService.shared.track(.screenViewed(screen: .settings))
+                }
         }
     }
 }

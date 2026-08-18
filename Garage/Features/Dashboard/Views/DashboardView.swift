@@ -1,12 +1,19 @@
 import SwiftUI
 
 struct DashboardView: View {
-    @Environment(AppState.self) private var appState
+    // appState/viewModel/reload/firstEntryState are not `private`: the whole Underhood
+    // presentation lives in DashboardView+Underhood.swift (file/type length caps forced the
+    // split) and renders from the SAME state and loaders as the control body here.
+    @Environment(AppState.self) var appState
     @Environment(AppRouter.self) private var router
-    @State private var viewModel = DashboardViewModel()
+    @State var viewModel = DashboardViewModel()
 #if DEBUG
     @State private var demoStore = DemoSessionStore.shared
 #endif
+
+    private var usesUnderhood: Bool {
+        DesignPackStore.shared.pack.structure.usesUnderhoodPresentation
+    }
 
     var body: some View {
         NavigationStack {
@@ -36,8 +43,11 @@ struct DashboardView: View {
                 }
                 .padding(Theme.Spacing.md)
             }
-            .navigationTitle("Dashboard")
             .background(Theme.Colors.background.ignoresSafeArea())
+            // In-stack chrome: pack title ("Dashboard" in control, "Hood" in Underhood) plus the
+            // §2.3 settings accessory. Control's structure keeps the accessory flag off, so the
+            // control bar renders exactly as shipped.
+            .designTabRootChrome(for: .dashboard)
             .task(id: appState.currentVehicle?.id) { await reload() }
 #if DEBUG
             .task(id: demoStore.revision) { await reload() }
@@ -61,6 +71,15 @@ struct DashboardView: View {
 
     @ViewBuilder
     private var loadedVehicleBody: some View {
+        if usesUnderhood {
+            underhoodLoadedBody
+        } else {
+            controlLoadedBody
+        }
+    }
+
+    @ViewBuilder
+    private var controlLoadedBody: some View {
         OdometerHeroCard(
             vehicle: appState.currentVehicle, hasActiveWarranty: viewModel.hasActiveWarranty
         )
@@ -71,20 +90,12 @@ struct DashboardView: View {
         } else if let error = viewModel.error {
             ErrorBanner(error: error, retry: { Task { await reload() } })
         } else if viewModel.hasNoHistory {
-            // A vehicle with no entries would otherwise stack FOUR negative panels — needs-
-            // attention, wear, reminders, recent activity — on the very first screen after adding
-            // a car. Four "nothing here" cards in a row read as a broken app rather than a new
-            // one. One next step instead.
             firstEntryState
         } else {
-            // Above wear and reminders: the only section that says what the car needs rather than
-            // replaying what the owner already entered.
             MaintenanceDueCard(
                 items: viewModel.maintenanceDue,
                 historyDepth: DashboardViewModel.historyDepth
             )
-            // Same family as the card above — something derived rather than replayed — so it sits
-            // with it. Renders nothing unless there is a real, sustained drop.
             FuelEconomyNotice(verdict: viewModel.fuelEconomy)
             wearSection
             remindersSection
@@ -93,8 +104,9 @@ struct DashboardView: View {
     }
 
     /// The activation moment: one vehicle, no history. Mirrors zeroVehicleState below — a single
-    /// explicit next step rather than a column of empty sections.
-    private var firstEntryState: some View {
+    /// explicit next step rather than a column of empty sections. Internal: the Underhood body
+    /// (split file) renders the same activation state.
+    var firstEntryState: some View {
         VStack(spacing: Theme.Spacing.md) {
             EmptyStateView(
                 title: "Log your first service",
@@ -124,48 +136,7 @@ struct DashboardView: View {
         }
     }
 
-    private var wearSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            Text("Wear items")
-                .font(Theme.Typography.title)
-            if viewModel.wearItems.isEmpty {
-                EmptyStateView(
-                    title: "No wear data yet",
-                    message: "Brake, tire, and clutch health will show up after the first relevant service entry.",
-                    systemImage: "gauge.medium"
-                )
-            } else {
-                ForEach(viewModel.wearItems) { item in
-                    WearItemBar(
-                        label: item.type.label,
-                        percentage: item.percentage,
-                        rawValue: item.rawValue,
-                        notes: notes(for: item)
-                    )
-                }
-                .garageCard()
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// The two lines a wear bar cannot carry itself. Both are absent far more often than present.
-    ///
-    /// The age note goes on BOTH tire rows rather than one. There is a single install date and no
-    /// reliable per-axle scoping for it, so putting it only on the front row would leave "Rear
-    /// Tires 61%" reading as unqualified good news about rubber the app believes is six years old.
-    private func notes(for item: WearItem) -> [WearItemNote] {
-        var notes: [WearItemNote] = []
-        if let miles = item.milesToReplacement {
-            notes.append(.projection(milesToReplacement: miles))
-        }
-        if item.type.isTire, let years = viewModel.tireAgeYears {
-            notes.append(.tireAge(years: years))
-        }
-        return notes
-    }
-
-    private var remindersSection: some View {
+    var remindersSection: some View {
         let reminders = displayedReminders
         return VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             Text("Upcoming reminders")
@@ -198,7 +169,13 @@ struct DashboardView: View {
                 systemImage: "bell"
             )
             PrimaryButton(title: "Go to Settings", systemImage: "gearshape") {
-                appState.selectedTab = .settings
+                // Underhood surfaces no Settings tab; the router sheet is its §2.3 route (one
+                // host, so Settings' own follow-on sheets keep working — see Sheet.settings).
+                if usesUnderhood {
+                    router.present(.settings)
+                } else {
+                    appState.selectedTab = .settings
+                }
             }
             .accessibilityIdentifier("dashboard.reminders.cta")
         }
@@ -216,7 +193,7 @@ struct DashboardView: View {
         return viewModel.upcomingReminders
     }
 
-    private func reload() async {
+    func reload() async {
         guard let vehicleId = appState.currentVehicle?.id else { return }
         await viewModel.loadDashboard(vehicleId: vehicleId)
     }

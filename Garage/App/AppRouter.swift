@@ -13,6 +13,12 @@ final class AppRouter {
         case export
         case subscription(PaywallSource)
         case designSurvey
+        /// The Underhood arm's §2.3 settings accessory. Routed through the router — not a local
+        /// `.sheet` at the accessory — because SettingsView's own actions present ROUTER sheets
+        /// (export, paywall): with Settings presented by a child host, those root-hosted sheets
+        /// cannot present over it and the flows dead-end. One host means a follow-on `present`
+        /// replaces the Settings sheet instead. Control never routes here (it has a Settings tab).
+        case settings
 
         var id: String {
             switch self {
@@ -24,6 +30,7 @@ final class AppRouter {
             case .export: return "export"
             case .subscription(let source): return "subscription-\(source.rawValue)"
             case .designSurvey: return "designSurvey"
+            case .settings: return "settings"
             }
         }
     }
@@ -94,7 +101,7 @@ final class AppRouter {
         switch sheet {
         case .entryPicker, .voiceQuickAdd, .receiptCapture, .entryForm:
             isGatedSheet = true
-        case .vehicleForm, .export, .subscription, .designSurvey:
+        case .vehicleForm, .export, .subscription, .designSurvey, .settings:
             isGatedSheet = false
         }
 
@@ -122,7 +129,7 @@ final class AppRouter {
         case .voiceQuickAdd: form = .voiceQuickAdd
         case .receiptCapture: form = .receiptCapture
         case .export: form = .export
-        case .subscription, .designSurvey: return
+        case .subscription, .designSurvey, .settings: return
         }
         analytics.track(.formOpened(form: form))
     }

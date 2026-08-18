@@ -46,6 +46,9 @@ final class DashboardViewModel {
 
     private(set) var recentEntries: [FirestoreEntry] = []
     private(set) var maintenanceDue: [MaintenanceDue] = []
+    /// Every tracked system with its honest status, healthy ones included — the Underhood bay's
+    /// input. Empty exactly when there is no history to reason from.
+    private(set) var maintenanceRoster: [MaintenanceDue] = []
     /// True once a load has completed and found no entries at all. Distinct from `recentEntries
     /// .isEmpty` alone, which is also true before the first load lands — showing the activation CTA
     /// during loading would flash it at owners who have plenty of history.
@@ -164,6 +167,17 @@ final class DashboardViewModel {
             currentOdometer: advisorInput.map(\.odometerReading).max(),
             now: .now
         )
+        // The FULL per-item roster, healthy systems included. `maintenanceDue` above is the
+        // attention-needed SLICE — a surface that renders every system (the Underhood bay grid)
+        // must not derive from it, or an all-current car reads as four "no record" warnings.
+        maintenanceRoster = advisorInput.isEmpty ? [] : MaintenanceItem.allCases.map {
+            MaintenanceAdvisor.status(
+                for: $0,
+                entries: advisorInput,
+                currentOdometer: advisorInput.map(\.odometerReading).max(),
+                now: .now
+            )
+        }
         wearItems = content.wearItems
         // Reads the merged input for the same reason the advisor does: a tire installation can
         // arrive from either fetch, and asking only the narrowed one would date the rubber from

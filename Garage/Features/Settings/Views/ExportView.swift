@@ -34,9 +34,35 @@ struct ExportView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppRouter.self) private var router
     @State private var viewModel = ExportViewModel()
+    /// When true, renders inline for the Handover tab instead of as a dismissible sheet.
+    var embeddedInTab: Bool = false
 
     var body: some View {
-        BottomSheet(title: "Export History") {
+        Group {
+            if embeddedInTab {
+                exportBody
+            } else {
+                BottomSheet(title: sheetTitle) { exportBody }
+            }
+        }
+        .onChange(of: currentExportSession, initial: true) { _, session in
+            viewModel.sessionChanged(to: session)
+        }
+        .onDisappear {
+            // BOTH modes: the sheet discards on dismissal as shipped, and the embedded Handover
+            // tab discards on tab switch-away — LazyTabContent keeps the view alive offscreen,
+            // and sensitive export files must not outlive the surface that made them
+            // (cross-check finding, all three reviewers).
+            viewModel.discardExportArtifacts()
+        }
+    }
+
+    private var sheetTitle: String {
+        DesignPackStore.shared.pack.structure.framing.handoverTitle ?? "Export History"
+    }
+
+    @ViewBuilder
+    private var exportBody: some View {
             if let vehicle = appState.currentVehicle {
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                     Text("CSV record-data export")
@@ -138,13 +164,6 @@ struct ExportView: View {
                     systemImage: "car"
                 )
             }
-        }
-        .onChange(of: currentExportSession, initial: true) { _, session in
-            viewModel.sessionChanged(to: session)
-        }
-        .onDisappear {
-            viewModel.discardExportArtifacts()
-        }
     }
 
     private var currentExportSession: ExportSessionAuthorization? {

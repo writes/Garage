@@ -89,9 +89,9 @@ extension DesignPack {
             signInWithApple: .black
         ),
         structure: DesignStructure(
-            // Derived from AppTab rather than restated, so the shipped tab bar has exactly ONE
-            // source of truth. The pin test asserts the resulting labels and symbols literally.
-            tabs: AppTab.allCases.map {
+            // Derived from the shipped tab roster rather than allCases, so Underhood-only identities
+            // (record, handover) never leak into control when the enum grows.
+            tabs: AppTab.controlTabs.map {
                 DesignTabItem(tab: $0, title: $0.rawValue, systemImage: $0.icon)
             },
             showsDashboardTrendsRow: false,
@@ -227,8 +227,24 @@ extension DesignPack {
             // answer (`.whiteOutline` is for light backgrounds, which this world does not have).
             signInWithApple: .white
         ),
-        // U1′ is tokens only: labels, order, tab identities, the trends row, the settings accessory
-        // and the framing copy are all waves U2′–U4′.
-        structure: control.structure
+        // U2′–U4′ structural treatment: IA remap, Hood/Bay/Logbook/Handover/Record framing,
+        // D2-A trends row + settings accessory (arm manifest §2).
+        structure: DesignStructure(
+            tabs: [
+                DesignTabItem(tab: .dashboard, title: "Hood", systemImage: "gauge.with.dots.needle.50percent"),
+                DesignTabItem(tab: .log, title: "Logbook", systemImage: "book.closed"),
+                DesignTabItem(tab: .record, title: "Record", systemImage: "plus"),
+                DesignTabItem(tab: .garage, title: "Bay", systemImage: "square.grid.2x2"),
+                DesignTabItem(tab: .handover, title: "Handover", systemImage: "doc.richtext")
+            ],
+            showsDashboardTrendsRow: true,
+            showsSettingsAccessory: true,
+            framing: DesignFraming(
+                recordTitle: "Record",
+                recordSubtitle: "Type it, say it, or scan it. Every non-manual path lands as a draft you commit.",
+                handoverTitle: "Handover",
+                handoverSubtitle: "The same CSV and PDF exports, framed for the next owner."
+            )
+        )
     )
 }

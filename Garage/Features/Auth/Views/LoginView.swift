@@ -22,11 +22,21 @@ struct LoginView: View {
             Spacer()
 
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                Text("Garage")
-                    .font(Theme.Typography.largeTitle)
-                Text("Keep a clear manual service and maintenance history for your car.")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+                if DesignPackStore.shared.pack.structure.usesUnderhoodPresentation {
+                    UnderhoodEyebrow(text: "Sign in to sync", accent: true)
+                    Text("GARAGE")
+                        .font(Theme.Typography.largeTitle)
+                        .tracking(2)
+                    Text("Your manual service history — clear, portable, and yours.")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                } else {
+                    Text("Garage")
+                        .font(Theme.Typography.largeTitle)
+                    Text("Keep a clear manual service and maintenance history for your car.")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 

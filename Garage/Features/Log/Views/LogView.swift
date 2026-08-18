@@ -34,7 +34,11 @@ struct LogView: View {
                             Button {
                                 selectedEntry = entry
                             } label: {
-                                EntryRowView(entry: entry)
+                                if DesignPackStore.shared.pack.structure.usesUnderhoodPresentation {
+                                    LogbookEntryRow(entry: entry)
+                                } else {
+                                    EntryRowView(entry: entry)
+                                }
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("log.row.\(entry.id)")
@@ -59,7 +63,16 @@ struct LogView: View {
                 }
             }
             .padding(Theme.Spacing.md)
-            .navigationTitle("Log")
+            // Underhood-only paint: control's List kept the system background before this wave,
+            // and the control baseline is pinned — Color.clear is the identity-stable no-op.
+            .background(
+                (DesignPackStore.shared.pack.structure.usesUnderhoodPresentation
+                    ? Theme.Colors.background : Color.clear)
+                    .ignoresSafeArea()
+            )
+            // In-stack chrome: "Log" in control, "Logbook" in Underhood, plus the §2.3 settings
+            // accessory (control's flag is off, so its bar is untouched).
+            .designTabRootChrome(for: .log)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     VehicleSwitcher()

@@ -186,14 +186,20 @@ struct UnderhoodPackTests {
 
     // MARK: - What U1' must NOT move
 
-    /// U1′ is tokens only. Every structural difference — tab labels and order, the trends row, the
-    /// settings accessory, the framing copy — is waves U2′–U4′, so a structure delta appearing here
-    /// is an unregistered treatment, not a design choice.
-    @Test func theStructureIsStillControlsBecauseU1IsTokensOnly() {
-        #expect(variant.structure == control.structure)
-        #expect(variant.structure.tabs.map(\.title) == control.structure.tabs.map(\.title))
-        #expect(!variant.structure.showsDashboardTrendsRow)
-        #expect(!variant.structure.showsSettingsAccessory)
+    /// U2′–U4′ structural treatment: IA remap, Hood trends row, settings accessory, framing copy.
+    @Test func theStructureCarriesTheFullUnderhoodManifest() {
+        #expect(variant.structure.showsDashboardTrendsRow)
+        #expect(variant.structure.showsSettingsAccessory)
+        #expect(variant.structure.tabs.map(\.tab) == [
+            .dashboard, .log, .record, .garage, .handover
+        ])
+        #expect(variant.structure.tabs.map(\.title) == [
+            "Hood", "Logbook", "Record", "Bay", "Handover"
+        ])
+        #expect(variant.structure.framing.recordTitle == "Record")
+        #expect(variant.structure.framing.handoverTitle == "Handover")
+        #expect(!variant.structure.visibleTabs.contains(.stats))
+        #expect(!variant.structure.visibleTabs.contains(.settings))
     }
 
     /// Spacing is not one of the manifest's six token groups, so the two arms must share it: a
