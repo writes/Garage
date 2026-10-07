@@ -1,5 +1,10 @@
 # HANDOFF — cross-agent session state (read first; update before ending)
 
+> **Public snapshot note (2026-10-07):** this file is the frozen cross-agent state from the private
+> development repo as of the 2026-08-27 spin-down. Short SHAs and PR numbers below refer to the
+> private history (SHAs changed when one billing identifier was redacted). See README.md.
+
+
 <!--CURRENT:START-->
 ## CURRENT STATE
 - updated: 2026-08-27T12:17:15Z by **claude-fable-5** on `docs/handoff-spin-down-0827` @ `b6249bf`

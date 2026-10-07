@@ -1,5 +1,10 @@
 # Garage — Project State
 
+> **Note (2026-10-07):** this detailed snapshot dates from 2026-06-29. The project grew substantially
+> afterwards (receipt and voice capture, scan quotas and top-ups, A/B experiments, App Attest,
+> DesignPack v2, NHTSA recalls, account/vehicle deletion). For the current overview, architecture
+> and setup, start with README.md.
+
 > **Single-file detailed snapshot of the whole project**, generated 2026-06-29.
 > Two layers live in this repo: the **Garage iOS application** (the product) and the
 > **machine brain** (the multi-LLM intelligence layer that develops it).
