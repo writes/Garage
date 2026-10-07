@@ -19,9 +19,9 @@
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",
-    "firebase-tools": "^15.23.0",
+    "firebase-tools": "^15.32.1",
     "typescript": "^5.4.5",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.3"
   },
   "overrides": {
     "google-gax": {
