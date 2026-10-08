@@ -1,6 +1,6 @@
 # Garage
 
-Garage is a native iOS app for serious car owners: a clean service log, receipt and voice capture,
+Garage is a native iOS app (with a Kotlin/Android port in [`android/`](android/README.md)) for serious car owners: a clean service log, receipt and voice capture,
 resale-ready exports, and ownership tracking (maintenance, track days, oil analysis, parts,
 warranties, recalls). It is backed by Firebase and a set of TypeScript Cloud Functions that call
 Claude for document understanding.
@@ -17,6 +17,7 @@ Claude for document understanding.
 | Area | What is here |
 |---|---|
 | iOS app | SwiftUI, Swift 6, iOS 17+: 285 Swift files (~27k lines) under `Garage/`, organized App → Core → Design → Features |
+| Android app | Kotlin + Jetpack Compose port in `android/` (146 Kotlin files, ~14k lines, 537 unit tests): same Firebase/RevenueCat/Cloud Functions contract, runs locally in Demo mode with no credentials |
 | Feature slices | Auth, Dashboard, Log, EntryForms, Garage, Stats, Receipt, Voice, Handover, Settings, Shared |
 | Backend | Firebase Auth (Sign in with Apple / Google), Firestore (persistent offline cache), Storage, App Check (App Attest), Crashlytics, Messaging |
 | Cloud Functions | 18 TypeScript source files (~5.8k lines), 13 deployed functions (listed below), Node 22 |
@@ -59,6 +60,7 @@ and 318 of 324 field checks pass on the two corpus versions.
 
 ## Repository map
 
+- `android/`: Kotlin/Compose Android port (Gradle project, its own README and architecture spec)
 - `Garage/`: app source, design system (DesignPack v2 token engine), feature slices, resources
 - `CloudFunctions/`: Firebase Cloud Functions (TypeScript), unit tests, rules tests, eval scripts
 - `Configuration/`: xcconfigs and **secret templates** (real values are never committed)
@@ -90,7 +92,9 @@ and 318 of 324 field checks pass on the two corpus versions.
    - Copy `.env.example` to `.env.<your-project-id>`. Deployed environments read their secrets
      from Secret Manager: `ANTHROPIC_API_KEY`, `REVENUECAT_SECRET_API_KEY`, `REVENUECAT_WEBHOOK_AUTH`.
    - Local emulator: `npm run serve`. To deploy, see [docs/DEPLOY_RUNBOOK.md](docs/DEPLOY_RUNBOOK.md).
-4. **AI evals (optional, needs an Anthropic key):** `npm run eval:askgarage`. The receipt goldens
+4. **Android app (no accounts needed):** `cd android && ./gradlew :app:assembleDebug` boots in Demo
+   mode; add `android/app/google-services.json` for live Firebase. See [android/README.md](android/README.md).
+5. **AI evals (optional, needs an Anthropic key):** `npm run eval:askgarage`. The receipt goldens
    live under `CloudFunctions/scripts/golden/`. Every receipt there is generated and uses fictional
    data.
 
@@ -99,6 +103,7 @@ and 318 of 324 field checks pass on the two corpus versions.
 - `./scripts/ci/policy-checks.sh`: repo policy (no secrets, no forbidden patterns, structure)
 - `./scripts/ci/security-checks.sh`: security posture checks
 - `./scripts/ci/verify-ios.sh`: build and test the app
+- `android/scripts/android-verify.sh`: build, unit-test and lint the Android app
 - **GitHub Actions** (`.github/workflows/ios.yml`) runs on pull requests and uses no repository
   secrets. It has three jobs:
   - a path filter;

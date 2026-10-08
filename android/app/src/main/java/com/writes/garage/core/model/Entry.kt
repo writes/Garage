@@ -1,5 +1,6 @@
 package com.writes.garage.core.model
 
+import com.writes.garage.core.domain.EntrySearch
 import java.time.Instant
 
 /**
@@ -39,7 +40,8 @@ data class EntryQuery(
         if (endDate != null && entry.entryDate > endDate) return false
         val q = searchText.trim()
         if (q.isNotEmpty()) {
-            val hay = listOfNotNull(entry.shopName, entry.notes, entry.entryType.displayName)
+            val hay = listOfNotNull(entry.shopName, entry.notes, entry.entryType.displayName) +
+                EntrySearch.detailHaystack(entry.details)
             if (hay.none { it.contains(q, ignoreCase = true) }) return false
         }
         return true

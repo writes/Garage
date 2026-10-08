@@ -29,6 +29,15 @@ class GatewayException(
         UNAUTHENTICATED,
         /** `permission-denied {reason: pro_required}`: route the user to the paywall. */
         PRO_REQUIRED,
+
+        /** `resource-exhausted {reason: voice_daily_exhausted}`: the Pro daily voice quota is used up. */
+        VOICE_DAILY_EXHAUSTED,
+
+        /** Oil-analysis import: the free lifetime allowance is used up (upsell). */
+        OIL_FREE_LIFETIME_EXHAUSTED,
+
+        /** Oil-analysis import: Pro's daily allowance is used up (resets at the next UTC midnight). */
+        OIL_DAILY_EXHAUSTED,
         APP_CHECK_OR_PERMISSION,
         UNAVAILABLE,
         OTHER,
@@ -119,6 +128,8 @@ object FunctionsMappers {
         scanRemaining = FirestoreMappers.int(m["scanRemaining"]),
         resetAt = FirestoreMappers.string(m["resetAt"]),
         transactionState = transactionState ?: FirestoreMappers.string(m["transactionState"]),
+        creditsDeficit = FirestoreMappers.int(m["creditsDeficit"]) ?: 0,
+        creditsPurchasingEnabled = FirestoreMappers.bool(m["creditsPurchasingEnabled"]) == true,
     )
 
     /** `reconcileReceiptCreditPurchase` -> `{transactionState, quota:{...}}`. */
@@ -196,6 +207,9 @@ object FunctionsMappers {
                     "pro_month" -> GatewayException.Kind.PRO_MONTH_EXHAUSTED
                     else -> GatewayException.Kind.OTHER
                 }
+            codeName == "RESOURCE_EXHAUSTED" && reason == "voice_daily_exhausted" -> GatewayException.Kind.VOICE_DAILY_EXHAUSTED
+            codeName == "RESOURCE_EXHAUSTED" && reason == "free_lifetime_exhausted" -> GatewayException.Kind.OIL_FREE_LIFETIME_EXHAUSTED
+            codeName == "RESOURCE_EXHAUSTED" && reason == "pro_daily_exhausted" -> GatewayException.Kind.OIL_DAILY_EXHAUSTED
             codeName == "NOT_FOUND" && operation == Callables.LOOKUP_RECALLS -> GatewayException.Kind.VIN_NOT_RECOGNISED
             codeName == "UNAUTHENTICATED" -> GatewayException.Kind.UNAUTHENTICATED
             codeName == "PERMISSION_DENIED" && reason == "pro_required" -> GatewayException.Kind.PRO_REQUIRED

@@ -47,6 +47,14 @@ class DemoProfileRepository(private val store: DemoStore) : ProfileRepository {
         store.profile.value = profile.copy(updatedAt = store.clock())
     }
 
+    override suspend fun setAnalyticsOptOut(optOut: Boolean) {
+        store.profile.update { it.copy(analyticsOptOut = optOut, updatedAt = store.clock()) }
+    }
+
+    override suspend fun setThemeId(themeId: String?) {
+        store.profile.update { it.copy(themeId = themeId?.takeIf { t -> t.isNotBlank() }, updatedAt = store.clock()) }
+    }
+
     override suspend fun setAiConsent(granted: Boolean) {
         store.profile.update { it.copy(aiConsentGrantedAt = if (granted) store.clock() else null) }
     }
@@ -87,8 +95,10 @@ class DemoVehicleRepository(private val store: DemoStore) : VehicleRepository {
     }
 
     override suspend fun updateVehicle(vehicle: Vehicle) {
+        // An edit never touches the tombstone (like the Firestore mapper, which never writes deletedAt on update):
+        // a stale copy must not resurrect a deleted vehicle.
         store.vehicles.update { list ->
-            list.map { if (it.id == vehicle.id) vehicle.copy(updatedAt = store.clock()) else it }
+            list.map { if (it.id == vehicle.id) vehicle.copy(updatedAt = store.clock(), deletedAt = it.deletedAt) else it }
         }
     }
 
@@ -137,7 +147,8 @@ class DemoReminderRepository(private val store: DemoStore) : ReminderRepository 
 
     override suspend fun addReminder(reminder: Reminder): Reminder {
         val created = reminder.copy(id = reminder.id.ifBlank { store.newId("reminder") }, createdAt = store.clock())
-        store.reminders.update { it + created }
+        // Upsert by id, like Firestore's `set`: re-adding a successor (retry / double tap) must not duplicate it.
+        store.reminders.update { list -> list.filterNot { it.id == created.id && it.vehicleId == created.vehicleId } + created }
         return created
     }
 
@@ -166,9 +177,36 @@ class DemoStorageRepository(private val store: DemoStore) : StorageRepository {
         entryId: String?,
     ): String = "demo/${store.profile.value.id}/$vehicleId/${store.newId("attachment")}"
 
+    override suspend fun uploadMedia(
+        vehicleId: String,
+        localUri: String,
+        contentType: String,
+        folder: com.writes.garage.core.data.MediaFolder,
+        ownerId: String?,
+    ): String = "demo/${store.profile.value.id}/$vehicleId/${folder.segment}/${store.newId("media")}"
+
+    /** Demo "files" are tiny canned PDFs so the import flow works without a device file. */
+    override suspend fun readBytes(localUri: String, maxBytes: Int): ByteArray = "%PDF-1.4\n/Type /Page\n%%EOF".toByteArray()
+
     override suspend fun readAsBase64(localUri: String, contentType: String): String = "ZGVtby1yZWNlaXB0"
 
-    override suspend fun deleteAttachment(storagePath: String) = Unit
+    override suspend fun deleteAttachment(storagePath: String) {
+        deleted += storagePath
+    }
+
+    /** Paths removed so far (lets demo/unit flows observe the cascade). */
+    val deleted = mutableListOf<String>()
+
+    override suspend fun downloadAttachment(storagePath: String, maxBytes: Int): ByteArray {
+        if (storagePath in deleted) throw com.writes.garage.core.data.AttachmentMissingException(storagePath)
+        return DEMO_PNG
+    }
+
+    private companion object {
+        /** A valid 1x1 PNG. */
+        val DEMO_PNG: ByteArray = java.util.Base64.getDecoder()
+            .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+    }
 }
 
 class DemoPurchaseRepository(private val store: DemoStore) : PurchaseRepository {
@@ -184,6 +222,12 @@ class DemoPurchaseRepository(private val store: DemoStore) : PurchaseRepository 
     }
 
     override suspend fun restore() = Unit
+
+    override suspend fun receiptCreditsOffer(): com.writes.garage.core.model.CreditsOffer =
+        com.writes.garage.core.model.CreditsOffer(Constants.RECEIPT_CREDITS_PACK_ID, "\$4.99")
+
+    override suspend fun purchaseReceiptCredits(): com.writes.garage.core.model.CreditsPurchaseResult =
+        com.writes.garage.core.model.CreditsPurchaseResult.Completed(store.newId("demo-order"))
 
     /** Demo-only affordance to flip back to Free and exercise the vehicle limit. */
     fun setPro(isPro: Boolean) {

@@ -206,4 +206,16 @@ class VehicleLimitTest {
         val vm = VehicleEditViewModel(env.vehicles, env.purchases, "ghost", ZoneOffset.UTC)
         assertTrue(vm.state.value.notFound)
     }
+
+    @Test
+    fun policyHandlesDowngradedAndNonsenseCounts() {
+        // A downgraded account can hold more than its new limit: it can read them all but add none.
+        assertFalse(com.writes.garage.core.domain.VehicleLimitPolicy.canAddVehicle(3, isPro = false))
+        assertFalse(com.writes.garage.core.domain.VehicleLimitPolicy.canAddVehicle(6, isPro = true))
+        assertFalse(com.writes.garage.core.domain.VehicleLimitPolicy.canAddVehicle(1, isPro = false))
+        assertTrue(com.writes.garage.core.domain.VehicleLimitPolicy.canAddVehicle(0, isPro = false))
+        // A negative count (a drifted server counter) never blocks the first vehicle.
+        assertTrue(com.writes.garage.core.domain.VehicleLimitPolicy.canAddVehicle(-1, isPro = false))
+        assertEquals(1, com.writes.garage.core.domain.VehicleLimitReachedException(1).limit)
+    }
 }

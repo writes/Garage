@@ -28,8 +28,29 @@ object FuelEconomy {
         return out
     }
 
-    /** Σmiles ÷ Σgallons across the fills that have both figures (never the mean of per-tank MPG). */
-    fun weightedAverageMpg(entries: List<Entry>): Double? = averageMpg(tanks(entries))
+    /** One fill-up's MPG ([gallons] is null when the entry has none, so it can chart but not weight an average). */
+    data class FillMpg(val entryId: String, val date: java.time.Instant, val mpg: Double, val gallons: Double?)
+
+    /**
+     * Every fuel entry that has an MPG: its stored `calculatedMPG`, else the figure derived from the odometer pair.
+     * Entries made by receipt/voice carry no stored value, so Stats must not ignore them. The chart series and
+     * [weightedAverageMpg] both read this one list so they can never disagree.
+     */
+    fun fillMpgs(entries: List<Entry>): List<FillMpg> {
+        val derived = mpgBetweenFills(entries)
+        return entries.mapNotNull { e ->
+            if (e.entryType != EntryType.FUEL) return@mapNotNull null
+            val mpg = e.details["calculatedMPG"].asDouble()?.takeIf { it > 0 } ?: derived[e.id] ?: return@mapNotNull null
+            FillMpg(e.id, e.entryDate, mpg, e.details["gallons"].asDouble()?.takeIf { it > 0 })
+        }
+    }
+
+    /**
+     * Σmiles ÷ Σgallons across the fills that have both figures (never the mean of per-tank MPG, which lets a tiny
+     * tank skew the result). Null when no fill has gallons to weight by.
+     */
+    fun weightedAverageMpg(entries: List<Entry>): Double? =
+        averageMpg(fillMpgs(entries).mapNotNull { f -> f.gallons?.let { Tank(f.entryId, f.date, f.mpg, it) } })
 
     // --- FuelEconomyAdvisor ---
 

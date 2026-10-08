@@ -186,6 +186,8 @@ object ProposalForm {
         vehicleId: String,
         attachmentPaths: List<String> = emptyList(),
         zone: ZoneId = ZoneId.systemDefault(),
+        /** Pre-generated id so uploaded attachments live under the saved entry's own Storage folder. */
+        entryId: String = "",
     ): Entry {
         val details = EntryDetailsMapper.toDetails(s.type, s.details, emptyMap(), zone).toMutableMap()
         val cost = parseCost(s.cost)
@@ -200,7 +202,7 @@ object ProposalForm {
             else -> null
         }
         return Entry(
-            id = "", vehicleId = vehicleId, userId = "",
+            id = entryId, vehicleId = vehicleId, userId = "",
             entryType = s.type,
             entryDate = s.date.atTime(12, 0).atZone(zone).toInstant(),
             odometerReading = Validators.parseOdometer(s.odometer) ?: 0,

@@ -2,6 +2,7 @@ package com.writes.garage.feature
 
 import com.writes.garage.core.data.demo.DemoEntryRepository
 import com.writes.garage.core.data.demo.DemoPurchaseRepository
+import com.writes.garage.core.data.demo.DemoRecords
 import com.writes.garage.core.data.demo.DemoReminderRepository
 import com.writes.garage.core.data.demo.DemoStore
 import com.writes.garage.core.data.demo.DemoVehicleRepository
@@ -39,4 +40,10 @@ class DemoEnv(val now: Instant = Instant.parse("2026-01-01T00:00:00Z")) {
     val entries = DemoEntryRepository(store)
     val reminders = DemoReminderRepository(store)
     val purchases = DemoPurchaseRepository(store)
+    val gallery = DemoRecords.gallery(store)
+    val warranties = DemoRecords.warranties(store)
+    val parts = DemoRecords.parts(store)
+    val detailing = DemoRecords.detailing(store)
+    val recalls = DemoRecords.recalls(store)
+    val wear = DemoRecords.wear(store)
 }

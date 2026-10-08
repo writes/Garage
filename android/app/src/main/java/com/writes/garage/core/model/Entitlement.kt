@@ -29,3 +29,21 @@ data class Subscription(
     val productId: String? = null,
     val expiresAt: Instant? = null,
 )
+
+/** The receipt-credits consumable as the store sells it (localized price for display). */
+data class CreditsOffer(val productId: String, val priceLabel: String)
+
+/** Result of buying the receipt-credits pack. Only [Completed] carries money-moved; the server grants the credits. */
+sealed interface CreditsPurchaseResult {
+    /** [transactionId] is the store order id the server reconciles. */
+    data class Completed(val transactionId: String) : CreditsPurchaseResult
+
+    data object Cancelled : CreditsPurchaseResult
+
+    /** Awaiting approval (e.g. a slow payment method); the grant arrives later. */
+    data object Pending : CreditsPurchaseResult
+
+    data object Unavailable : CreditsPurchaseResult
+
+    data class Failed(val message: String) : CreditsPurchaseResult
+}

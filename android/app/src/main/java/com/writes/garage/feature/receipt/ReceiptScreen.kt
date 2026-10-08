@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +33,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.writes.garage.core.model.ReceiptQuota
 import com.writes.garage.feature.shared.AiConsentDialog
+import com.writes.garage.feature.shared.CaptureFiles
 import com.writes.garage.feature.shared.ErrorText
 import com.writes.garage.feature.shared.ProposalEditor
 import com.writes.garage.feature.shared.ScreenColumn
@@ -39,13 +41,31 @@ import com.writes.garage.feature.shared.SectionHeader
 import com.writes.garage.feature.shared.appViewModel
 import java.io.File
 
-private const val MAX_PICK = 3
+private const val MAX_PICK = ReceiptViewModel.MAX_IMAGES
 
 @Composable
-fun ReceiptScreen(onDone: () -> Unit) {
-    val vm = appViewModel { ReceiptViewModel(it.vehicles, it.profile, it.storage, it.functions, it.entries, isPro = { it.purchases.entitlement.value.isPro }) }
+fun ReceiptScreen(onDone: () -> Unit, onUpgrade: () -> Unit = {}) {
+    val appContext = LocalContext.current.applicationContext
+    val vm = appViewModel {
+        ReceiptViewModel(
+            it.vehicles, it.profile, it.storage, it.functions, it.entries,
+            isPro = { it.purchases.entitlement.value.isPro }, requireServerPro = !it.isDemo,
+            credits = it.receiptCredits, purchases = it.purchases, uid = { it.auth.currentUser.value?.uid },
+            analytics = it.analytics, reviews = it.reviews,
+            releaseCapture = { uri -> CaptureFiles.release(appContext, uri) },
+        )
+    }
     val s by vm.state.collectAsState()
     val context = LocalContext.current
+    LaunchedEffect(s.needsUpgrade) {
+        if (s.needsUpgrade) {
+            vm.upgradeHandled()
+            onUpgrade()
+        }
+    }
+    val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.scan(listOf(PickedImage(uri.toString(), "application/pdf")))
+    }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_PICK)) { uris ->
         vm.scan(uris.map { PickedImage(it.toString(), context.contentResolver.getType(it) ?: "image/jpeg") })
@@ -57,7 +77,7 @@ fun ReceiptScreen(onDone: () -> Unit) {
         if (ok && uri != null) vm.scan(listOf(PickedImage(uri.toString(), "image/jpeg")))
     }
     fun launchCamera() {
-        runCatching { newCaptureUri(context) }
+        runCatching { CaptureFiles.newUri(context, "receipt") }
             .onSuccess { captureUri = it; camera.launch(it) }
             .onFailure { vm.reportError("Couldn't start the camera.") }
     }
@@ -70,6 +90,18 @@ fun ReceiptScreen(onDone: () -> Unit) {
 
     ScreenColumn("Scan receipt") {
         item { QuotaCard(s.quota) }
+        if (s.creditsDeficit > 0 && s.showCreditsOffer) {
+            item {
+                Text(
+                    "A previous refund left ${s.creditsDeficit} credits owed; this pack restores those first.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+        if (s.showCreditsOffer || s.creditsState != CreditsState.IDLE) {
+            item { CreditsCard(s, onBuy = vm::buyCredits) }
+        }
+        s.creditsMessage?.let { msg -> item { Text(msg, style = MaterialTheme.typography.bodySmall) } }
         if (s.busy) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -114,6 +146,10 @@ fun ReceiptScreen(onDone: () -> Unit) {
                                 }
                             },
                         ) { Text("Choose photo") }
+                        OutlinedButton(
+                            enabled = !s.busy && !s.quotaExhausted,
+                            onClick = { if (vm.requireConsent()) pdfPicker.launch(arrayOf("application/pdf")) },
+                        ) { Text("Choose PDF") }
                     }
                 }
             }
@@ -160,6 +196,26 @@ fun ReceiptScreen(onDone: () -> Unit) {
 }
 
 @Composable
+private fun CreditsCard(s: ReceiptUiState, onBuy: () -> Unit) {
+    val busy = s.creditsState == CreditsState.PURCHASING || s.creditsState == CreditsState.WAITING
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Need more scans?", style = MaterialTheme.typography.titleSmall)
+            Text("Add 10 receipt scans. One-time purchase, no subscription.", style = MaterialTheme.typography.bodySmall)
+            Button(onClick = onBuy, enabled = !busy && s.creditsOffer != null) {
+                Text(
+                    when (s.creditsState) {
+                        CreditsState.PURCHASING -> "Purchasing..."
+                        CreditsState.WAITING -> "Waiting for your credits..."
+                        else -> "Buy 10 scans" + (s.creditsOffer?.let { " - ${it.priceLabel}" } ?: "")
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun ConsentGate(onAllow: () -> Unit) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -189,13 +245,4 @@ private fun QuotaCard(q: ReceiptQuota?) {
             }
         }
     }
-}
-
-/** A fresh jpeg in the FileProvider-shared `capture/` cache dir; stale captures (>1h) are swept first. */
-private fun newCaptureUri(context: Context): Uri {
-    val dir = File(context.cacheDir, "capture").apply { mkdirs() }
-    val cutoff = System.currentTimeMillis() - 60 * 60 * 1000L
-    dir.listFiles()?.filter { it.lastModified() < cutoff }?.forEach { it.delete() }
-    val file = File(dir, "receipt-${System.currentTimeMillis()}.jpg")
-    return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
 }

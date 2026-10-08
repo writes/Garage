@@ -6,7 +6,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,14 +31,24 @@ import com.writes.garage.feature.shared.ProGate
 import com.writes.garage.feature.shared.ScreenColumn
 import com.writes.garage.feature.shared.appViewModel
 
+/** Per-vehicle record screens reachable from a vehicle card. */
+enum class GarageSection(val label: String) {
+    WARRANTIES("Warranty"),
+    GALLERY("Photos"),
+    WHEELS("Wheels"),
+    PARTS("Spare parts"),
+    DETAILING("Detailing"),
+}
+
 @Composable
 fun GarageScreen(
     onAddVehicle: () -> Unit,
     onEditVehicle: (String) -> Unit,
     onRecalls: (String) -> Unit,
     onUpgrade: () -> Unit,
+    onOpenSection: (GarageSection, String) -> Unit = { _, _ -> },
 ) {
-    val vm = appViewModel { GarageViewModel(it.vehicles, it.purchases) }
+    val vm = appViewModel { GarageViewModel(it.vehicles, it.purchases, it.recalls) }
     val state by vm.state.collectAsState()
     val error by vm.error.collectAsState()
     var pendingDelete by remember { mutableStateOf<Vehicle?>(null) }
@@ -62,14 +75,27 @@ fun GarageScreen(
             }
         }
         item { ErrorText(error) }
+        if (!state.isPro && state.vehicles.isNotEmpty()) {
+            // Parity with iOS: photos, wheels, parts, detailing, warranty and recalls are Pro (they also write to Storage).
+            item {
+                ProGate(
+                    isPro = false,
+                    onUpgrade = onUpgrade,
+                    lockedMessage = "Garage tools are part of Pro. Spare parts, detailing, warranty, photos, wheels, and recalls unlock with Pro.",
+                ) {}
+            }
+        }
         if (state.vehicles.isEmpty()) item { EmptyState("Your garage is empty.") }
         items(state.vehicles, key = { it.id }) { v ->
             VehicleCard(
                 vehicle = v,
                 active = v.id == state.activeId,
+                isPro = state.isPro,
                 onSelect = { vm.select(v.id) },
                 onEdit = { onEditVehicle(v.id) },
                 onRecalls = { onRecalls(v.id) },
+                openRecalls = state.openRecalls[v.id] ?: 0,
+                onSection = { onOpenSection(it, v.id) },
                 onDelete = { pendingDelete = v },
             )
         }
@@ -80,9 +106,12 @@ fun GarageScreen(
 private fun VehicleCard(
     vehicle: Vehicle,
     active: Boolean,
+    isPro: Boolean,
     onSelect: () -> Unit,
     onEdit: () -> Unit,
     onRecalls: () -> Unit,
+    openRecalls: Int,
+    onSection: (GarageSection) -> Unit,
     onDelete: () -> Unit,
 ) {
     Card(Modifier.fillMaxWidth()) {
@@ -96,8 +125,20 @@ private fun VehicleCard(
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (!active) TextButton(onClick = onSelect) { Text("Set active") }
                 TextButton(onClick = onEdit) { Text("Edit") }
-                TextButton(onClick = onRecalls) { Text("Recalls") }
+                if (isPro) {
+                    TextButton(onClick = onRecalls) {
+                        Text(
+                            if (openRecalls > 0) "Recalls ($openRecalls open)" else "Recalls",
+                            color = if (openRecalls > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
                 TextButton(onClick = onDelete) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            }
+            if (isPro) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    GarageSection.entries.forEach { sec -> OutlinedButton(onClick = { onSection(sec) }) { Text(sec.label) } }
+                }
             }
         }
     }

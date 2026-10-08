@@ -175,4 +175,98 @@ class FirestoreMappersTest {
         assertEquals("pdf", StoragePaths.extensionFor("application/pdf"))
         assertEquals("jpg", StoragePaths.extensionFor("image/jpeg"))
     }
+
+    // ---- T15: update semantics and tolerant readers
+
+    @Test
+    fun entryUpdateMapNullsEditableOptionalsButNeverSystemFields() {
+        val e = entry("e1", EntryType.OIL_CHANGE, odo = 100).copy(createdAt = NOW, updatedAt = NOW) // every optional is null
+        val map = FirestoreMappers.entryToMap(e, forUpdate = true)
+        for (key in listOf("cost", "isDiy", "shopName", "notes", "isResolved")) {
+            assertTrue("$key must be present as an explicit null", map.containsKey(key) && map[key] == null)
+        }
+        // System fields keep their value when set and are never nulled when not.
+        assertEquals(NOW, map["createdAt"])
+        val noStamps = FirestoreMappers.entryToMap(e.copy(createdAt = null, updatedAt = null), forUpdate = true)
+        assertFalse(noStamps.containsKey("createdAt"))
+        assertFalse(noStamps.containsKey("updatedAt"))
+        // The SDK boundary turns those nulls into deletions.
+        val encoded = FirestoreValueCodec.encodeForUpdate(map)
+        for (key in listOf("cost", "isDiy", "shopName", "notes", "isResolved")) {
+            assertTrue("$key -> FieldValue.delete()", encoded[key] is com.google.firebase.firestore.FieldValue)
+        }
+        // attachmentPaths and details are always written (a cleared list must overwrite).
+        assertEquals(emptyList<String>(), map["attachmentPaths"])
+        assertEquals(emptyMap<String, Any?>(), map["details"])
+    }
+
+    @Test
+    fun entryCreateMapOmitsNullOptionals() {
+        val map = FirestoreMappers.entryToMap(entry("e1", EntryType.FUEL, odo = 5))
+        for (key in listOf("cost", "isDiy", "shopName", "notes", "isResolved", "createdAt")) assertFalse(key, map.containsKey(key))
+    }
+
+    @Test
+    fun reminderUpdateNeverClearsCompletionAndKeepsEditableFieldsClearable() {
+        val cleared = Reminder(id = "r1", vehicleId = "v1", title = "Oil") // every optional null, a stale "outstanding" copy
+        val map = FirestoreMappers.reminderToMap(cleared, forUpdate = true)
+        for (key in listOf("dueDate", "dueMileage", "repeatIntervalMonths", "repeatIntervalMiles", "notes", "entryType")) {
+            assertTrue("$key clearable on update", map.containsKey(key) && map[key] == null)
+        }
+        assertFalse("a stale copy must not un-complete a reminder", map.containsKey("completedAt"))
+        assertFalse(map.containsKey("createdAt"))
+        // A set completion is still written.
+        assertEquals(NOW, FirestoreMappers.reminderToMap(cleared.copy(completedAt = NOW), forUpdate = true)["completedAt"])
+    }
+
+    @Test
+    fun attachmentPathsKeepOnlyStrings() {
+        val raw = mapOf("entryType" to "oil_change", "entryDate" to NOW, "attachmentPaths" to listOf(1, "a", null, "b", 2.5))
+        assertEquals(listOf("a", "b"), FirestoreMappers.entryFromMap("e", "v", raw)!!.attachmentPaths)
+        assertEquals(emptyList<String>(), FirestoreMappers.entryFromMap("e", "v", raw + ("attachmentPaths" to "oops"))!!.attachmentPaths)
+        assertEquals(emptyList<String>(), FirestoreMappers.entryFromMap("e", "v", raw - "attachmentPaths")!!.attachmentPaths)
+    }
+
+    @Test
+    fun wrongTypedNumbersAreCoercedOrDefaultedNeverThrown() {
+        fun year(v: Any?) = FirestoreMappers.vehicleFromMap("v", mapOf("userId" to "u", "year" to v))!!.year
+        assertEquals(2015, year(2015))
+        assertEquals(2015, year(2015L))
+        assertEquals(2015, year(2015.0))
+        assertEquals(2015, year("2015"))
+        assertEquals(0, year("twenty"))
+        assertEquals(0, year(null))
+        assertEquals(0, year(listOf(1)))
+        val v = FirestoreMappers.vehicleFromMap("v", mapOf("userId" to "u", "currentOdometer" to "82,440", "purchasePrice" to "oops", "fuelType" to "plutonium"))!!
+        assertEquals(0, v.currentOdometer)
+        assertNull(v.purchasePrice)
+        assertNull(v.fuelType)
+        assertEquals(12.0, FirestoreMappers.entryFromMap("e", "v", mapOf("entryType" to "fuel", "entryDate" to NOW, "cost" to 12L))!!.cost!!, 0.0)
+        assertEquals(1, FirestoreMappers.entryFromMap("e", "v", mapOf("entryType" to "fuel", "entryDate" to NOW, "odometerReading" to 1.9))!!.odometerReading)
+    }
+
+    @Test
+    fun profileFromMapReadsTheServerSubscriptionAndTheThemeKey() {
+        fun pro(sub: Any?) = FirestoreMappers.profileFromMap("u", null, mapOf("subscription" to sub)).serverIsPro
+        assertTrue(pro(mapOf("entitlement" to "pro", "isActive" to true)))
+        assertFalse(pro(mapOf("entitlement" to "pro", "isActive" to false)))
+        assertFalse(pro(mapOf("entitlement" to "free", "isActive" to true)))
+        assertFalse(pro(mapOf("entitlement" to "pro")))
+        assertFalse(pro("pro"))
+        assertFalse(FirestoreMappers.profileFromMap("u", null, emptyMap()).serverIsPro)
+        // The iOS key is "themeID" (capital ID); "themeId" is not read.
+        assertEquals("classic", FirestoreMappers.profileFromMap("u", null, mapOf("themeID" to "classic")).themeId)
+        assertNull(FirestoreMappers.profileFromMap("u", null, mapOf("themeId" to "classic")).themeId)
+        assertEquals(mapOf("themeID" to "", "updatedAt" to NOW), FirestoreMappers.themeFields(null, NOW))
+        assertEquals("classic", FirestoreMappers.themeFields("classic", NOW)["themeID"])
+    }
+
+    @Test
+    fun reminderFromMapRequiresATitleAndToleratesWrongTypes() {
+        assertNull(FirestoreMappers.reminderFromMap("r", "v", mapOf("dueMileage" to 5)))
+        val r = FirestoreMappers.reminderFromMap("r", "v", mapOf("title" to "t", "dueMileage" to "5000", "isProFeature" to "yes", "entryType" to "zzz"))!!
+        assertEquals(5000, r.dueMileage)
+        assertFalse(r.isProFeature)
+        assertNull(r.entryType)
+    }
 }

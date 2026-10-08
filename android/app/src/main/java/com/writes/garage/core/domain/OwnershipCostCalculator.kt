@@ -48,5 +48,6 @@ object OwnershipCostCalculator {
         entries.filter { (it.cost ?: 0.0) > 0.0 }
             .groupBy { it.entryType }
             .map { (type, list) -> type to list.sumOf { it.cost ?: 0.0 } }
-            .sortedByDescending { it.second }
+            // Ties keep a fixed order (by entry type) so the cost breakdown cannot reshuffle between renders.
+            .sortedWith(compareByDescending<Pair<com.writes.garage.core.model.EntryType, Double>> { it.second }.thenBy { it.first.ordinal })
 }

@@ -17,6 +17,8 @@ class GarageApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // The relaunch trampoline process only bridges a restart; never boot Firebase/RevenueCat/alarms there.
+        if (RestartTrampolineActivity.isRestartProcess()) return
         registerActivityLifecycleCallbacks(activities)
         // Live (Firebase + RevenueCat) iff google-services.json existed at build time, else Demo mode.
         container = createAppContainer(this, activities)

@@ -29,7 +29,21 @@ data class EntryFormState(
     val saving: Boolean = false,
     val formError: String? = null,
     val notFound: Boolean = false,
+    /** Already-uploaded attachment paths of the entry being edited (minus those queued for removal). */
+    val attachmentPaths: List<String> = emptyList(),
+    /** Picked but not yet uploaded; uploaded at save time under the entry's own folder. */
+    val pendingAttachments: List<PendingAttachment> = emptyList(),
+    /** Oil-analysis PDF import in flight / outcome. */
+    val importing: Boolean = false,
+    val importNotice: String? = null,
+    /** An import was attempted without AI consent: show the consent dialog. */
+    val needsAiConsent: Boolean = false,
+    /** The free allowance for imports is used up (or the server said Pro is required): route to the paywall. */
+    val needsUpgrade: Boolean = false,
 )
+
+/** A picked photo/PDF (content or FileProvider uri) waiting for save. */
+data class PendingAttachment(val uri: String, val mimeType: String, val displayName: String)
 
 object EntryFormValidator {
     const val ODOMETER = "odometer"
@@ -42,8 +56,11 @@ object EntryFormValidator {
         text.filterNot { it == '$' || it == ',' || it.isWhitespace() }
             .toDoubleOrNull()?.takeIf { it.isFinite() }
 
-    /** Empty map = valid. */
-    fun validate(s: EntryFormState): Map<String, String> {
+    /**
+     * Empty map = valid. [unchangedLegacy] holds the raw detail values the entry was loaded with: a choice value outside
+     * today's vocabulary is tolerated only while it is untouched (so older clients' entries stay editable), never newly typed.
+     */
+    fun validate(s: EntryFormState, unchangedLegacy: Map<String, String> = emptyMap()): Map<String, String> {
         val errors = LinkedHashMap<String, String>()
 
         if (s.odometer.isBlank()) errors[ODOMETER] = "Required"
@@ -73,6 +90,9 @@ object EntryFormValidator {
                     }
                 }
                 FieldKind.DATE -> if (runCatching { LocalDate.parse(v) }.isSuccess) null else "Invalid date"
+                // A stored value outside the vocabulary (e.g. a seed typo) would silently change meaning on edit.
+                FieldKind.CHOICE ->
+                    if (f.choices.any { it.value == v } || unchangedLegacy[f.key] == v) null else "Choose one of the options"
                 else -> null
             } ?: f.validate?.invoke(v)
             if (err != null) errors[key] = err

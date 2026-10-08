@@ -167,7 +167,7 @@ class EntryFormTest {
         val rows = EntryDetailsPresenter.rows(entry, ZoneOffset.UTC).toMap()
         assertEquals("Water pump, Thermostat", rows["Replaced parts (comma separated)"])
         assertEquals("Water pump + thermostat", rows["Title"])
-        assertEquals("completed", rows["Status"])
+        assertEquals("Resolved", rows["Status"])
     }
 
     // --- ViewModel ---
@@ -260,9 +260,13 @@ class EntryFormTest {
     fun warnsWhenOdometerGoesBackwards() = runTest {
         val vm = vm(DemoEnv(), SeedData.SQ5_ID)
         vm.setOdometer("1000")
-        assertTrue(vm.state.value.warnings.isNotEmpty())
+        val warning = vm.state.value.warnings.single()
+        assertTrue(warning, warning.startsWith("Lower than the 82,440 mi recorded on "))
         vm.setOdometer("90000")
         assertTrue(vm.state.value.warnings.isEmpty())
+        // Not an error: the warning never blocks a correction.
+        vm.setOdometer("1000")
+        assertNull(vm.state.value.errors[com.writes.garage.feature.entry.EntryFormValidator.ODOMETER])
     }
 
     @Test

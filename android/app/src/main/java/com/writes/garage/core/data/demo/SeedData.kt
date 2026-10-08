@@ -9,6 +9,8 @@ import com.writes.garage.core.model.RecallSource
 import com.writes.garage.core.model.RecallStatus
 import com.writes.garage.core.model.Reminder
 import com.writes.garage.core.model.Vehicle
+import com.writes.garage.core.model.Warranty
+import com.writes.garage.core.model.WarrantyType
 import java.time.Duration
 import java.time.Instant
 
@@ -91,11 +93,11 @@ class SeedData(private val now: Instant = Instant.now()) {
                 "filterBrand" to "Mann")),
         entry("seed-sq5-maint", SQ5_ID, EntryType.MAINTENANCE, 60, 81_300, 240.0, shop = "Independent Euro Shop",
             notes = "Cabin and engine air filters, wiper blades.",
-            details = mapOf("item" to "air_filter", "status" to "completed", "nextDueMileage" to 96_000)),
+            details = mapOf("item" to "air_filter", "status" to "resolved", "nextDueMileage" to 96_000)),
         entry("seed-sq5-repair", SQ5_ID, EntryType.REPAIR, 95, 80_200, 1_150.0, shop = "Independent Euro Shop",
             notes = "Replaced leaking water pump and thermostat.", isResolved = true,
             details = mapOf("title" to "Water pump + thermostat", "symptomDescription" to "Coolant smell, low level",
-                "resolutionDescription" to "Replaced pump and thermostat housing", "status" to "completed",
+                "resolutionDescription" to "Replaced pump and thermostat housing", "status" to "resolved",
                 "replacedParts" to listOf("Water pump", "Thermostat"))),
         entry("seed-sq5-tire", SQ5_ID, EntryType.TIRE, 110, 79_500, 4.0, diy = true,
             notes = "Tread depth check before winter.",
@@ -104,7 +106,7 @@ class SeedData(private val now: Instant = Instant.now()) {
                 "treadDepthFR" to "6/32", "treadDepthRL" to "7/32", "treadDepthRR" to "7/32")),
         entry("seed-sq5-brake", SQ5_ID, EntryType.BRAKE, 150, 78_000, 520.0, shop = "Audi Service",
             notes = "Front pads and rotors.",
-            details = mapOf("action" to "pads_and_rotors", "position" to "front", "padBrand" to "OEM",
+            details = mapOf("action" to "pads_replaced", "position" to "front", "padBrand" to "OEM",
                 "fluidFlushed" to false)),
         entry("seed-sq5-align", SQ5_ID, EntryType.ALIGNMENT, 150, 78_010, 129.0, shop = "Discount Tire",
             details = mapOf("shopNotes" to "All within spec")),
@@ -134,6 +136,16 @@ class SeedData(private val now: Instant = Instant.now()) {
             description = "Demo recall. The fuel pump relay may overheat, risking a stall.",
             componentAffected = "FUEL SYSTEM", dateAnnounced = daysAgo(900), status = RecallStatus.OUTSTANDING,
             recallSource = RecallSource.NHTSA_API),
+    )
+
+    val warranties: List<Warranty> = listOf(
+        Warranty(
+            id = "seed-warranty-sq5", vehicleId = SQ5_ID, warrantyType = WarrantyType.EXTENDED,
+            providerName = "Demo Protect", planName = "Powertrain Plus", basicTermMonths = 48,
+            powertrainTermMonths = 72, powertrainTermMiles = 100_000, deductible = 100.0,
+            coverageStart = daysAgo(380), coverageEnd = daysFromNow(700), startDate = daysAgo(380),
+            notes = "Demo contract", createdAt = daysAgo(380),
+        ),
     )
 
     private fun entry(

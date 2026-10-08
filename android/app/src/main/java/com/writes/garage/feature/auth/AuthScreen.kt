@@ -28,7 +28,7 @@ import com.writes.garage.feature.shared.appViewModel
 /** Sign-in gate: "Continue in demo" in Demo mode, Google (Credential Manager) in live mode. */
 @Composable
 fun AuthScreen(modifier: Modifier = Modifier) {
-    val vm = appViewModel { AuthViewModel(it.auth, it.isDemo, it.googleSignIn) }
+    val vm = appViewModel { AuthViewModel(it.auth, it.isDemo, it.googleSignIn, it.analytics) }
     val state by vm.state.collectAsState()
     val context = LocalContext.current
     Column(

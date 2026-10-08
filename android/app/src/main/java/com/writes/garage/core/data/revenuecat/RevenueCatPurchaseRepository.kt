@@ -3,6 +3,8 @@ package com.writes.garage.core.data.revenuecat
 import android.app.Application
 import com.revenuecat.purchases.CustomerInfo
 import com.revenuecat.purchases.Package
+import com.revenuecat.purchases.ProductType
+import com.revenuecat.purchases.awaitGetProducts
 import com.revenuecat.purchases.PurchaseParams
 import com.revenuecat.purchases.Purchases
 import com.revenuecat.purchases.PurchasesConfiguration
@@ -19,6 +21,9 @@ import com.writes.garage.core.data.CrashReporter
 import com.writes.garage.core.data.NoopCrashReporter
 import com.writes.garage.core.data.ProfileRepository
 import com.writes.garage.core.data.PurchaseRepository
+import com.writes.garage.core.domain.Constants
+import com.writes.garage.core.model.CreditsOffer
+import com.writes.garage.core.model.CreditsPurchaseResult
 import com.writes.garage.core.model.Entitlement
 import com.writes.garage.core.model.PaywallPackage
 import kotlinx.coroutines.CoroutineScope
@@ -50,6 +55,12 @@ class RevenueCatPurchaseRepository(
     private val _entitlement = MutableStateFlow(Entitlement.FREE)
     override val entitlement: StateFlow<Entitlement> = _entitlement.asStateFlow()
     private var packages: Map<String, Package> = emptyMap()
+
+    override val appUserID: String?
+        get() = if (Purchases.isConfigured) Purchases.sharedInstance.appUserID else ""
+
+    override val isAnonymous: Boolean
+        get() = !Purchases.isConfigured || Purchases.sharedInstance.isAnonymous
 
     init {
         if (!Purchases.isConfigured) {
@@ -110,6 +121,34 @@ class RevenueCatPurchaseRepository(
 
     override suspend fun restore() {
         apply(Purchases.sharedInstance.awaitRestore())
+    }
+
+    private var creditsProduct: com.revenuecat.purchases.models.StoreProduct? = null
+
+    override suspend fun receiptCreditsOffer(): CreditsOffer? {
+        val product = Purchases.sharedInstance
+            .awaitGetProducts(listOf(Constants.RECEIPT_CREDITS_PACK_ID), ProductType.INAPP)
+            .firstOrNull { it.id == Constants.RECEIPT_CREDITS_PACK_ID } ?: return null
+        creditsProduct = product
+        // The store's localized price, never a hardcoded one.
+        return CreditsOffer(product.id, product.price.formatted)
+    }
+
+    override suspend fun purchaseReceiptCredits(): CreditsPurchaseResult {
+        val product = creditsProduct ?: receiptCreditsOffer()?.let { creditsProduct } ?: return CreditsPurchaseResult.Unavailable
+        val act = activity.current() ?: return CreditsPurchaseResult.Failed("Open the app to complete the purchase.")
+        return try {
+            val result = Purchases.sharedInstance.awaitPurchase(PurchaseParams.Builder(act, product).build())
+            val order = result.storeTransaction.orderId
+            if (order.isNullOrBlank()) CreditsPurchaseResult.Failed("The store didn't return an order id. Contact support if you were charged.")
+            else CreditsPurchaseResult.Completed(order)
+        } catch (e: PurchasesTransactionException) {
+            when {
+                e.userCancelled -> CreditsPurchaseResult.Cancelled
+                e.code == com.revenuecat.purchases.PurchasesErrorCode.PaymentPendingError -> CreditsPurchaseResult.Pending
+                else -> CreditsPurchaseResult.Failed(e.message ?: "The purchase failed.")
+            }
+        }
     }
 
     /** Refreshes the entitlement from RevenueCat (e.g. on app foreground). */

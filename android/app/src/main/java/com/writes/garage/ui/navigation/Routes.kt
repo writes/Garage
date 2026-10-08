@@ -19,6 +19,14 @@ object Routes {
     const val VOICE = "voice"
     const val HANDOVER = "handover"
     const val PAYWALL = "settings/paywall"
+    const val REMINDERS = "settings/reminders"
+    const val PROFILE = "settings/profile"
+    const val THEME = "settings/theme"
+    const val WARRANTIES = "garage/warranties/{$ARG_VEHICLE_ID}"
+    const val GALLERY = "garage/gallery/{$ARG_VEHICLE_ID}"
+    const val WHEELS = "garage/wheels/{$ARG_VEHICLE_ID}"
+    const val PARTS = "garage/parts/{$ARG_VEHICLE_ID}"
+    const val DETAILING = "garage/detailing/{$ARG_VEHICLE_ID}"
 
     fun entryDetail(vehicleId: String, entryId: String) = "log/$vehicleId/$entryId"
 
@@ -34,4 +42,14 @@ object Routes {
         if (vehicleId == null) "garage/edit" else "garage/edit?$ARG_VEHICLE_ID=$vehicleId"
 
     fun recalls(vehicleId: String) = "garage/recalls/$vehicleId"
+
+    fun warranties(vehicleId: String) = "garage/warranties/$vehicleId"
+
+    fun gallery(vehicleId: String) = "garage/gallery/$vehicleId"
+
+    fun wheels(vehicleId: String) = "garage/wheels/$vehicleId"
+
+    fun parts(vehicleId: String) = "garage/parts/$vehicleId"
+
+    fun detailing(vehicleId: String) = "garage/detailing/$vehicleId"
 }

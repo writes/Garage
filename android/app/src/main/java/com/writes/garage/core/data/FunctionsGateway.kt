@@ -24,7 +24,8 @@ interface FunctionsGateway {
     /** `confirmReceiptScan {token}`: commit the quota reservation after the entry was saved. */
     suspend fun confirmReceiptScan(token: String): ReceiptQuota
 
-    suspend fun receiptQuotaStatus(): ReceiptQuota
+    /** `receiptQuotaStatus`; with [transactionId] the response also carries that credit purchase's `transactionState`. */
+    suspend fun receiptQuotaStatus(transactionId: String? = null): ReceiptQuota
 
     /** `reconcileReceiptCreditPurchase {transactionId}` for the receipt-credits consumable. */
     suspend fun reconcileReceiptCreditPurchase(transactionId: String): ReceiptQuota

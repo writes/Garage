@@ -78,4 +78,62 @@ class CsvExporterTest {
         assertEquals(4, lines.size) // header, 2 rows, trailing empty after final CRLF
         assertEquals("", lines.last())
     }
+
+    // ---- T14
+
+    private fun rowOf(e: Entry) = CsvExporter.row(e)
+
+    @Test
+    fun attachmentPathsAreNeutralisedIndividually() {
+        val row = rowOf(entry("e").copy(attachmentPaths = listOf("=cmd|x", "ok", "+evil")))
+        // The apostrophe guards each path on its own, and '|' joins them (the field itself has no comma/quote).
+        assertTrue(row, row.contains("'=cmd|x|ok|'+evil"))
+    }
+
+    @Test
+    fun aPipeInsideAPathIsKeptVerbatim() {
+        val row = rowOf(entry("e").copy(attachmentPaths = listOf("a|b.jpg", "c.pdf")))
+        assertTrue(row.contains("a|b.jpg|c.pdf"))
+    }
+
+    @Test
+    fun negativeNumbersStayRawAndAreNotApostrophePrefixed() {
+        val e = entry("e", cost = -5.0, odo = 10)
+        val fields = rowOf(e).split(",")
+        assertEquals("-5.0", fields[7])
+        assertEquals("-12.5", rowOf(entry("e2", cost = -12.5)).split(",")[7])
+    }
+
+    @Test
+    fun notesAndShopStartingWithAFormulaCharacterArePrefixedInTheFullRow() {
+        val row = rowOf(entry("e", shop = "=SUM(A1)", notes = "@cmd"))
+        val fields = row.split(",")
+        assertEquals("'=SUM(A1)", fields[9])
+        assertEquals("'@cmd", fields[10])
+    }
+
+    @Test
+    fun costsNeverUseExponentNotation() {
+        assertEquals("10000000.0", rowOf(entry("e", cost = 1.0E7)).split(",")[7])
+        assertEquals("0.0005", rowOf(entry("e", cost = 5.0E-4)).split(",")[7])
+        assertEquals("89.95", rowOf(entry("e", cost = 89.95)).split(",")[7])
+        assertEquals("100.0", rowOf(entry("e", cost = 100.0)).split(",")[7])
+        assertEquals("0.0", rowOf(entry("e", cost = 0.0)).split(",")[7])
+        assertEquals("123456789012.5", rowOf(entry("e", cost = 123456789012.5)).split(",")[7])
+    }
+
+    @Test
+    fun numbersInsideTheDetailsJsonUsePlainDecimalsToo() {
+        val json = CsvExporter.detailsJson(mapOf("big" to 1.0E7, "tiny" to 5.0E-4, "int" to 5, "long" to 10_000_000_000L, "f" to 2.5f, "nested" to mapOf("x" to 3.0E8)))
+        assertEquals("""{"big":10000000.0,"f":2.5,"int":5,"long":10000000000,"nested":{"x":300000000.0},"tiny":0.0005}""", json)
+    }
+
+    @Test
+    fun nonFiniteNumbersDoNotCrashTheExport() {
+        assertEquals("NaN", CsvExporter.plainNumber(Double.NaN))
+        assertEquals("Infinity", CsvExporter.plainNumber(Double.POSITIVE_INFINITY))
+        // JSON has no NaN literal; it is exported as the string "NaN" rather than throwing.
+        val json = CsvExporter.detailsJson(mapOf("bad" to Double.NaN))
+        assertTrue(json, json.contains("NaN"))
+    }
 }

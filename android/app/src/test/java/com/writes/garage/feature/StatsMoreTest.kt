@@ -63,15 +63,79 @@ class StatsMoreTest {
     @Test
     fun mpgSeriesIsOldestFirstAndFallsBackToDerivedMpg() {
         val entries = listOf(
-            TestFixtures.entry("f3", EntryType.FUEL, daysAgo = 5, odo = 1_600, details = mapOf("gallons" to 10.0, "calculatedMPG" to 30.0)),
+            TestFixtures.entry("f3", EntryType.FUEL, daysAgo = 5, odo = 1_600, details = mapOf("gallons" to 10.0, "calculatedMPG" to 28.0)),
             TestFixtures.entry("f1", EntryType.FUEL, daysAgo = 25, odo = 1_000, details = mapOf("gallons" to 10.0)),
             TestFixtures.entry("f2", EntryType.FUEL, daysAgo = 15, odo = 1_300, details = mapOf("gallons" to 10.0)),
         )
         val s = computeStats("Car", entries)
-        // f1 has no previous fill; f2 derived (300 mi / 10 gal); f3 uses its stored value.
-        assertEquals(listOf(30.0, 30.0), s.mpgSeries.map { it.mpg })
+        // f1 has no previous fill; f2 derived (300 mi / 10 gal); f3 uses its STORED 28.0 (derived would be 30.0).
+        assertEquals(listOf(30.0, 28.0), s.mpgSeries.map { it.mpg })
         assertEquals(listOf("f2", "f3").map { id -> entries.first { it.id == id }.entryDate }, s.mpgSeries.map { it.date })
-        assertNotNull(s.averageMpg)
+        // Weighted over the same two fills: (300 + 28*10) mi / 20 gal.
+        assertEquals(29.0, s.averageMpg!!, 1e-9)
+    }
+
+    // ---- T5: venues, derived-fill average, tie-break
+
+    @Test
+    fun venuesAreDeduplicatedCaseInsensitivelyAfterTrimmingKeepingTheFirstSpelling() {
+        val entries = listOf(
+            TestFixtures.entry("t1", EntryType.TRACK_DAY, daysAgo = 3, details = mapOf("venueName" to "Willow")),
+            TestFixtures.entry("t2", EntryType.TRACK_DAY, daysAgo = 2, details = mapOf("venueName" to " willow ")),
+            TestFixtures.entry("t3", EntryType.TRACK_DAY, daysAgo = 1, details = mapOf("venueName" to "WILLOW"), shop = "Other"),
+            TestFixtures.entry("t4", EntryType.TRACK_DAY, daysAgo = 1, details = mapOf("venueName" to "  ")),
+        )
+        val t = trackDaySummary(entries)!!
+        assertEquals(listOf("Willow"), t.venues)
+        assertEquals(4, t.events)
+    }
+
+    @Test
+    fun averageMpgIsMilesOverGallonsForFillsWithOnlyGallonsAndOdometer() {
+        // Receipt/voice fills carry no stored calculatedMPG. Tanks: 160 mi / 4 gal (40 mpg), 400 mi / 20 gal (20 mpg).
+        val entries = listOf(
+            TestFixtures.entry("a", EntryType.FUEL, daysAgo = 30, odo = 1_000, details = mapOf("gallons" to 10.0)),
+            TestFixtures.entry("b", EntryType.FUEL, daysAgo = 20, odo = 1_160, details = mapOf("gallons" to 4.0)),
+            TestFixtures.entry("c", EntryType.FUEL, daysAgo = 10, odo = 1_560, details = mapOf("gallons" to 20.0)),
+        )
+        val avg = computeStats("Car", entries).averageMpg!!
+        assertEquals(560.0 / 24.0, avg, 1e-9)
+        assertTrue("never the mean of means (30.0)", Math.abs(avg - 30.0) > 1.0)
+    }
+
+    @Test
+    fun averageAndSeriesUseTheSameSetOfFills() {
+        val entries = listOf(
+            TestFixtures.entry("a", EntryType.FUEL, daysAgo = 40, odo = 1_000, details = mapOf("gallons" to 10.0)),
+            TestFixtures.entry("b", EntryType.FUEL, daysAgo = 30, odo = 1_200, details = mapOf("gallons" to 10.0)), // derived 20
+            TestFixtures.entry("c", EntryType.FUEL, daysAgo = 20, odo = 1_500, details = mapOf("gallons" to 10.0, "calculatedMPG" to 40.0)), // stored
+        )
+        val s = computeStats("Car", entries)
+        assertEquals(listOf(20.0, 40.0), s.mpgSeries.map { it.mpg })
+        assertEquals("(200 + 400) mi / 20 gal", 30.0, s.averageMpg!!, 1e-9)
+    }
+
+    @Test
+    fun noGallonsAnywhereMeansNoAverageRatherThanAMeanOfMeans() {
+        val entries = listOf(
+            TestFixtures.entry("a", EntryType.FUEL, daysAgo = 2, odo = 1_100, details = mapOf("calculatedMPG" to 10.0)),
+            TestFixtures.entry("b", EntryType.FUEL, daysAgo = 1, odo = 1_200, details = mapOf("calculatedMPG" to 30.0)),
+        )
+        val s = computeStats("Car", entries)
+        assertEquals(2, s.mpgSeries.size)
+        assertNull(s.averageMpg)
+    }
+
+    @Test
+    fun bestLapTieGoesToTheMostRecentDayRegardlessOfListOrder() {
+        val old = TestFixtures.entry("old", EntryType.TRACK_DAY, daysAgo = 30, details = mapOf("venueName" to "Sonoma", "bestLapTime" to "1:40.000"))
+        val recent = TestFixtures.entry("recent", EntryType.TRACK_DAY, daysAgo = 2, details = mapOf("venueName" to "Thunderhill", "bestLapTime" to "1:40.0"))
+        val slower = TestFixtures.entry("slow", EntryType.TRACK_DAY, daysAgo = 1, details = mapOf("venueName" to "Laguna", "bestLapTime" to "1:41"))
+        for (order in listOf(listOf(old, recent, slower), listOf(slower, recent, old), listOf(recent, slower, old))) {
+            val t = trackDaySummary(order)!!
+            assertEquals(100.0, t.bestLapSeconds!!, 1e-9)
+            assertEquals("Thunderhill", t.bestLapVenue)
+        }
     }
 
     @Test

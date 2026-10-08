@@ -21,7 +21,7 @@ import com.writes.garage.feature.shared.appViewModel
 
 @Composable
 fun StatsScreen() {
-    val vm = appViewModel { StatsViewModel(it.vehicles, it.entries) }
+    val vm = appViewModel { StatsViewModel(it.vehicles, it.entries, it.wear) }
     val s by vm.state.collectAsState()
 
     ScreenColumn("Stats") {
@@ -62,6 +62,18 @@ fun StatsScreen() {
             item { Text("MPG per fill-up, oldest to newest", style = MaterialTheme.typography.labelSmall) }
         } else {
             item { EmptyState("Log at least two fill-ups with gallons to see a trend.") }
+        }
+
+        if (s.wearHistory.isNotEmpty()) {
+            item { SectionHeader("Wear history") }
+            s.wearHistory.forEach { w ->
+                item(key = "wear-${w.item.wire}") {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(w.item.label, style = MaterialTheme.typography.labelLarge)
+                        LineChart(w.points, valueText = { "${Math.round(it)}%" })
+                    }
+                }
+            }
         }
 
         s.trackDay?.let { t ->

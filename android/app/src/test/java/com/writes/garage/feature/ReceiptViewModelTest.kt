@@ -98,7 +98,8 @@ class ReceiptViewModelTest {
         assertEquals(1, saved.attachmentPaths.size)
         assertEquals("Mobil 1", saved.details["oilBrand"])
         assertEquals("5W-30", saved.details["oilGrade"])
-        assertTrue(s.quota!!.remaining < quotaBefore.remaining + 1)
+        assertEquals("exactly one scan is consumed", quotaBefore.remaining - 1, s.quota!!.remaining)
+        assertEquals(19, s.quota!!.remaining) // the demo store is Pro: 20 allowed, one used
     }
 
     @Test
@@ -172,7 +173,7 @@ class ReceiptViewModelTest {
     fun exhaustedQuotaBlocksScan() = runTest {
         val h = Harness { real ->
             object : FunctionsGateway by real {
-                override suspend fun receiptQuotaStatus() = ReceiptQuota(remaining = 0, monthlyLimit = 5)
+                override suspend fun receiptQuotaStatus(transactionId: String?) = ReceiptQuota(remaining = 0, monthlyLimit = 5)
             }
         }
         assertTrue(h.vm.state.value.quotaExhausted)

@@ -23,12 +23,20 @@ import java.time.Instant
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReminderAlarmSync(
-    private val context: Context,
+    /** Replaces the OS alarms with the plan (production: [ReminderAlarms.apply]); injected so the sync is testable. */
+    private val schedule: (List<PlannedAlarm>) -> Unit,
     private val vehicles: VehicleRepository,
     private val reminders: ReminderRepository,
     private val settings: NotificationSettings,
     private val clock: () -> Instant = Instant::now,
 ) {
+    constructor(
+        context: Context,
+        vehicles: VehicleRepository,
+        reminders: ReminderRepository,
+        settings: NotificationSettings,
+    ) : this({ plan -> ReminderAlarms.apply(context, plan) }, vehicles, reminders, settings)
+
     fun start(scope: CoroutineScope) {
         scope.launch {
             val all: Flow<Pair<List<com.writes.garage.core.model.Vehicle>, List<Reminder>>> =
@@ -49,7 +57,7 @@ class ReminderAlarmSync(
                 }
             combine(settings.enabled, all) { on, data -> if (on) data else null }.collectLatest { data ->
                 val plan = data?.let { (vs, rs) -> ReminderPlanner.plan(vs, rs, clock()) }.orEmpty()
-                runCatching { ReminderAlarms.apply(context, plan) }
+                runCatching { schedule(plan) }
             }
         }
     }

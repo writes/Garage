@@ -4,6 +4,7 @@ import com.writes.garage.core.model.Entry
 import com.writes.garage.core.model.EntryType
 import com.writes.garage.core.model.Reminder
 import java.time.Instant
+import java.time.ZoneId
 import java.time.ZoneOffset
 
 /**
@@ -127,23 +128,35 @@ object ReminderSchedule {
     }
 
     /**
-     * The follow-up of a repeating reminder after it was completed at [completedAt] / [odometerAtCompletion];
-     * null when it does not repeat.
+     * The follow-up of a repeating reminder after it was completed at [completedAt] (iOS `scheduleSuccessorIfRepeating` parity).
+     *
+     * Only a reminder that is BOTH date-based and has a repeat interval in months repeats: a mileage-only reminder (or one
+     * that only has a miles interval) gets no successor. The due date rolls forward from whichever is later, the old due
+     * date or [completedAt] (so a long-overdue completion does not roll from a stale date), by the calendar months in
+     * [zone] (month ends clamp: Aug 31 + 6 months = Feb 28). The due mileage advances by the miles interval when both are
+     * set. The id is deterministic ([successorId]) so retrying or double-tapping the completion can never mint two.
      */
-    fun nextOccurrence(reminder: Reminder, completedAt: Instant, odometerAtCompletion: Int?): Reminder? {
-        val months = reminder.repeatIntervalMonths?.takeIf { it > 0 }
+    fun nextOccurrence(reminder: Reminder, completedAt: Instant, zone: ZoneId = ZoneId.systemDefault()): Reminder? {
+        val months = reminder.repeatIntervalMonths?.takeIf { it > 0 } ?: return null
+        val due = reminder.dueDate ?: return null
+        val base = maxOf(due, completedAt)
         val miles = reminder.repeatIntervalMiles?.takeIf { it > 0 }
-        if (months == null && miles == null) return null
         return reminder.copy(
-            id = "",
-            dueDate = months?.let { completedAt.atZone(ZoneOffset.UTC).plusMonths(it.toLong()).toInstant() },
-            dueMileage = if (miles != null && odometerAtCompletion != null && odometerAtCompletion > 0) {
-                odometerAtCompletion + miles
-            } else {
-                null
-            },
+            id = successorId(reminder.id),
+            dueDate = base.atZone(zone).plusMonths(months.toLong()).toInstant(),
+            dueMileage = if (reminder.dueMileage != null && miles != null) reminder.dueMileage + miles else reminder.dueMileage,
             createdAt = null,
             completedAt = null,
         )
+    }
+
+    /**
+     * Deterministic and bounded: `r1` -> `r1-next` -> `r1-next2` -> `r1-next3` (a generation counter instead of an ever
+     * longer `-next-next-...` chain).
+     */
+    fun successorId(reminderId: String): String {
+        val m = Regex("^(.*-next)(\\d*)$").matchEntire(reminderId) ?: return "$reminderId-next"
+        val generation = m.groupValues[2].toIntOrNull() ?: 1
+        return "${m.groupValues[1]}${generation + 1}"
     }
 }

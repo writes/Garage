@@ -178,7 +178,9 @@ object FirestoreMappers {
         put("notes", r.notes, forUpdate)
         this["isProFeature"] = r.isProFeature
         put("createdAt", r.createdAt, forUpdate, editable = false)
-        put("completedAt", r.completedAt, forUpdate)
+        // Never cleared by an update: a stale copy of an outstanding reminder must not silently un-complete one that
+        // was finished elsewhere meanwhile (iOS never clears it either). Completion is its own write.
+        put("completedAt", r.completedAt, forUpdate, editable = false)
     }
 
     fun reminderFromMap(docId: String, vehicleIdFallback: String, m: Map<String, Any?>): Reminder? {
@@ -237,6 +239,14 @@ object FirestoreMappers {
         "analyticsOptOut" to p.analyticsOptOut,
         "updatedAt" to now,
     )
+
+    /** Partial write of the consent flag alone (iOS `saveProfileFields(["analyticsOptOut": ...])`). */
+    fun analyticsOptOutFields(optOut: Boolean, now: Instant): Map<String, Any?> =
+        mapOf("analyticsOptOut" to optOut, "updatedAt" to now)
+
+    /** Partial write of the accent theme alone; blank clears it (stored as "" like iOS). */
+    fun themeFields(themeId: String?, now: Instant): Map<String, Any?> =
+        mapOf("themeID" to themeId.orEmpty(), "updatedAt" to now)
 
     fun aiConsentFields(granted: Boolean, now: Instant): Map<String, Any?> = mapOf(
         AI_CONSENT_FIELD to encodeAiConsent(if (granted) now else null),

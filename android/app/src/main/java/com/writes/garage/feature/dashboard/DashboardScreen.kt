@@ -1,6 +1,15 @@
 package com.writes.garage.feature.dashboard
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LinearProgressIndicator
+import com.writes.garage.core.domain.FuelEconomy
+import com.writes.garage.core.domain.WearProjection
+import com.writes.garage.core.model.WearItemType
+import com.writes.garage.feature.garage.UrgentRecallBanner
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,8 +47,11 @@ fun DashboardScreen(
     onVoice: () -> Unit,
     onHandover: () -> Unit,
     onOpenEntry: (vehicleId: String, entryId: String) -> Unit,
+    onReminders: () -> Unit = {},
+    onRecalls: (vehicleId: String) -> Unit = {},
+    onWarranties: (vehicleId: String) -> Unit = {},
 ) {
-    val vm = appViewModel { DashboardViewModel(it.vehicles, it.entries, it.reminders) }
+    val vm = appViewModel { DashboardViewModel(it.vehicles, it.entries, it.reminders, it.recalls, it.warranties, it.wear) }
     val state by vm.state.collectAsState()
     val error by vm.error.collectAsState()
     val isDemo = LocalAppContainer.current.isDemo
@@ -63,8 +75,21 @@ fun DashboardScreen(
                         style = MaterialTheme.typography.headlineSmall,
                         color = MaterialTheme.colorScheme.primary,
                     )
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (state.underWarranty) Badge("Under warranty", onClick = { onWarranties(vehicle.id) })
+                        vehicle.fuelType?.let { Badge(it.displayName) }
+                        if (state.openRecalls > 0) {
+                            Badge(
+                                "${state.openRecalls} open recall${if (state.openRecalls == 1) "" else "s"}",
+                                alert = true, onClick = { onRecalls(vehicle.id) },
+                            )
+                        }
+                    }
                 }
             }
+        }
+        if (state.urgentRecalls.isNotEmpty()) {
+            item { UrgentRecallBanner(state.urgentRecalls, Modifier.clickable { onRecalls(vehicle.id) }) }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -73,7 +98,40 @@ fun DashboardScreen(
                 OutlinedButton(onClick = onVoice) { Text("Voice") }
             }
         }
-        item { OutlinedButton(onClick = onHandover) { Text("Export / handover") } }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onHandover) { Text("Export / handover") }
+                OutlinedButton(onClick = onReminders) { Text("Reminders") }
+            }
+        }
+
+        state.fuelDrop?.let { v ->
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Fuel economy", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Fuel economy is down ~${Math.round(v.dropPct)}% vs your recent average - " +
+                                "worth checking tire pressures, brakes, or a stuck thermostat.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            "Last ${FuelEconomy.RECENT_WINDOW} fill-ups averaged ${Formatters.mpg(v.currentAvgMpg)}, " +
+                                "against ${Formatters.mpg(v.baselineAvgMpg)} across your last ${FuelEconomy.BASELINE_WINDOW}.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+        }
+
+        item { SectionHeader("Wear items") }
+        if (state.wearItems.isEmpty()) {
+            item { EmptyState("No wear data yet. Brake and tire health shows up after a brake or tire entry with readings.") }
+        }
+        items(state.wearItems, key = { "wear-${it.type.wire}" }) { w ->
+            WearBar(w, tireAgeYears = state.tireAgeYears.takeIf { w.type == WearItemType.FRONT_TIRES || w.type == WearItemType.REAR_TIRES })
+        }
 
         if (state.attention.isNotEmpty()) {
             item { SectionHeader("Needs attention") }
@@ -120,6 +178,44 @@ fun DashboardScreen(
                 headlineContent = { Text(e.entryType.displayName) },
                 supportingContent = { Text("${Formatters.date(e.entryDate)} - ${Formatters.odometer(e.odometerReading)}") },
                 trailingContent = { Text(Formatters.currency(e.cost)) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun Badge(text: String, alert: Boolean = false, onClick: (() -> Unit)? = null) {
+    val color = if (alert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = color,
+        modifier = Modifier
+            .border(1.dp, color, RoundedCornerShape(50))
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
+}
+
+@Composable
+private fun WearBar(item: WearProjection.WearItem, tireAgeYears: Double?) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(item.type.label, style = MaterialTheme.typography.bodyMedium)
+            Text(item.rawValue ?: "${Math.round(item.percentage)}%", style = MaterialTheme.typography.labelMedium)
+        }
+        LinearProgressIndicator(
+            progress = { (item.percentage / 100).toFloat().coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth(),
+            color = if (item.percentage < 25) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+        )
+        item.milesToReplacement?.let {
+            Text("~${Formatters.odometer(it)} to replacement at the current rate", style = MaterialTheme.typography.bodySmall)
+        }
+        tireAgeYears?.let {
+            Text(
+                "Tires are about ${"%.1f".format(it)} years old - rubber ages independent of tread; have them inspected.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
             )
         }
     }

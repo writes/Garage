@@ -3,6 +3,12 @@ package com.writes.garage.feature.garage
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.writes.garage.core.data.PurchaseRepository
+import com.writes.garage.core.data.RecallRepository
+import com.writes.garage.core.domain.RecallRules
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import com.writes.garage.core.data.VehicleRepository
 import com.writes.garage.core.domain.VehicleLimitPolicy
 import com.writes.garage.core.model.Vehicle
@@ -19,18 +25,26 @@ data class GarageUiState(
     val vehicles: List<Vehicle> = emptyList(),
     val activeId: String? = null,
     val isPro: Boolean = false,
+    /** vehicleId -> outstanding recall count (drives the badge on each vehicle card). */
+    val openRecalls: Map<String, Int> = emptyMap(),
 ) {
     val canAdd: Boolean get() = VehicleLimitPolicy.canAddVehicle(vehicles.size, isPro)
     val limit: Int get() = VehicleLimitPolicy.limitFor(isPro)
 }
 
-class GarageViewModel(private val repo: VehicleRepository, purchases: PurchaseRepository) : ViewModel() {
+@OptIn(ExperimentalCoroutinesApi::class)
+class GarageViewModel(
+    private val repo: VehicleRepository,
+    purchases: PurchaseRepository,
+    recalls: RecallRepository? = null,
+) : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
     val state: StateFlow<GarageUiState> = combine(
         repo.observeVehicles(), repo.activeVehicleId, purchases.entitlement,
-    ) { v, active, ent -> GarageUiState(v, active ?: v.firstOrNull()?.id, ent.isPro) }
+        repo.observeVehicles().flatMapLatest { vs -> openRecallCounts(recalls, vs.map { it.id }) },
+    ) { v, active, ent, open -> GarageUiState(v, active ?: v.firstOrNull()?.id, ent.isPro, open) }
         .catch { e ->
             _error.value = e.message ?: "Couldn't load your vehicles."
             emit(GarageUiState())
@@ -52,5 +66,12 @@ class GarageViewModel(private val repo: VehicleRepository, purchases: PurchaseRe
 
     fun dismissError() {
         _error.value = null
+    }
+
+    private fun openRecallCounts(recalls: RecallRepository?, ids: List<String>): Flow<Map<String, Int>> {
+        if (recalls == null || ids.isEmpty()) return flowOf(emptyMap())
+        return combine(ids.map { id -> recalls.observe(id).catch { emit(emptyList()) } }) { lists ->
+            ids.zip(lists.toList()).associate { (id, l) -> id to RecallRules.outstandingCount(l) }
+        }
     }
 }

@@ -40,8 +40,10 @@ class FirebaseFunctionsGateway(
     override suspend fun confirmReceiptScan(token: String): ReceiptQuota =
         FunctionsMappers.parseQuota(call(Callables.CONFIRM_RECEIPT_SCAN, mapOf("token" to token)))
 
-    override suspend fun receiptQuotaStatus(): ReceiptQuota =
-        FunctionsMappers.parseQuota(call(Callables.RECEIPT_QUOTA_STATUS, emptyMap<String, Any?>()))
+    override suspend fun receiptQuotaStatus(transactionId: String?): ReceiptQuota =
+        FunctionsMappers.parseQuota(
+            call(Callables.RECEIPT_QUOTA_STATUS, if (transactionId == null) emptyMap<String, Any?>() else mapOf("transactionId" to transactionId)),
+        )
 
     override suspend fun reconcileReceiptCreditPurchase(transactionId: String): ReceiptQuota =
         FunctionsMappers.parseReconcile(call(Callables.RECONCILE_RECEIPT_CREDIT_PURCHASE, mapOf("transactionId" to transactionId)))

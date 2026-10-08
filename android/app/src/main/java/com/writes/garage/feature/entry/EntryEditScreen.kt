@@ -1,8 +1,21 @@
 package com.writes.garage.feature.entry
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.runtime.LaunchedEffect
+import com.writes.garage.feature.shared.AiConsentDialog
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.Alignment
+import com.writes.garage.core.data.WearSync
+import com.writes.garage.feature.shared.AttachmentPickerRow
+import com.writes.garage.feature.shared.LocalAppContainer
+import com.writes.garage.feature.shared.ProGate
+import kotlinx.coroutines.flow.first
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,11 +44,27 @@ import com.writes.garage.feature.shared.appViewModel
 import java.time.LocalDate
 
 @Composable
-fun EntryEditScreen(vehicleId: String?, entryId: String?, onDone: () -> Unit) {
+fun EntryEditScreen(vehicleId: String?, entryId: String?, onDone: () -> Unit, onUpgrade: () -> Unit = {}) {
     val vm = appViewModel(key = "entry-edit-$vehicleId-$entryId") {
-        EntryEditViewModel(it.entries, it.vehicles, vehicleId, entryId)
+        EntryEditViewModel(
+            it.entries, it.vehicles, vehicleId, entryId,
+            wear = WearSync(it.wear), storage = it.storage, analytics = it.analytics,
+            profile = it.profile, functions = it.functions, reviews = it.reviews,
+            canAttach = { it.purchases.entitlement.value.isPro && (it.isDemo || it.profile.observeProfile().first()?.serverIsPro == true) },
+        )
     }
     val s by vm.state.collectAsState()
+    val isPro by LocalAppContainer.current.purchases.entitlement.collectAsState()
+    val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.importOilAnalysis(uri.toString())
+    }
+    LaunchedEffect(s.needsUpgrade) {
+        if (s.needsUpgrade) {
+            vm.upgradeHandled()
+            onUpgrade()
+        }
+    }
+    if (s.needsAiConsent) AiConsentDialog(onGrant = vm::grantImportConsent, onDismiss = vm::dismissImportConsent)
 
     ScreenColumn(if (entryId == null) "Add entry" else "Edit entry") {
         if (s.loading) {
@@ -80,6 +109,20 @@ fun EntryEditScreen(vehicleId: String?, entryId: String?, onDone: () -> Unit) {
         item { FormTextField("Shop", s.shop, { v -> vm.update { copy(shop = v) } }) }
         item { SwitchRow("Did it myself (DIY)", s.isDiy, onChange = { v -> vm.update { copy(isDiy = v) } }) }
 
+        if (s.type == EntryType.OIL_ANALYSIS && vm.importAvailable) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    OutlinedButton(onClick = { pdfPicker.launch(arrayOf("application/pdf")) }, enabled = !s.importing) {
+                        Text(if (s.importing) "Reading report..." else "Import lab PDF")
+                    }
+                    Text(
+                        "Fills the fields below from your lab report (sent to Garage's AI service). You review everything before saving.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    s.importNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+                }
+            }
+        }
         item { SectionHeader("${s.type.displayName} details") }
         var lastSection: String? = null
         EntryFieldSpecs.forType(s.type).fields.filter { it.isVisible(s.details) }.forEach { f ->
@@ -93,6 +136,31 @@ fun EntryEditScreen(vehicleId: String?, entryId: String?, onDone: () -> Unit) {
         }
 
         item { FormTextField("Notes", s.notes, { v -> vm.update { copy(notes = v) } }, singleLine = false) }
+        if (vm.attachmentsAvailable) {
+            item { SectionHeader("Attachments") }
+            item {
+                ProGate(isPro = isPro.isPro, onUpgrade = onUpgrade, lockedMessage = "Attaching photos and PDFs to entries is a Garage Pro feature.") {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        s.attachmentPaths.forEach { path ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(path.substringAfterLast('/'), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                TextButton(onClick = { vm.removeExistingAttachment(path) }) { Text("Remove") }
+                            }
+                        }
+                        s.pendingAttachments.forEachIndexed { i, p ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("${p.displayName} (new)", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                TextButton(onClick = { vm.removePendingAttachment(i) }) { Text("Remove") }
+                            }
+                        }
+                        AttachmentPickerRow(
+                            onPicked = vm::addAttachment,
+                            onError = { msg -> vm.update { copy(formError = msg) } },
+                        )
+                    }
+                }
+            }
+        }
         item { ErrorText(s.formError) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

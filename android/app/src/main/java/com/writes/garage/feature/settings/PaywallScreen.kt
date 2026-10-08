@@ -25,7 +25,7 @@ import com.writes.garage.feature.shared.appViewModel
 /** Full-screen paywall (route), used by upsell prompts elsewhere. */
 @Composable
 fun PaywallScreen(onBack: () -> Unit) {
-    val vm = appViewModel { PaywallViewModel(it.purchases) }
+    val vm = appViewModel { PaywallViewModel(it.purchases, it.analytics) }
     val s by vm.state.collectAsState()
     ScreenColumn("Garage Pro") {
         item { PaywallBody(s, vm::purchase, vm::restore) }
@@ -37,7 +37,7 @@ fun PaywallScreen(onBack: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PaywallSheet(onDismiss: () -> Unit) {
-    val vm = appViewModel { PaywallViewModel(it.purchases) }
+    val vm = appViewModel { PaywallViewModel(it.purchases, it.analytics) }
     val s by vm.state.collectAsState()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

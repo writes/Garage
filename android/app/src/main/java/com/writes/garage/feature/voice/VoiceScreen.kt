@@ -18,6 +18,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -36,7 +37,7 @@ import com.writes.garage.feature.shared.appViewModel
 
 @Composable
 fun VoiceScreen(onDone: () -> Unit, onUpgrade: () -> Unit) {
-    val vm = appViewModel { VoiceViewModel(it.vehicles, it.profile, it.functions, it.entries) }
+    val vm = appViewModel { VoiceViewModel(it.vehicles, it.profile, it.functions, it.entries, analytics = it.analytics, reviews = it.reviews) }
     val s by vm.state.collectAsState()
     val entitlement by LocalAppContainer.current.purchases.entitlement.collectAsState()
     val context = LocalContext.current
@@ -63,6 +64,13 @@ fun VoiceScreen(onDone: () -> Unit, onUpgrade: () -> Unit) {
             speech.start()
         } else {
             micPermission.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    LaunchedEffect(s.needsUpgrade) {
+        if (s.needsUpgrade) {
+            vm.upgradeHandled()
+            onUpgrade()
         }
     }
 

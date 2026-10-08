@@ -34,9 +34,14 @@ import com.writes.garage.feature.shared.SectionHeader
 import com.writes.garage.feature.shared.appViewModel
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(
+    onReminders: () -> Unit = {},
+    onProfile: () -> Unit = {},
+    onTheme: () -> Unit = {},
+    onVehicles: () -> Unit = {},
+) {
     val vm = appViewModel {
-        SettingsViewModel(it.auth, it.profile, it.purchases, it.functions, it.notifications, it.isDemo, BuildConfig.VERSION_NAME)
+        SettingsViewModel(it.auth, it.profile, it.purchases, it.functions, it.notifications, it.isDemo, BuildConfig.VERSION_NAME, it.session)
     }
     val s by vm.state.collectAsState()
     val context = LocalContext.current
@@ -78,6 +83,20 @@ fun SettingsScreen() {
                 supportingContent = { Text(listOfNotNull(s.user?.email, if (s.user?.isDemo == true) "demo session" else null).joinToString(" - ")) },
             )
         }
+        item {
+            ListItem(
+                headlineContent = { Text("Profile") },
+                supportingContent = { Text("Name, address, phone and insurance") },
+                modifier = Modifier.clickable(onClick = onProfile),
+            )
+        }
+        item {
+            ListItem(
+                headlineContent = { Text("Vehicles") },
+                supportingContent = { Text("Add, edit and switch vehicles") },
+                modifier = Modifier.clickable(onClick = onVehicles),
+            )
+        }
         item { SectionHeader("Subscription") }
         item {
             ListItem(
@@ -94,7 +113,21 @@ fun SettingsScreen() {
                 trailingContent = { OutlinedButton(onClick = { showPaywall = true }) { Text(if (s.entitlement.isPro) "Manage" else "Upgrade") } },
             )
         }
+        item {
+            ListItem(
+                headlineContent = { Text("Theme") },
+                supportingContent = { Text(if (s.entitlement.isPro) "Choose your accent color" else "Accent colors are part of Pro") },
+                modifier = Modifier.clickable(onClick = onTheme),
+            )
+        }
         item { SectionHeader("Notifications") }
+        item {
+            ListItem(
+                headlineContent = { Text("Reminders") },
+                supportingContent = { Text("Create, edit and complete service reminders") },
+                modifier = Modifier.clickable(onClick = onReminders),
+            )
+        }
         item {
             ListItem(
                 headlineContent = { Text("Reminder notifications") },
@@ -108,6 +141,15 @@ fun SettingsScreen() {
                 headlineContent = { Text("Allow AI processing") },
                 supportingContent = { Text("Receipt and voice entry send content to Claude") },
                 trailingContent = { Switch(checked = s.profile?.hasAiConsent == true, onCheckedChange = vm::setAiConsent) },
+            )
+        }
+        item {
+            ListItem(
+                headlineContent = { Text("Share analytics and crash reports") },
+                supportingContent = { Text("Off by default. Anonymous usage and crash data helps improve Garage") },
+                trailingContent = {
+                    Switch(checked = s.profile?.analyticsOptOut == false, onCheckedChange = vm::setAnalyticsSharing, enabled = s.profile != null)
+                },
             )
         }
         item {

@@ -100,7 +100,7 @@ object ReminderAlarms {
 
     internal fun encode(plan: List<PlannedAlarm>): String = plan.joinToString("\n") {
         listOf(it.key, it.reminderId, it.triggerAt.toEpochMilli().toString(), it.title, it.text).joinToString("\t") { f ->
-            f.replace('\t', ' ').replace('\n', ' ')
+            f.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
         }
     }
 

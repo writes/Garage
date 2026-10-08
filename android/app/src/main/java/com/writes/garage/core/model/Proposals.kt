@@ -51,4 +51,8 @@ data class ReceiptQuota(
     val resetAt: String? = null,
     /** `granted` / `refunded` / `unknown` when the call was a transaction reconcile. */
     val transactionState: String? = null,
+    /** Credits owed after a refund; the next pack restores these first. */
+    val creditsDeficit: Int = 0,
+    /** Server capability flag: the credits pack may be offered. */
+    val creditsPurchasingEnabled: Boolean = false,
 )

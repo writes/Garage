@@ -16,8 +16,11 @@ class StatsTest {
     fun totalsAndMpgForSq5() {
         val entries = seed.entries.filter { it.vehicleId == SeedData.SQ5_ID }
         val stats = computeStats("SQ5", entries)
-        assertEquals(entries.sumOf { it.cost ?: 0.0 }, stats.totalCost, 0.001)
-        assertNotNull(stats.averageMpg)
+        assertEquals(11, entries.size)
+        // Independently summed from the seed: 74.22+71.80+76.50+72.10+129+240+1150+4+520+129+0.
+        assertEquals(2_466.62, stats.totalCost, 0.001)
+        // Σ(mpg*gallons)/Σgallons over the four seeded fills = 1419.47 mi / 73.0 gal.
+        assertEquals(1_419.47 / 73.0, stats.averageMpg!!, 1e-6)
         assertEquals(EntryType.REPAIR, stats.costByType.first().first)
     }
 

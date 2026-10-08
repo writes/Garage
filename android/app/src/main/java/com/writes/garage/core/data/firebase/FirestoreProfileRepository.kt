@@ -49,6 +49,16 @@ class FirestoreProfileRepository(
         doc(uid).set(FirestoreValueCodec.encodeForCreate(FirestoreMappers.profileFormFields(profile, clock())), SetOptions.merge()).await()
     }
 
+    override suspend fun setAnalyticsOptOut(optOut: Boolean) {
+        val uid = auth.currentUser.value?.uid ?: error("Not signed in")
+        doc(uid).set(FirestoreValueCodec.encodeForCreate(FirestoreMappers.analyticsOptOutFields(optOut, clock())), SetOptions.merge()).await()
+    }
+
+    override suspend fun setThemeId(themeId: String?) {
+        val uid = auth.currentUser.value?.uid ?: error("Not signed in")
+        doc(uid).set(FirestoreValueCodec.encodeForCreate(FirestoreMappers.themeFields(themeId, clock())), SetOptions.merge()).await()
+    }
+
     override suspend fun setAiConsent(granted: Boolean) {
         val uid = auth.currentUser.value?.uid ?: error("Not signed in")
         doc(uid).set(FirestoreValueCodec.encodeForCreate(FirestoreMappers.aiConsentFields(granted, clock())), SetOptions.merge()).await()

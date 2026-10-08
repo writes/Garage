@@ -20,7 +20,13 @@ val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
-val revenueCatApiKey: String = localProps.getProperty("revenuecat.apiKey", "")
+val revenueCatApiKey: String = localProps.getProperty("revenuecat.apiKey", "").trim()
+// Only the PUBLIC Android SDK key (goog_...) may be compiled into the APK. The RevenueCat secret key (sk_...) used by
+// the server (deleteAccount / reconcile) would otherwise ship in cleartext in every build.
+require(revenueCatApiKey.isEmpty() || revenueCatApiKey.startsWith("goog_")) {
+    "local.properties revenuecat.apiKey must be empty or the public Android SDK key (goog_...). " +
+        "Never put a secret key (sk_...) here: it would be embedded in the APK."
+}
 
 android {
     namespace = "com.writes.garage"
@@ -44,7 +50,9 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
@@ -60,11 +68,13 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // Robolectric needs the merged manifest/resources (FileProvider, R, packageName) for the framework-dependent tests.
+        unitTests.isIncludeAndroidResources = true
     }
 
     lint {
         abortOnError = true
-        checkReleaseBuilds = false
+        checkReleaseBuilds = true
     }
 
     packaging {
@@ -104,6 +114,7 @@ dependencies {
     implementation(libs.firebase.functions)
     implementation(libs.firebase.appcheck.playintegrity)
     debugImplementation(libs.firebase.appcheck.debug)
+    implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.messaging)
 
@@ -112,7 +123,10 @@ dependencies {
     implementation(libs.googleid)
 
     implementation(libs.revenuecat.purchases)
+    implementation(libs.play.review)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
 }

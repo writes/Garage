@@ -3,7 +3,10 @@ package com.writes.garage.feature.auth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.content.Context
+import com.writes.garage.core.data.AnalyticsEvents
+import com.writes.garage.core.data.AnalyticsSink
 import com.writes.garage.core.data.AuthRepository
+import com.writes.garage.core.data.NoopAnalyticsSink
 import com.writes.garage.core.data.GoogleSignInProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +24,8 @@ class AuthViewModel(
     private val auth: AuthRepository,
     isDemo: Boolean,
     private val google: GoogleSignInProvider? = null,
+    /** Held by the consent gate until the profile loads; the sign-in funnel then flushes if the user opted in. */
+    private val analytics: AnalyticsSink = NoopAnalyticsSink,
 ) : ViewModel() {
     private val _state = MutableStateFlow(AuthUiState(isDemo, googleAvailable = google != null))
     val state: StateFlow<AuthUiState> = _state.asStateFlow()
@@ -39,7 +44,11 @@ class AuthViewModel(
         viewModelScope.launch {
             _state.value = _state.value.copy(busy = true, error = null)
             runCatching { auth.signInWithGoogle(idToken) }
-                .onFailure { _state.value = _state.value.copy(error = it.message) }
+                .onSuccess { analytics.log(AnalyticsEvents.SIGN_IN_COMPLETED, AnalyticsEvents.params("provider" to "google")) }
+                .onFailure {
+                    analytics.log(AnalyticsEvents.SIGN_IN_FAILED, AnalyticsEvents.params("provider" to "google"))
+                    _state.value = _state.value.copy(error = it.message)
+                }
             _state.value = _state.value.copy(busy = false)
         }
     }
@@ -50,7 +59,11 @@ class AuthViewModel(
         viewModelScope.launch {
             _state.value = _state.value.copy(busy = true, error = null)
             runCatching { auth.signInWithGoogle(provider.requestIdToken(activityContext)) }
-                .onFailure { _state.value = _state.value.copy(error = it.message ?: "Google sign-in failed.") }
+                .onSuccess { analytics.log(AnalyticsEvents.SIGN_IN_COMPLETED, AnalyticsEvents.params("provider" to "google")) }
+                .onFailure {
+                    analytics.log(AnalyticsEvents.SIGN_IN_FAILED, AnalyticsEvents.params("provider" to "google"))
+                    _state.value = _state.value.copy(error = it.message ?: "Google sign-in failed.")
+                }
             _state.value = _state.value.copy(busy = false)
         }
     }

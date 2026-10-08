@@ -166,5 +166,53 @@ class FunctionsMappersTest {
         assertEquals(GatewayException.Kind.OTHER, kind("NOT_FOUND", null))
         assertEquals(GatewayException.Kind.UNAUTHENTICATED, kind("UNAUTHENTICATED", null))
         assertEquals(GatewayException.Kind.UNAVAILABLE, kind("DEADLINE_EXCEEDED", null))
+        assertEquals(GatewayException.Kind.UNAVAILABLE, kind("UNAVAILABLE", null))
+    }
+
+    @Test
+    fun permissionDeniedSplitsProRequiredFromEverythingElse() {
+        fun kind(details: Any?) = FunctionsMappers.classifyError(Callables.VOICE_QUICK_ADD, "PERMISSION_DENIED", "m", details).kind
+        assertEquals(GatewayException.Kind.PRO_REQUIRED, kind(mapOf("reason" to "pro_required")))
+        // No details / another reason / wrong shape: App Check or plain permission, never a paywall nudge.
+        assertEquals(GatewayException.Kind.APP_CHECK_OR_PERMISSION, kind(null))
+        assertEquals(GatewayException.Kind.APP_CHECK_OR_PERMISSION, kind(mapOf("reason" to "app_check")))
+        assertEquals(GatewayException.Kind.APP_CHECK_OR_PERMISSION, kind("pro_required"))
+        assertEquals(GatewayException.Kind.APP_CHECK_OR_PERMISSION, kind(emptyMap<String, Any>()))
+    }
+
+    @Test
+    fun confirmedExhaustedRoutesByScopeLikeScanExhausted() {
+        fun kind(reason: String, scope: String?) = FunctionsMappers.classifyError(
+            Callables.RECEIPT_QUICK_ADD, "RESOURCE_EXHAUSTED", "m", buildMap { put("reason", reason); if (scope != null) put("scope", scope) },
+        ).kind
+        assertEquals(GatewayException.Kind.FREE_LIFETIME_EXHAUSTED, kind("receipt_confirmed_exhausted", "free_lifetime"))
+        assertEquals(GatewayException.Kind.PRO_MONTH_EXHAUSTED, kind("receipt_confirmed_exhausted", "pro_month"))
+        assertEquals(GatewayException.Kind.OTHER, kind("receipt_confirmed_exhausted", null))
+        assertEquals(GatewayException.Kind.OTHER, kind("something_else", "free_lifetime"))
+    }
+
+    @Test
+    fun failedPreconditionWithAnotherReasonIsNotAReceiptRejection() {
+        fun kind(details: Any?) = FunctionsMappers.classifyError(Callables.RECEIPT_QUICK_ADD, "FAILED_PRECONDITION", "m", details).kind
+        assertEquals(GatewayException.Kind.OTHER, kind(mapOf("reason" to "ai_consent_required")))
+        assertEquals(GatewayException.Kind.OTHER, kind(null))
+    }
+
+    @Test
+    fun notFoundOnlyMeansUnrecognisedVinForTheRecallLookup() {
+        fun kind(op: String) = FunctionsMappers.classifyError(op, "NOT_FOUND", "m", null).kind
+        assertEquals(GatewayException.Kind.VIN_NOT_RECOGNISED, kind(Callables.LOOKUP_RECALLS))
+        assertEquals(GatewayException.Kind.OTHER, kind(Callables.RECEIPT_QUICK_ADD))
+    }
+
+    @Test
+    fun messageFallsBackToTheOperationAndCodeAndKeepsResetAt() {
+        val e = FunctionsMappers.classifyError("op", "INTERNAL", null, null)
+        assertEquals("op failed (INTERNAL)", e.message)
+        val r = FunctionsMappers.classifyError(
+            Callables.RECEIPT_QUICK_ADD, "RESOURCE_EXHAUSTED", "m", mapOf("reason" to "receipt_scan_exhausted", "scope" to "pro_month", "resetAt" to "2026-08-01T00:00:00Z"),
+        )
+        assertEquals("2026-08-01T00:00:00Z", r.resetAt)
+        assertNull(FunctionsMappers.classifyError("op", "INTERNAL", "m", null).resetAt)
     }
 }

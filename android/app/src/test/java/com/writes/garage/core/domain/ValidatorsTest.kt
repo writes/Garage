@@ -81,4 +81,81 @@ class ValidatorsTest {
         assertEquals("12%", Formatters.percent(12.3))
         assertEquals("Jun 1, 2026", Formatters.date(NOW, java.time.ZoneOffset.UTC))
     }
+
+    // ---- T19 edge cases
+
+    @Test
+    fun parseOdometerBoundariesAndOddInput() {
+        assertNull(Validators.parseOdometer(""))
+        assertNull(Validators.parseOdometer("   "))
+        assertNull(Validators.parseOdometer(","))
+        assertEquals(0, Validators.parseOdometer("0"))
+        assertEquals(2_000_000, Validators.parseOdometer("2000000"))
+        assertEquals(2_000_000, Validators.parseOdometer("2,000,000"))
+        assertNull(Validators.parseOdometer("2000001"))
+        assertNull(Validators.parseOdometer("-1"))
+        assertNull(Validators.parseOdometer("1e5"))
+        assertNull(Validators.parseOdometer("1.5"))
+        assertNull(Validators.parseOdometer("12 mi"))
+        assertNull(Validators.parseOdometer("99999999999999")) // overflow is a null, not an exception
+        assertEquals(1_000, Validators.parseOdometer(" 1 000 "))
+        // Pinned, deliberate: a leading plus and non-ASCII digits are accepted (the input filter allows them too).
+        assertEquals(5, Validators.parseOdometer("+5"))
+        assertEquals(34, Validators.parseOdometer("\u0663\u0664"))
+    }
+
+    @Test
+    fun aReadingEqualToEitherBoundIsAccepted() {
+        val entries = listOf(entry("lo", daysAgo = 50, odo = 45_000), entry("hi", daysAgo = 10, odo = 50_000))
+        val bounds = Validators.odometerBounds(entries, "v1", on = daysAgo(30))
+        assertTrue(Validators.odometerWarnings(45_000, bounds).isEmpty())
+        assertTrue(Validators.odometerWarnings(50_000, bounds).isEmpty())
+        assertEquals(1, Validators.odometerWarnings(44_999, bounds).size)
+        assertEquals(1, Validators.odometerWarnings(50_001, bounds).size)
+    }
+
+    @Test
+    fun anEntryAtExactlyTheSameInstantCountsAsEarlier() {
+        val same = entry("same", daysAgo = 30, odo = 46_000)
+        val later = entry("later", daysAgo = 10, odo = 50_000)
+        val bounds = Validators.odometerBounds(listOf(same, later), "v1", on = daysAgo(30))
+        assertEquals(46_000, bounds.earlier?.reading)
+        assertEquals(50_000, bounds.later?.reading)
+    }
+
+    @Test
+    fun anUnrecordedNeighbourNeverPinsABound() {
+        val entries = listOf(entry("zeroEarlier", daysAgo = 50, odo = 0), entry("zeroLater", daysAgo = 10, odo = 0))
+        val bounds = Validators.odometerBounds(entries, "v1", on = daysAgo(30))
+        assertNull(bounds.earlier)
+        assertNull(bounds.later)
+        assertTrue(Validators.odometerWarnings(1, bounds).isEmpty())
+    }
+
+    @Test
+    fun theHighestEarlierAndLowestLaterReadingPinTheBounds() {
+        val entries = listOf(
+            entry("e1", daysAgo = 90, odo = 40_000), entry("e2", daysAgo = 60, odo = 44_000), entry("e3", daysAgo = 40, odo = 42_000),
+            entry("l1", daysAgo = 10, odo = 49_000), entry("l2", daysAgo = 5, odo = 47_000),
+        )
+        val bounds = Validators.odometerBounds(entries, "v1", on = daysAgo(30))
+        assertEquals(44_000, bounds.earlier?.reading)
+        assertEquals(47_000, bounds.later?.reading)
+        // Between the neighbours: no warning.
+        assertTrue(Validators.odometerWarnings(45_500, bounds).isEmpty())
+        // Both warnings can fire when the bounds themselves are inconsistent.
+        val crossed = Validators.OdometerBounds(
+            Validators.OdometerBoundary(50_000, daysAgo(40)), Validators.OdometerBoundary(40_000, daysAgo(10)),
+        )
+        assertEquals(2, Validators.odometerWarnings(45_000, crossed).size)
+    }
+
+    @Test
+    fun warningTextNamesTheReadingAndTheDate() {
+        val b = Validators.OdometerBounds(Validators.OdometerBoundary(82_440, NOW), null)
+        val w = Validators.odometerWarnings(1_000, b).single()
+        assertTrue(w, w.startsWith("Lower than the 82,440 mi recorded on "))
+        val later = Validators.OdometerBounds(null, Validators.OdometerBoundary(90_000, NOW))
+        assertTrue(Validators.odometerWarnings(95_000, later).single().contains("Higher than the 90,000 mi") )
+    }
 }

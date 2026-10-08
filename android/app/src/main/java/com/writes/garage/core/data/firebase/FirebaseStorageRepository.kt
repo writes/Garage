@@ -1,22 +1,17 @@
 package com.writes.garage.core.data.firebase
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Matrix
-import android.media.ExifInterface
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageMetadata
 import com.writes.garage.core.data.AuthRepository
+import com.writes.garage.core.data.MediaFolder
 import com.writes.garage.core.data.StorageRepository
 import com.writes.garage.core.domain.Constants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.util.UUID
 
 /**
@@ -32,18 +27,36 @@ class FirebaseStorageRepository(
     override suspend fun uploadAttachment(vehicleId: String, localUri: String, contentType: String, entryId: String?): String {
         require(StoragePaths.isAllowedContentType(contentType)) { "Only images and PDFs can be attached." }
         val uid = auth.currentUser.value?.uid ?: error("Not signed in")
-        val uri = Uri.parse(localUri)
-        val size = withContext(Dispatchers.IO) {
-            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
-        }
-        require(size < 0 || size <= Constants.MAX_ATTACHMENT_BYTES) { "That file is larger than 20 MB." }
+        val raw = readBoundedBytes(Uri.parse(localUri))
+        // Images are re-encoded (EXIF rotation baked in, all metadata incl. GPS dropped), like iOS AttachmentImageProcessor.
+        val isImage = contentType.startsWith("image/")
+        val bytes = if (isImage) ImageReencoder.reencodeJpeg(raw, UPLOAD_MAX_EDGE, UPLOAD_JPEG_QUALITY) else raw
+        val effectiveType = if (isImage) "image/jpeg" else contentType
 
         val path = StoragePaths.entryAttachment(
             uid, vehicleId, entryId ?: UUID.randomUUID().toString(),
-            "${UUID.randomUUID()}.${StoragePaths.extensionFor(contentType)}",
+            "${UUID.randomUUID()}.${StoragePaths.extensionFor(effectiveType)}",
         )
-        val metadata = StorageMetadata.Builder().setContentType(contentType).build()
-        storage.reference.child(path).putFile(uri, metadata).await()
+        val metadata = StorageMetadata.Builder().setContentType(effectiveType).build()
+        storage.reference.child(path).putBytes(bytes, metadata).await()
+        return path
+    }
+
+    override suspend fun uploadMedia(
+        vehicleId: String,
+        localUri: String,
+        contentType: String,
+        folder: MediaFolder,
+        ownerId: String?,
+    ): String {
+        require(StoragePaths.isAllowedContentType(contentType)) { "Only images and PDFs can be attached." }
+        val uid = auth.currentUser.value?.uid ?: error("Not signed in")
+        val raw = readBoundedBytes(Uri.parse(localUri))
+        val isImage = contentType.startsWith("image/")
+        val bytes = if (isImage) ImageReencoder.reencodeJpeg(raw, UPLOAD_MAX_EDGE, UPLOAD_JPEG_QUALITY) else raw
+        val effectiveType = if (isImage) "image/jpeg" else contentType
+        val path = StoragePaths.media(uid, vehicleId, folder, ownerId, "${UUID.randomUUID()}.${StoragePaths.extensionFor(effectiveType)}")
+        storage.reference.child(path).putBytes(bytes, StorageMetadata.Builder().setContentType(effectiveType).build()).await()
         return path
     }
 
@@ -51,50 +64,44 @@ class FirebaseStorageRepository(
         storage.reference.child(storagePath).delete().await()
     }
 
+    override suspend fun downloadAttachment(storagePath: String, maxBytes: Int): ByteArray = try {
+        storage.reference.child(storagePath).getBytes(maxBytes.toLong()).await()
+    } catch (e: com.google.firebase.storage.StorageException) {
+        if (e.errorCode == com.google.firebase.storage.StorageException.ERROR_OBJECT_NOT_FOUND) {
+            throw com.writes.garage.core.data.AttachmentMissingException(storagePath)
+        }
+        throw e
+    }
+
+    override suspend fun readBytes(localUri: String, maxBytes: Int): ByteArray = withContext(Dispatchers.IO) {
+        val stream = context.contentResolver.openInputStream(Uri.parse(localUri)) ?: error("Couldn't read that file.")
+        try {
+            stream.use { BoundedRead.readBounded(it, maxBytes) }
+        } catch (e: BoundedRead.TooLargeException) {
+            throw IllegalArgumentException("That file is too large.", e)
+        }
+    }
+
     override suspend fun readAsBase64(localUri: String, contentType: String): String = withContext(Dispatchers.IO) {
-        val uri = Uri.parse(localUri)
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: error("Couldn't read that file.")
-        val payload = if (contentType.startsWith("image/")) downscaleJpeg(bytes) else bytes
+        val bytes = readBoundedBytes(Uri.parse(localUri))
+        val payload = if (contentType.startsWith("image/")) ImageReencoder.reencodeJpeg(bytes, AI_MAX_EDGE, 80) else bytes
         Base64.encodeToString(payload, Base64.NO_WRAP)
     }
 
-    /** Camera JPEGs carry orientation in EXIF, which re-encoding drops; bake it into the pixels first. */
-    private fun applyExifRotation(bitmap: Bitmap, original: ByteArray): Bitmap {
-        val orientation = runCatching {
-            ExifInterface(ByteArrayInputStream(original))
-                .getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
-        }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
-        val m = Matrix()
-        when (orientation) {
-            ExifInterface.ORIENTATION_ROTATE_90 -> m.postRotate(90f)
-            ExifInterface.ORIENTATION_ROTATE_180 -> m.postRotate(180f)
-            ExifInterface.ORIENTATION_ROTATE_270 -> m.postRotate(270f)
-            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> m.postScale(-1f, 1f)
-            ExifInterface.ORIENTATION_FLIP_VERTICAL -> m.postScale(1f, -1f)
-            ExifInterface.ORIENTATION_TRANSPOSE -> { m.postRotate(90f); m.postScale(-1f, 1f) }
-            ExifInterface.ORIENTATION_TRANSVERSE -> { m.postRotate(270f); m.postScale(-1f, 1f) }
-            else -> return bitmap
+    /** Never reads past the cap, whether or not the provider reports a length. */
+    private suspend fun readBoundedBytes(uri: Uri): ByteArray = withContext(Dispatchers.IO) {
+        val stream = context.contentResolver.openInputStream(uri) ?: error("Couldn't read that file.")
+        try {
+            stream.use { BoundedRead.readBounded(it, Constants.MAX_ATTACHMENT_BYTES) }
+        } catch (e: BoundedRead.TooLargeException) {
+            throw IllegalArgumentException("That file is larger than 20 MB.", e)
         }
-        return runCatching { Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, m, true) }.getOrDefault(bitmap)
     }
 
-    /** Receipts are text; 1600 px on the long edge at JPEG q80 keeps them readable and well under the 9 MiB callable cap. */
-    private fun downscaleJpeg(bytes: ByteArray, maxEdge: Int = 1600): ByteArray {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        if (bounds.outWidth <= 0) return bytes
-        var sample = 1
-        while (bounds.outWidth / (sample * 2) >= maxEdge || bounds.outHeight / (sample * 2) >= maxEdge) sample *= 2
-        val sampled = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
-            ?: return bytes
-        val decoded = applyExifRotation(sampled, bytes)
-        val scale = maxEdge.toFloat() / maxOf(decoded.width, decoded.height)
-        val bitmap = if (scale < 1f) {
-            Bitmap.createScaledBitmap(decoded, (decoded.width * scale).toInt(), (decoded.height * scale).toInt(), true)
-        } else {
-            decoded
-        }
-        return ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, 80, it) }.toByteArray()
+    private companion object {
+        /** Receipts are text; 1600 px keeps them readable and well under the 9 MiB callable cap. */
+        const val AI_MAX_EDGE = 1600
+        const val UPLOAD_MAX_EDGE = 2560
+        const val UPLOAD_JPEG_QUALITY = 85
     }
 }

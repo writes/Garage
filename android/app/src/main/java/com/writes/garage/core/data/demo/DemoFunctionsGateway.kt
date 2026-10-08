@@ -48,7 +48,8 @@ class DemoFunctionsGateway(private val store: DemoStore) : FunctionsGateway {
         return quota()
     }
 
-    override suspend fun receiptQuotaStatus(): ReceiptQuota = quota()
+    override suspend fun receiptQuotaStatus(transactionId: String?): ReceiptQuota =
+        if (transactionId == null) quota() else quota().copy(transactionState = "granted")
 
     override suspend fun reconcileReceiptCreditPurchase(transactionId: String): ReceiptQuota =
         quota().copy(transactionState = "granted")
@@ -65,7 +66,7 @@ class DemoFunctionsGateway(private val store: DemoStore) : FunctionsGateway {
         return VoiceProposal(
             transcript = transcript, vehicleId = vehicle.id, entryType = type, entryDate = store.clock(),
             odometerReading = vehicle.currentOdometer,
-            cost = Regex("""\$?(\d+(?:\.\d{1,2})?)""").find(transcript)?.groupValues?.get(1)?.toDoubleOrNull(),
+            cost = spokenCost(transcript),
             notes = transcript, confidence = 0.8,
         )
     }
@@ -82,9 +83,34 @@ class DemoFunctionsGateway(private val store: DemoStore) : FunctionsGateway {
         store.user.value = null
     }
 
+    /** Mirrors the server purge: the vehicle and everything under it go, and the active selection moves on. */
     override suspend fun deleteVehicle(vehicleId: String) {
         store.vehicles.update { list -> list.filterNot { it.id == vehicleId } }
         store.entries.update { list -> list.filterNot { it.vehicleId == vehicleId } }
+        store.reminders.update { list -> list.filterNot { it.vehicleId == vehicleId } }
+        store.recalls.update { list -> list.filterNot { it.vehicleId == vehicleId } }
+        store.warranties.update { list -> list.filterNot { it.vehicleId == vehicleId } }
+        store.parts.update { list -> list.filterNot { it.vehicleId == vehicleId } }
+        store.detailing.update { list -> list.filterNot { it.vehicleId == vehicleId } }
+        store.gallery.update { list -> list.filterNot { it.vehicleId == vehicleId } }
+        store.wear.update { list -> list.filterNot { it.vehicleId == vehicleId } }
+        if (store.activeVehicleId.value == vehicleId) {
+            store.activeVehicleId.value = store.vehicles.value.firstOrNull { it.deletedAt == null }?.id
+        }
+    }
+
+    internal companion object {
+        private const val AMOUNT = """(\d+(?:\.\d{1,2})?)"""
+
+        /**
+         * The amount a person said: an explicit "$48.50", else the figure after "for/cost/paid/spent/total", else the
+         * last standalone number. Numbers glued to letters or dashes ("5W-30", "10k") are part of a name, not a price.
+         */
+        fun spokenCost(transcript: String): Double? {
+            Regex("""\$\s*$AMOUNT""").find(transcript)?.let { return it.groupValues[1].toDoubleOrNull() }
+            Regex("""(?i)\b(?:for|cost|costs|paid|spent|total)\s+$AMOUNT""").find(transcript)?.let { return it.groupValues[1].toDoubleOrNull() }
+            return Regex("""(?<![\w.\-])$AMOUNT(?![\w\-])""").findAll(transcript).lastOrNull()?.groupValues?.get(1)?.toDoubleOrNull()
+        }
     }
 
     private fun quota(): ReceiptQuota {
@@ -93,6 +119,7 @@ class DemoFunctionsGateway(private val store: DemoStore) : FunctionsGateway {
         return ReceiptQuota(
             remaining = (allowance - confirmed).coerceAtLeast(0), monthlyLimit = allowance, isPro = pro,
             scanRemaining = (if (pro) 80 else 20) - confirmed,
+            creditsPurchasingEnabled = true,
         )
     }
 }

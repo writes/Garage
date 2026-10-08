@@ -6,12 +6,12 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 object Formatters {
-    private val dateFormatter: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US).withZone(ZoneId.systemDefault())
+    private val dateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)
 
     fun currency(amount: Double?): String = if (amount == null) "-" else String.format(Locale.US, "\$%,.2f", amount)
 
-    fun date(instant: Instant?): String = instant?.let { dateFormatter.format(it) } ?: "-"
+    /** In the device's CURRENT zone (read per call, so a mid-session zone change is honoured). */
+    fun date(instant: Instant?): String = date(instant, ZoneId.systemDefault())
 
     /** Date rendered in a fixed zone (exports must not depend on the device zone in tests). */
     fun date(instant: Instant?, zone: ZoneId): String =

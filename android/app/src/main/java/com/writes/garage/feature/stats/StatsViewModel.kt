@@ -4,6 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.writes.garage.core.data.EntryRepository
 import com.writes.garage.core.data.VehicleRepository
+import com.writes.garage.core.data.WearRepository
+import com.writes.garage.core.model.WearItemType
+import com.writes.garage.core.model.WearSnapshot
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import com.writes.garage.core.data.observeActiveVehicle
 import com.writes.garage.core.domain.FuelEconomy
 import com.writes.garage.core.domain.OwnershipCostCalculator
@@ -32,6 +37,17 @@ data class TrackDaySummary(
     val bestLapVenue: String?,
 )
 
+/** One wear item's readings, oldest first (percent remaining). */
+data class WearSeries(val item: WearItemType, val points: List<Double>)
+
+/** Items with at least two readings, in [WearItemType] order. */
+fun wearSeries(snapshots: List<WearSnapshot>): List<WearSeries> =
+    WearItemType.entries.mapNotNull { type ->
+        val pts = snapshots.filter { it.wearItem == type && it.valuePct != null }
+            .sortedWith(compareBy({ it.recordedAt }, { it.odometerReading })).map { it.valuePct!! }
+        if (pts.size >= 2) WearSeries(type, pts) else null
+    }
+
 data class StatsUiState(
     val vehicleName: String? = null,
     /** Sum of entry costs (operating cost); excludes the purchase price. */
@@ -44,6 +60,8 @@ data class StatsUiState(
     /** Oldest first. */
     val mpgSeries: List<MpgPoint> = emptyList(),
     val trackDay: TrackDaySummary? = null,
+    /** Percent remaining over time per wear item (oldest first), for the wear-history chart. */
+    val wearHistory: List<WearSeries> = emptyList(),
 ) {
     /** Purchase price (when known) plus everything spent since. */
     val totalCostOfOwnership: Double get() = totalCost + (purchasePrice ?: 0.0)
@@ -78,13 +96,9 @@ fun computeStats(
     purchasePrice: Double? = null,
     now: Instant = Instant.now(),
 ): StatsUiState {
-    val fuel = entries.filter { it.entryType == EntryType.FUEL }
-    val derived = FuelEconomy.mpgBetweenFills(entries)
-    val series = fuel.mapNotNull { e ->
-        val mpg = e.details["calculatedMPG"].asNumber()?.takeIf { it > 0 } ?: derived[e.id] ?: return@mapNotNull null
-        MpgPoint(e.entryDate, mpg)
-    }.sortedBy { it.date }
-    val average = FuelEconomy.weightedAverageMpg(entries) ?: series.map { it.mpg }.takeIf { it.isNotEmpty() }?.average()
+    val series = FuelEconomy.fillMpgs(entries).map { MpgPoint(it.date, it.mpg) }.sortedBy { it.date }
+    // Σmiles ÷ Σgallons over the SAME fills as the series; never the mean of per-tank MPG.
+    val average = FuelEconomy.weightedAverageMpg(entries)
 
     return StatsUiState(
         vehicleName = vehicleName,
@@ -102,18 +116,20 @@ fun computeStats(
 fun trackDaySummary(entries: List<Entry>): TrackDaySummary? {
     val days = entries.filter { it.entryType == EntryType.TRACK_DAY }
     if (days.isEmpty()) return null
-    var best: Triple<Double, String, String?>? = null
-    for (e in days) {
+    // Fastest lap; an exact tie goes to the most recent day (then id) so the card cannot change with list order.
+    val best = days.mapNotNull { e ->
         val raw = e.details["bestLapTime"]?.toString()
-        val secs = parseLapTime(raw) ?: continue
-        if (best == null || secs < best.first) best = Triple(secs, raw!!.trim(), e.details["venueName"]?.toString() ?: e.shopName)
-    }
+        parseLapTime(raw)?.let { secs -> Triple(secs, raw!!.trim(), e.details["venueName"]?.toString() ?: e.shopName) to e }
+    }.sortedWith(compareBy<Pair<Triple<Double, String, String?>, Entry>> { it.first.first }
+        .thenByDescending { it.second.entryDate }.thenBy { it.second.id }).firstOrNull()?.first
     return TrackDaySummary(
         events = days.size,
         totalCost = days.sumOf { it.cost ?: 0.0 },
         totalLaps = days.sumOf { it.details["numberOfLaps"].asNumber()?.toInt() ?: 0 },
         heatCycles = days.sumOf { it.details["heatCyclesAdded"].asNumber()?.toInt() ?: 0 },
-        venues = days.mapNotNull { (it.details["venueName"] ?: it.shopName)?.toString()?.trim()?.takeIf(String::isNotEmpty) }.distinct(),
+        // One circuit however it was typed ("Willow", " willow "): case-insensitive after trimming, first spelling kept.
+        venues = days.mapNotNull { (it.details["venueName"] ?: it.shopName)?.toString()?.trim()?.takeIf(String::isNotEmpty) }
+            .distinctBy { it.lowercase() },
         bestLapSeconds = best?.first,
         bestLapLabel = best?.second,
         bestLapVenue = best?.third,
@@ -124,12 +140,16 @@ fun trackDaySummary(entries: List<Entry>): TrackDaySummary? {
 class StatsViewModel(
     vehicles: VehicleRepository,
     entries: EntryRepository,
+    wear: WearRepository? = null,
     private val clock: () -> Instant = { Instant.now() },
 ) : ViewModel() {
     val state: StateFlow<StatsUiState> = vehicles.observeActiveVehicle()
         .flatMapLatest { v: Vehicle? ->
             if (v == null) flowOf(StatsUiState())
-            else entries.observeEntries(v.id).map { computeStats(v.displayName, it, v.purchasePrice, clock()) }
+            else combine(
+                entries.observeEntries(v.id),
+                wear?.observe(v.id)?.catch { emit(emptyList()) } ?: flowOf(emptyList()),
+            ) { e, w -> computeStats(v.displayName, e, v.purchasePrice, clock()).copy(wearHistory = wearSeries(w)) }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StatsUiState())
 }

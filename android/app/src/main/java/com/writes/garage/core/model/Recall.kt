@@ -27,4 +27,5 @@ data class Recall(
     val completedOdometer: Int? = null,
     val recallSource: RecallSource = RecallSource.MANUAL,
     val notes: String? = null,
+    val createdAt: Instant? = null,
 )

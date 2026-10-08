@@ -2,10 +2,18 @@ package com.writes.garage.feature.voice
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.writes.garage.core.data.AnalyticsEvents
+import com.writes.garage.core.data.AnalyticsSink
 import com.writes.garage.core.data.EntryRepository
+import com.writes.garage.core.data.NoopAnalyticsSink
+import com.writes.garage.core.data.firebase.GatewayException
+import com.writes.garage.core.review.NoopReviewMoments
+import com.writes.garage.core.review.ReviewMoment
+import com.writes.garage.core.review.ReviewMoments
 import com.writes.garage.core.data.FunctionsGateway
 import com.writes.garage.core.data.ProfileRepository
 import com.writes.garage.core.data.VehicleRepository
+import com.writes.garage.core.data.syncOdometer
 import com.writes.garage.core.data.observeActiveVehicle
 import com.writes.garage.core.domain.Validators
 import com.writes.garage.core.model.Vehicle
@@ -32,6 +40,8 @@ data class VoiceUiState(
     val proposal: VoiceProposal? = null,
     val form: ProposalFormState? = null,
     val saved: Boolean = false,
+    /** The server said `pro_required` (entitlement not yet synced / lapsed): route to the paywall. */
+    val needsUpgrade: Boolean = false,
     val error: String? = null,
 )
 
@@ -42,6 +52,8 @@ class VoiceViewModel(
     private val functions: FunctionsGateway,
     private val entries: EntryRepository,
     private val zone: ZoneId = ZoneId.systemDefault(),
+    private val analytics: AnalyticsSink = NoopAnalyticsSink,
+    private val reviews: ReviewMoments = NoopReviewMoments,
 ) : ViewModel() {
     private val _state = MutableStateFlow(VoiceUiState())
     val state: StateFlow<VoiceUiState> = _state.asStateFlow()
@@ -72,6 +84,8 @@ class VoiceViewModel(
     fun onSpeechError(message: String) = _state.update { it.copy(listening = false, partial = "", error = message) }
 
     fun onListeningStopped() = _state.update { it.copy(listening = false, partial = "") }
+
+    fun upgradeHandled() = _state.update { it.copy(needsUpgrade = false) }
 
     fun reportError(message: String) = _state.update { it.copy(error = message) }
 
@@ -119,7 +133,19 @@ class VoiceViewModel(
                         it.copy(busy = false, proposal = p, form = ProposalForm.fromVoice(p, active.currentOdometer, zone), saved = false)
                     }
                 }
-                .onFailure { e -> _state.update { it.copy(busy = false, error = e.message ?: "Couldn't interpret that.") } }
+                .onFailure { e ->
+                    val kind = (e as? GatewayException)?.kind
+                    _state.update {
+                        when (kind) {
+                            GatewayException.Kind.PRO_REQUIRED -> it.copy(busy = false, needsUpgrade = true, error = null)
+                            GatewayException.Kind.VOICE_DAILY_EXHAUSTED -> it.copy(
+                                busy = false,
+                                error = "You've used today's voice entries. The limit resets tomorrow; you can still add entries by hand.",
+                            )
+                            else -> it.copy(busy = false, error = e.message ?: "Couldn't interpret that.")
+                        }
+                    }
+                }
         }
     }
 
@@ -140,8 +166,12 @@ class VoiceViewModel(
             _state.update { it.copy(busy = true, error = null) }
             runCatching {
                 entries.addEntry(ProposalForm.toEntry(form, p.vehicleId, zone = zone))
-                bumpOdometer(p.vehicleId, Validators.parseOdometer(form.odometer) ?: 0)
-            }.onSuccess { _state.update { it.copy(busy = false, proposal = null, form = null, transcript = "", saved = true) } }
+                vehicles.syncOdometer(p.vehicleId, Validators.parseOdometer(form.odometer) ?: 0)
+            }.onSuccess {
+                analytics.log(AnalyticsEvents.VOICE_ENTRY_CONFIRMED, AnalyticsEvents.params("entry_type" to form.type.wire))
+                reviews.record(ReviewMoment.ENTRY_LOGGED)
+                _state.update { it.copy(busy = false, proposal = null, form = null, transcript = "", saved = true) }
+            }
                 .onFailure { e -> _state.update { it.copy(busy = false, error = e.message ?: "Couldn't save the entry.") } }
         }
     }
@@ -149,11 +179,4 @@ class VoiceViewModel(
     fun discard() = _state.update { it.copy(proposal = null, form = null, error = null) }
 
     fun recordAnother() = _state.update { it.copy(saved = false, error = null) }
-
-    private suspend fun bumpOdometer(vehicleId: String, reading: Int) {
-        runCatching {
-            val v = vehicles.observeVehicle(vehicleId).first() ?: return
-            if (reading > v.currentOdometer) vehicles.updateVehicle(v.copy(currentOdometer = reading))
-        }
-    }
 }

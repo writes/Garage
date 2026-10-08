@@ -6,6 +6,7 @@ import com.writes.garage.core.data.demo.DemoProfileRepository
 import com.writes.garage.core.notify.InMemoryNotificationSettings
 import com.writes.garage.feature.settings.PaywallViewModel
 import com.writes.garage.feature.settings.SettingsViewModel
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -101,5 +102,79 @@ class SettingsViewModelTest {
 
         vm.restore()
         assertEquals("Purchases restored.", vm.state.value.message)
+    }
+
+    // ---- T11: ordering and failure semantics, with recording fakes (the demo gateway nulls the user itself).
+
+    private class RecordingHarness(failure: Throwable? = null, gate: CompletableDeferred<Unit>? = null) {
+        val env = DemoEnv()
+        val log = CallLog()
+        val auth = RecordingAuth(DemoAuthRepository(env.store), log)
+        val functions = RecordingFunctions(DemoFunctionsGateway(env.store), log, failure, gate)
+        val notifications = InMemoryNotificationSettings(initial = true)
+        val vm = SettingsViewModel(auth, DemoProfileRepository(env.store), env.purchases, functions, notifications, true, "1")
+    }
+
+    @Test
+    fun deleteAccountRunsBackendFirstThenExactlyOneSignOut() = runTest {
+        val h = RecordingHarness()
+        h.auth.signInDemo()
+        h.vm.deleteAccount()
+        assertEquals(listOf("functions.deleteAccount", "auth.signOut"), h.log.calls)
+        assertEquals(1, h.log.count("auth.signOut"))
+        assertFalse("notifications are disabled after success", h.notifications.enabled.value)
+        assertNull(h.vm.state.value.user)
+        assertFalse(h.vm.state.value.busy)
+    }
+
+    @Test
+    fun deleteAccountFailureKeepsUserSignedInAndNotificationsOn() = runTest {
+        val h = RecordingHarness(failure = IllegalStateException("server said no"))
+        h.auth.signInDemo()
+        h.vm.deleteAccount()
+        assertEquals(0, h.log.count("auth.signOut"))
+        assertTrue(h.notifications.enabled.value)
+        assertNotNull("user must stay signed in", h.vm.state.value.user)
+        assertEquals("server said no", h.vm.state.value.error)
+        assertFalse(h.vm.state.value.busy)
+    }
+
+    @Test
+    fun deleteAccountWhileBusyIsIgnored() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val h = RecordingHarness(gate = gate)
+        h.auth.signInDemo()
+        h.vm.deleteAccount()
+        assertTrue(h.vm.state.value.busy)
+        h.vm.deleteAccount()
+        assertEquals(1, h.log.count("functions.deleteAccount"))
+        gate.complete(Unit)
+        assertEquals(1, h.log.count("auth.signOut"))
+        assertFalse(h.vm.state.value.busy)
+    }
+
+    @Test
+    fun signOutFailureSurfacesAnError() = runTest {
+        val h = RecordingHarness()
+        h.auth.signOutFailure = RuntimeException("no network")
+        h.vm.signOut()
+        assertEquals("no network", h.vm.state.value.error)
+    }
+
+    @Test
+    fun deleteAccountWithSessionCleanerEndsSessionOnlyAfterBackend() = runTest {
+        val h = RecordingHarness()
+        h.auth.signInDemo()
+        val cleaner = com.writes.garage.core.data.SessionCleaner(
+            h.auth,
+            object : com.writes.garage.core.data.LocalDataWiper {
+                override val needsRestart = false
+                override suspend fun wipe() { h.log.calls += "wipe" }
+            },
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)),
+        )
+        val vm = SettingsViewModel(h.auth, DemoProfileRepository(h.env.store), h.env.purchases, h.functions, h.notifications, true, "1", cleaner)
+        vm.deleteAccount()
+        assertEquals(listOf("functions.deleteAccount", "auth.signOut", "wipe"), h.log.calls)
     }
 }

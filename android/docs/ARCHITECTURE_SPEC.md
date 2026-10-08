@@ -61,6 +61,42 @@ feature/settings/           account, subscription/paywall, AI consent, delete ac
 feature/shared/             ProGate, VehicleSwitcher, empty states, AIConsent dialog
 ```
 
+## Parity and privacy additions (2026-10 audit pass)
+- **Per-vehicle records** (`vehicles/{id}/<collection>`: `gallery`, `warranties`, `parts_inventory`, `detailing_records`,
+  `recalls`, `wear_snapshots`) all go through one generic `VehicleRecordRepository<T>` (`core/data/RecordRepositories.kt`):
+  Firestore impl `FirestoreRecordRepository` + pure `RecordMappers`, in-memory `DemoRecordRepository`. Merge-writes with
+  explicit nulls clear fields; fields Android does not model survive.
+- **Screens** (all reachable from navigation): Settings -> Reminders / Profile / Theme / Vehicles; Garage card -> Recalls,
+  Warranty, Photos, Wheels, Spare parts, Detailing; Dashboard -> Reminders, recall + warranty + fuel badges, wear bars,
+  tire-age and fuel-economy notices; Stats -> wear history; Handover -> section/date-range picker.
+- **Pro gates**: record PDF (Handover), voice (screen + server `pro_required` -> paywall), entry attachments, accent theme
+  (locked preview for free). CSV and ICS stay free. Attachment uploads additionally require the server-written
+  `users/{uid}.subscription` (`profile.serverIsPro`) in live mode, because the Storage trigger deletes other uploads.
+- **Entry delete cascade**: `CascadingEntryRepository` deletes the entry, then (best effort) its Storage attachments and
+  wear snapshots. Receipt uploads use the saved entry's own id as the Storage folder. Wear snapshots are written by
+  `WearSync` (port of `WearSnapshotFactory`, tread 10/32 -> 2/32 scale) on entry save.
+- **Consent**: Crashlytics, Analytics and FCM auto-init are OFF in the manifest. `ConsentCoordinator` turns crash +
+  analytics collection on only while a profile is loaded and `analyticsOptOut == false` (default is opted out). Analytics
+  events are held by `ConsentGatedAnalyticsSink` (bounded, discarded on sign-out) and flushed only on opt-in; crash
+  record/log/uid are no-ops while disabled (`ConsentGatedCrashReporter`). Settings has the "Share analytics" switch.
+- **Sign-out / account deletion** go through `SessionCleaner` (application scope): sign out, then `LocalDataWiper`
+  (exports + captures cache, `garage_prefs`, reminder alarm plan + alarms, Credential Manager state, Firestore
+  `terminate()` + `clearPersistence()`), then a process relaunch in live mode (a terminated Firestore instance is unusable).
+  The review-pacing and receipt-credit marker prefs are deliberately NOT wiped (device-local / bound to the paying uid).
+- **Receipt credits**: `PurchaseRepository.receiptCreditsOffer/purchaseReceiptCredits` (RevenueCat INAPP product
+  `RECEIPT_CREDITS_PACK_ID`, store-localized price) + `ReceiptCreditsCoordinator` (persist marker -> poll
+  `receiptQuotaStatus {transactionId}` -> `reconcileReceiptCreditPurchase` -> resume on next open). The offer and the
+  refund-deficit copy show only when the server's `creditsPurchasingEnabled` is true. Receipts accept one PDF XOR up to 2
+  photos, with local size/signature/page preflight (`PdfPreflight`, also used by the oil-analysis PDF import).
+- **Review prompt**: Play In-App Review behind `ReviewPromptPolicy` (score >= 4, 120-day cooldown, once per version),
+  shown only on calm routes (never forms, auth or the paywall).
+- **Experiments / design survey (P17)**: intentionally NOT ported. iOS epoch 1 is server-killed, so every user is in
+  control; Android is **control-only** until experiments re-open. `experimentConfig` stays unused; when it re-opens, port a
+  sticky assigner behind the consent-gated analytics sink.
+- **Build hardening**: release builds are minified + resource-shrunk with no blanket keep rule and lint runs on release;
+  `local.properties revenuecat.apiKey` must be empty or a public `goog_...` key (the build fails otherwise: never put the
+  secret `sk_...` key here); `data_extraction_rules.xml` excludes every domain from cloud backup and device transfer.
+
 ## Backend contract (must match iOS / CloudFunctions)
 - Firestore: `users/{uid}` (profile; `subscription` map is server-written, read-only to client;
   `vehicleCount` server-authoritative), `vehicles/{vehicleId}` (field `userId` = owner; soft delete

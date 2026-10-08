@@ -9,6 +9,7 @@ object FirestorePaths {
     const val REMINDERS = "reminders"
     const val GALLERY = "gallery"
     const val PARTS_INVENTORY = "parts_inventory"
+    const val DETAILING = "detailing_records"
     const val WARRANTIES = "warranties"
     const val WEAR_SNAPSHOTS = "wear_snapshots"
     const val RECALLS = "recalls"
@@ -28,6 +29,10 @@ object FirestorePaths {
 object StoragePaths {
     fun entryAttachment(userId: String, vehicleId: String, entryId: String, filename: String) =
         "users/$userId/entry-attachments/$vehicleId/$entryId/$filename"
+
+    /** `users/{uid}/vehicles/{vehicleId}/{gallery|photos|receipts}/[ownerId/]{filename}` (iOS `StoragePaths.gallery/photo/receipt`). */
+    fun media(userId: String, vehicleId: String, folder: com.writes.garage.core.data.MediaFolder, ownerId: String?, filename: String) =
+        "users/$userId/vehicles/$vehicleId/${folder.segment}/" + (if (ownerId != null && folder != com.writes.garage.core.data.MediaFolder.GALLERY) "$ownerId/" else "") + filename
 
     /** Rules accept `image/…` and `application/pdf` only. */
     fun isAllowedContentType(contentType: String): Boolean =
