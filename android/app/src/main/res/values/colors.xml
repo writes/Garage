@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="garage_background">#FF101114</color>
+    <color name="garage_accent">#FFE5412D</color>
+    <color name="ic_launcher_background">#FF101114</color>
+</resources>

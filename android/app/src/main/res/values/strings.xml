@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Garage</string>
+    <string name="tab_dashboard">Dashboard</string>
+    <string name="tab_log">Log</string>
+    <string name="tab_garage">Garage</string>
+    <string name="tab_stats">Stats</string>
+    <string name="tab_settings">Settings</string>
+    <string name="demo_banner">Demo mode - data is local and resets on restart</string>
+    <string name="continue_in_demo">Continue in demo</string>
+</resources>

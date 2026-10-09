@@ -1,0 +1,18 @@
+# Secrets / machine-local config (never commit)
+local.properties
+google-services.json
+*.keystore
+*.jks
+
+# Build output
+build/
+.gradle/
+.kotlin/
+captures/
+*.apk
+*.aab
+
+# IDE
+.idea/
+*.iml
+.DS_Store
